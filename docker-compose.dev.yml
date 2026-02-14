@@ -1,0 +1,49 @@
+# ==========================================
+# Agent Optimus — Development Docker Compose
+# ==========================================
+# Usage: docker compose -f docker-compose.dev.yml up -d
+# Features: hot-reload, debug ports, no build
+# ==========================================
+
+services:
+  # ─────────────────────────────────────────
+  # PostgreSQL 16 + pgvector (Dev)
+  # ─────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: optimus-postgres-dev
+    environment:
+      POSTGRES_USER: optimus
+      POSTGRES_PASSWORD: optimus_dev
+      POSTGRES_DB: optimus_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data-dev:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U optimus" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Redis 7 (Dev — sem senha)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: optimus-redis-dev
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg-data-dev:
+  redis-data-dev:

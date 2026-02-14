@@ -1,0 +1,109 @@
+# ==========================================
+# Agent Optimus — Production Docker Compose
+# ==========================================
+# Usage: docker compose -f docker-compose.yml up -d
+# ==========================================
+
+services:
+  # ─────────────────────────────────────────
+  # Agent Optimus — Main Application
+  # ─────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimus-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://optimus:${POSTGRES_PASSWORD:-optimus_prod}@postgres:5432/optimus
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-logs:/app/logs
+      - app-data:/app/data
+      - app-plugins:/app/plugins
+    networks:
+      - optimus-net
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ─────────────────────────────────────────
+  # PostgreSQL 16 + pgvector
+  # ─────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: optimus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: optimus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-optimus_prod}
+      POSTGRES_DB: optimus
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U optimus" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - optimus-net
+
+  # ─────────────────────────────────────────
+  # Redis 7 (Cache + Rate Limiter)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: optimus-redis
+    restart: unless-stopped
+    command: >
+      redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes --requirepass ${REDIS_PASSWORD:-optimus_redis}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-optimus_redis}", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - optimus-net
+
+# ─────────────────────────────────────────
+# Volumes persistentes
+# ─────────────────────────────────────────
+volumes:
+  pg-data:
+    name: optimus-pg-data
+  redis-data:
+    name: optimus-redis-data
+  app-logs:
+    name: optimus-app-logs
+  app-data:
+    name: optimus-app-data
+  app-plugins:
+    name: optimus-app-plugins
+
+# ─────────────────────────────────────────
+# Rede interna isolada
+# ─────────────────────────────────────────
+networks:
+  optimus-net:
+    name: optimus-network
+    driver: bridge

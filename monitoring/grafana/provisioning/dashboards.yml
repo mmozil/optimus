@@ -1,0 +1,15 @@
+# Agent Optimus — Grafana Provisioning
+# Place in /etc/grafana/provisioning/dashboards/
+# or mount as Docker volume
+
+apiVersion: 1
+
+providers:
+  - name: optimus
+    orgId: 1
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
