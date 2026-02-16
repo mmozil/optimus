@@ -80,13 +80,30 @@ class Gateway:
     ) -> dict:
         """
         Route a message to the appropriate agent.
-
-        Args:
-            message: User message
-            target_agent: Specific agent name (optional, auto-routes if None)
-            context: Additional context (history, task, etc.)
+        
+        Enriched with:
+        - Session Bootstrap (SOUL + MEMORY)
+        - Emotional Analysis (Tone Adaptation)
         """
         await self.initialize()
+
+        # 1. Initialize/Refresh Session Context
+        from src.memory.session_bootstrap import session_bootstrap
+        await session_bootstrap.load_context()
+
+        # 2. Analyze Sentiment
+        from src.engine.emotional_adapter import emotional_adapter
+        sentiment = emotional_adapter.analyze(message)
+        
+        # 3. Enrich context
+        if context is None:
+            context = {}
+        context["sentiment"] = sentiment
+        context["tone_instruction"] = sentiment.tone_instruction
+        
+        # Log mood to daily notes (fire-and-forget logic, but await here for safety)
+        if sentiment.mood != "neutral":
+            await emotional_adapter.log_mood("user", sentiment)
 
         # If specific agent requested, use it
         if target_agent:
@@ -104,7 +121,7 @@ class Gateway:
         if not optimus:
             return {"content": "❌ Optimus não inicializado.", "agent": "gateway", "model": "none"}
 
-        # For now, Optimus handles everything (delegation via sub-tasks in Phase 3)
+        # For now, Optimus handles everything
         return await optimus.process(message, context)
 
     async def get_agent_status(self) -> list[dict]:

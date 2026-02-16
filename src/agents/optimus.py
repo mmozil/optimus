@@ -8,13 +8,18 @@ import logging
 from src.agents.base import AgentConfig, BaseAgent
 from src.identity.personas import PersonaSelector
 
+# Phase 10 & 11 Integrations
+from src.memory.session_bootstrap import session_bootstrap
+from src.memory.auto_journal import auto_journal
+from src.core.context_awareness import context_awareness
+
 logger = logging.getLogger(__name__)
 
 
 class OptimusAgent(BaseAgent):
     """
     Lead Orchestrator agent.
-    Enhanced with intent classification and delegation capabilities.
+    Enhanced with intent classification, delegation, and proactive capabilities.
     """
 
     def __init__(self, *args, **kwargs):
@@ -22,30 +27,70 @@ class OptimusAgent(BaseAgent):
         self.persona_selector = PersonaSelector()
 
     async def process(self, message: str, context: dict | None = None) -> dict:
-        """Process with persona adaptation based on intent."""
-        # 1. Classify intent and adapt persona
+        """Process with context enrichment (Memory + Time + Persona + Sentiment)."""
+        # 1. Base Context (Memory + Ambient)
+        # Bootstrapped context (SOUL + MEMORY) - loaded in Gateway
+        bootstrap_prompt = session_bootstrap.build_prompt()
+
+        # Ambient context (Time, Day, Business Hours)
+        ctx = context_awareness.build_context()
+        ctx = await context_awareness.enrich_with_activity(ctx, self.name)
+        ambient_prompt = context_awareness.build_context_prompt(ctx)
+
+        # 2. Tone Instruction (from Gateway emotional analysis)
+        tone_instruction = context.get("tone_instruction", "") if context else ""
+
+        # 3. Classify intent and adapt persona
         persona = self.persona_selector.get_persona_for_message(message)
         persona_prompt = self.persona_selector.get_persona_prompt(message)
 
-        # 2. Add persona to context
+        # 4. Add persona to context
         enriched_context = dict(context) if context else {}
         enriched_context["persona"] = persona
 
-        # 3. Temporarily adapt temperature based on persona
+        # 5. Temporarily adapt temperature based on persona
         original_temp = self.config.temperature
         self.config.temperature = persona.get("temperature", original_temp)
 
-        # 4. Add persona instruction to the system prompt temporarily
+        # 6. Compose Dynamic System Prompt
+        # Order: Original System -> Bootstrap (Memory) -> Ambient (Time) -> Tone -> Persona
         original_system = self._system_prompt
-        self._system_prompt = original_system + persona_prompt
+
+        dynamic_sys_prompt = [
+            original_system,
+            bootstrap_prompt,
+            ambient_prompt,
+            f"## Current Tone Instruction\n{tone_instruction}" if tone_instruction else "",
+            persona_prompt
+        ]
+
+        # Filter empty strings and join
+        self._system_prompt = "\n\n".join([p for p in dynamic_sys_prompt if p])
 
         try:
+            # 7. Execute Process
             result = await super().process(message, enriched_context)
+
+            # 8. Post-Process: Auto-Journaling (Proactive Learning)
+            response_text = result.get("content", "")
+            if response_text:
+                # Check if auto-journaling is appropriate (could use filters here)
+                await auto_journal.process_interaction(message, response_text)
+
+            # Enrich result metadata
             result["persona"] = persona["name"]
             result["intent"] = persona.get("intent", "default")
+
+            if "metadata" not in result:
+                result["metadata"] = {}
+
+            result["metadata"]["tone_applied"] = tone_instruction
+            result["metadata"]["ambient_context"] = f"{ctx.day_of_week}, {ctx.local_time}"
+
             return result
+
         finally:
-            # Restore original values
+            # Restore original values to avoid pollution between requests
             self.config.temperature = original_temp
             self._system_prompt = original_system
 
@@ -73,5 +118,5 @@ class OptimusAgent(BaseAgent):
             "intent": intent,
             "target_agent": target_agent,
             "message": message,
-            "confidence": 0.7,  # Will be enhanced by UncertaintyQuantifier in Phase 2
+            "confidence": 0.7,
         }
