@@ -219,9 +219,48 @@ class MCPToolRegistry:
             handler=self._tool_memory_learn,
         ))
 
+        # --- Code Execution Tools ---
+        self.register(MCPTool(
+            name="code_execute",
+            description="Execute Python or Bash code in a secure sandbox",
+            category="technical",
+            parameters={
+                "language": {"type": "string", "required": True, "description": "Language: 'python' or 'bash'"},
+                "code": {"type": "string", "required": True, "description": "The code or command to execute"},
+            },
+            handler=self._tool_code_execute,
+            requires_approval=True,
+            agent_levels=["lead", "specialist"],
+        ))
+
     # ============================================
     # Tool Handlers
     # ============================================
+
+    async def _tool_code_execute(self, language: str, code: str) -> str:
+        """Execute code in sandbox."""
+        from src.infra.sandbox import code_sandbox
+        
+        if language.lower() == "python":
+            result = await code_sandbox.execute_python(code)
+        elif language.lower() == "bash":
+            result = await code_sandbox.execute_bash(code)
+        else:
+            return f"Unsupported language: {language}"
+
+        status = "✅ Success" if result.success else "❌ Failed"
+        output = [
+            f"--- Execution Result ({status}) ---",
+            f"Duration: {result.duration_ms:.1f}ms",
+            f"Exit Code: {result.exit_code}",
+            "",
+            "**STDOUT:**",
+            result.stdout or "(empty)",
+            "",
+            "**STDERR:**",
+            result.stderr or "(empty)",
+        ]
+        return "\n".join(output)
 
     async def _tool_db_query(self, query: str, limit: int = 100) -> str:
         """Execute read-only query."""
@@ -245,28 +284,43 @@ class MCPToolRegistry:
 
     async def _tool_fs_read(self, path: str) -> str:
         """Read file contents."""
+        import asyncio
         from pathlib import Path
-        p = Path(path)
-        if not p.exists():
-            return f"File not found: {path}"
-        return p.read_text(encoding="utf-8")[:10_000]  # Cap at 10KB
+
+        def _read():
+            p = Path(path)
+            if not p.exists():
+                return f"File not found: {path}"
+            return p.read_text(encoding="utf-8")[:10_000]
+
+        return await asyncio.to_thread(_read)
 
     async def _tool_fs_write(self, path: str, content: str) -> str:
         """Write to file."""
+        import asyncio
         from pathlib import Path
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
-        return f"Written {len(content)} chars to {path}"
+
+        def _write():
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+            return f"Written {len(content)} chars to {path}"
+
+        return await asyncio.to_thread(_write)
 
     async def _tool_fs_list(self, path: str, pattern: str = "*") -> str:
         """List directory contents."""
+        import asyncio
         from pathlib import Path
-        p = Path(path)
-        if not p.exists():
-            return f"Directory not found: {path}"
-        files = list(p.glob(pattern))[:50]
-        return "\n".join(str(f.relative_to(p)) for f in files)
+
+        def _list():
+            p = Path(path)
+            if not p.exists():
+                return f"Directory not found: {path}"
+            files = list(p.glob(pattern))[:50]
+            return "\n".join(str(f.relative_to(p)) for f in files)
+
+        return await asyncio.to_thread(_list)
 
     async def _tool_research_search(self, query: str, max_results: int = 5) -> str:
         """Web search stub — integrate with search API."""

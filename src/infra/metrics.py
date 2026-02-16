@@ -1,21 +1,41 @@
 """
 Agent Optimus — Prometheus Metrics.
 Application metrics for monitoring: tokens, latency, errors, sessions.
+Optional dependency: prometheus_client.
 """
 
 import logging
 import time
 from functools import wraps
 
-from prometheus_client import (
-    Counter,
-    Gauge,
-    Histogram,
-    Info,
-    generate_latest,
-)
+try:
+    from prometheus_client import (
+        Counter,
+        Gauge,
+        Histogram,
+        Info,
+        generate_latest,
+    )
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+    # Mock classes if prometheus_client is not installed
+    class MockMetric:
+        def __init__(self, *args, **kwargs): pass
+        def labels(self, *args, **kwargs): return self
+        def inc(self, *args, **kwargs): pass
+        def dec(self, *args, **kwargs): pass
+        def set(self, *args, **kwargs): pass
+        def observe(self, *args, **kwargs): pass
+        def info(self, *args, **kwargs): pass
+
+    Counter = Gauge = Histogram = Info = MockMetric
+    def generate_latest(): return b""
 
 logger = logging.getLogger(__name__)
+
+if not PROMETHEUS_AVAILABLE:
+    logger.warning("prometheus_client not installed, metrics will be disabled")
 
 # ============================================
 # Application Info
@@ -156,15 +176,18 @@ def track_agent_request(agent_name: str, agent_level: str = "specialist"):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            AGENT_REQUESTS.labels(agent_name=agent_name, agent_level=agent_level).inc()
+            if PROMETHEUS_AVAILABLE:
+                AGENT_REQUESTS.labels(agent_name=agent_name, agent_level=agent_level).inc()
             start = time.time()
             try:
                 result = await func(*args, **kwargs)
-                duration = time.time() - start
-                AGENT_LATENCY.labels(agent_name=agent_name).observe(duration)
+                if PROMETHEUS_AVAILABLE:
+                    duration = time.time() - start
+                    AGENT_LATENCY.labels(agent_name=agent_name).observe(duration)
                 return result
             except Exception as e:
-                AGENT_ERRORS.labels(agent_name=agent_name, error_type=type(e).__name__).inc()
+                if PROMETHEUS_AVAILABLE:
+                    AGENT_ERRORS.labels(agent_name=agent_name, error_type=type(e).__name__).inc()
                 raise
         return wrapper
     return decorator
@@ -175,15 +198,18 @@ def track_mcp_tool(tool_name: str, category: str = "custom"):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            MCP_TOOL_CALLS.labels(tool_name=tool_name, category=category).inc()
+            if PROMETHEUS_AVAILABLE:
+                MCP_TOOL_CALLS.labels(tool_name=tool_name, category=category).inc()
             start = time.time()
             try:
                 result = await func(*args, **kwargs)
-                duration = time.time() - start
-                MCP_TOOL_LATENCY.labels(tool_name=tool_name).observe(duration)
+                if PROMETHEUS_AVAILABLE:
+                    duration = time.time() - start
+                    MCP_TOOL_LATENCY.labels(tool_name=tool_name).observe(duration)
                 return result
             except Exception as e:
-                MCP_TOOL_ERRORS.labels(tool_name=tool_name).inc()
+                if PROMETHEUS_AVAILABLE:
+                    MCP_TOOL_ERRORS.labels(tool_name=tool_name).inc()
                 raise
         return wrapper
     return decorator

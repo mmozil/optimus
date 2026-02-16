@@ -8,7 +8,10 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-from pythonjsonlogger import json as jsonlogger
+try:
+    from pythonjsonlogger import json as jsonlogger
+except ImportError:
+    jsonlogger = None
 
 
 def setup_logging(
@@ -37,7 +40,7 @@ def setup_logging(
     # ─────────────────────────────────────────
     # JSON Formatter
     # ─────────────────────────────────────────
-    if json_format:
+    if json_format and jsonlogger:
         formatter = jsonlogger.JsonFormatter(
             fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
             rename_fields={
@@ -48,6 +51,8 @@ def setup_logging(
             datefmt="%Y-%m-%dT%H:%M:%S%z",
         )
     else:
+        if json_format and not jsonlogger:
+            logging.warning("python-json-logger not installed, falling back to plain text logs")
         formatter = logging.Formatter(
             fmt="%(asctime)s │ %(levelname)-8s │ %(name)-30s │ %(message)s",
             datefmt="%H:%M:%S",

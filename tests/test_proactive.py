@@ -367,3 +367,102 @@ class TestSkillsDiscovery:
         assert "total_terms" in stats
         assert "categories" in stats
         assert isinstance(stats["indexed_skills"], int)
+
+
+# ============================================
+# Cron Native Jobs Tests
+# ============================================
+class TestCronNativeJobs:
+    """Tests for native cron job use cases."""
+
+    def setup_method(self):
+        from src.core.cron_scheduler import cron_scheduler
+
+        self.cron = cron_scheduler
+        self.cron._jobs.clear()
+
+    def test_setup_morning_briefing(self):
+        from src.core.cron_jobs_native import setup_morning_briefing
+
+        job_id = setup_morning_briefing(channel="telegram", interval="24h")
+        assert job_id is not None
+        job = self.cron.get(job_id)
+        assert job is not None
+        assert job.name == "morning_briefing"
+        assert job.schedule_type == "every"
+        assert job.schedule_value == "24h"
+        assert job.channel == "telegram"
+
+    def test_setup_monitoring_alerts(self):
+        from src.core.cron_jobs_native import setup_monitoring_alerts
+
+        urls = ["https://example.com", "https://test.com"]
+        job_id = setup_monitoring_alerts(urls=urls, interval="30m")
+        assert job_id is not None
+        job = self.cron.get(job_id)
+        assert job is not None
+        assert job.name == "monitoring_alerts"
+        assert "example.com" in job.payload
+        assert "test.com" in job.payload
+
+    def test_setup_scheduled_research(self):
+        from src.core.cron_jobs_native import setup_scheduled_research
+
+        job_id = setup_scheduled_research(interval="6h")
+        assert job_id is not None
+        job = self.cron.get(job_id)
+        assert job is not None
+        assert job.name == "scheduled_research"
+        assert job.schedule_value == "6h"
+
+    def test_create_reminder(self):
+        from src.core.cron_jobs_native import create_reminder
+
+        when = "2026-12-31T23:59:59Z"
+        job_id = create_reminder("Don't forget!", when)
+        assert job_id is not None
+        job = self.cron.get(job_id)
+        assert job is not None
+        assert job.schedule_type == "at"
+        assert job.delete_after_run is True
+        assert "Don't forget!" in job.payload
+
+    def test_create_reminder_datetime(self):
+        from src.core.cron_jobs_native import create_reminder
+
+        when = datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        job_id = create_reminder("Test reminder", when)
+        job = self.cron.get(job_id)
+        assert job is not None
+        assert "2026-12-31" in job.schedule_value
+
+    def test_register_all_native_jobs(self):
+        from src.core.cron_jobs_native import register_all_native_jobs
+
+        ids = register_all_native_jobs(channel="telegram")
+        assert len(ids) == 3
+        assert "morning_briefing" in ids
+        assert "monitoring_alerts" in ids
+        assert "scheduled_research" in ids
+
+    def test_no_duplicate_jobs(self):
+        from src.core.cron_jobs_native import setup_morning_briefing
+
+        id1 = setup_morning_briefing()
+        id2 = setup_morning_briefing()
+        # Should replace former, not duplicate
+        briefing_jobs = [j for j in self.cron.list_jobs() if j.name == "morning_briefing"]
+        assert len(briefing_jobs) == 1
+        assert briefing_jobs[0].id == id2
+
+    @pytest.mark.asyncio
+    async def test_check_monitoring_urls_all_fail(self):
+        from src.core.cron_jobs_native import check_monitoring_urls
+
+        # Non-routable URL will fail
+        results = await check_monitoring_urls(
+            ["http://192.0.2.1:9999/nonexistent"],
+            timeout=2.0,
+        )
+        assert len(results) == 1
+        assert results[0]["ok"] is False
