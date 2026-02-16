@@ -317,10 +317,15 @@ class ModelRouter:
 
         logger.info(f"Native Gemini Succeeded ({model_id}) in {duration_ms:.0f}ms")
 
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        if response.usage_metadata:
+            usage["prompt_tokens"] = response.usage_metadata.prompt_token_count
+            usage["completion_tokens"] = response.usage_metadata.candidates_token_count
+
         result = {
             "content": response.text,
             "model": f"native/{model_id}",
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            "usage": usage,
             "tool_calls": [],
             "finish_reason": "stop",
         }
@@ -357,24 +362,81 @@ class ModelRouter:
 
     async def _native_gemini_stream(self, short_name, messages, temp, tokens, tools):
         """Yield tokens from native Gemini."""
-        if "2.5-pro" in short_name: model_id = "gemini-1.5-pro"
-        else: model_id = "gemini-1.5-flash"
-
+        model_id = self._resolve_model(short_name).replace("gemini/", "")
+        
+        # Prepare history and last message
         native_messages = []
-        system_instr = None
-        for m in messages:
-            if m["role"] == "system": system_instr = m["content"]
-            else: native_messages.append({"role": "user" if m["role"] == "user" else "model", "parts": [m["content"]]})
+        if messages:
+            system_instr = next((m["content"] for m in messages if m["role"] == "system"), None)
+            for m in messages:
+                if m["role"] == "system":
+                    continue
+                
+                parts = []
+                content = m.get("content", "")
+                
+                # Handle multimodal list
+                if isinstance(content, list):
+                    for p in content:
+                        if p.get("type") == "text":
+                            parts.append(p.get("text", ""))
+                        elif p.get("type") == "image_url":
+                            # This is a stub for the multimodal logic
+                            parts.append({"image_url": p["image_url"]["url"]})
+                else:
+                    parts.append(content)
+                    
+                native_messages.append({
+                    "role": "user" if m["role"] == "user" else "model", 
+                    "parts": parts
+                })
 
         model = genai.GenerativeModel(model_id, system_instruction=system_instr)
-        response = await model.generate_content_async(
+        start = time.monotonic()
+        
+        # Stream
+        async for chunk in await model.generate_content_async(
             native_messages,
             generation_config=genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens),
             stream=True
-        )
-        async for chunk in response:
+        ):
             if chunk.text:
-                yield {"type": "token", "content": chunk.text}
+                yield {
+                    "type": "token",
+                    "content": chunk.text,
+                    "model": f"native/{model_id}"
+                }
+
+    async def embed_text(self, text: str, model: str = "text-embedding-004") -> list[float]:
+        """
+        Generate embeddings for text.
+        Tries LiteLLM first, falls back to native Google GenAI.
+        """
+        # 1. Try LiteLLM
+        if LITELLM_AVAILABLE:
+            try:
+                response = await litellm.aembedding(
+                    model=f"gemini/{model}",
+                    input=[text]
+                )
+                return response.data[0].embedding
+            except Exception as e:
+                logger.warning(f"LiteLLM embedding failed: {e}")
+
+        # 2. Try Native Gemini
+        if GOOGLE_GENAI_AVAILABLE:
+            try:
+                result = genai.embed_content(
+                    model=f"models/{model}",
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                return result["embedding"]
+            except Exception as e:
+                logger.error(f"Native embedding failed: {e}")
+                raise
+
+        raise RuntimeError("No embedding provider available")
 
 
 # Singleton

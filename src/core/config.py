@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-004"
     EMBEDDING_DIMENSIONS: int = 768
 
+    # === Multi-Provider LLM (Phase 12) ===
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    MODEL_MAPPINGS: str = "{}"  # JSON string mapping short names to LiteLLM names
+    MODEL_FALLBACKS: str = "{}"  # JSON string mapping chain names to lists of short names
+
+    # === ReAct Loop ===
+    REACT_MAX_ITERATIONS: int = 10
+    REACT_TIMEOUT_SECONDS: int = 120
+
     # === Rate Limiting ===
     RATE_LIMIT_DEFAULT: str = "100/minute"
     RATE_LIMIT_CHAT: str = "30/minute"
@@ -40,8 +52,25 @@ class Settings(BaseSettings):
     # === CORS ===
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # === JWT Authentication (Phase 15) ===
+    JWT_SECRET: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     # === Sentry ===
     SENTRY_DSN: str = ""
+
+    # === OpenTelemetry (Phase 16) ===
+    TRACING_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "agent-optimus"
+    OTEL_EXPORTER_ENDPOINT: str = "http://localhost:4317"  # OTLP gRPC
+    OTEL_EXPORTER_TYPE: str = "console"  # console | otlp
+
+    # === Cost Tracking (Phase 16) ===
+    COST_TRACKING_ENABLED: bool = True
+    DEFAULT_DAILY_BUDGET_USD: float = 10.0
+    DEFAULT_MONTHLY_BUDGET_USD: float = 200.0
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 
