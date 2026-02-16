@@ -33,6 +33,7 @@ class EventType(str, Enum):
     # External events
     WEBHOOK_RECEIVED = "webhook.received"
     WEBHOOK_GITHUB = "webhook.github"
+    CRON_TRIGGERED = "cron.triggered"
 
 
 @dataclass

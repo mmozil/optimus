@@ -665,6 +665,158 @@ CREATE TABLE error_patterns (
 
 ---
 
+### Fase 10: Proactive Intelligence (Semana 16-18) 🟡 EM PROGRESSO
+> Boot sequence, auto-journaling, cron persistente, skills auto-discovery — superar o OpenClaw
+
+- [x] **Boot Sequence (Memory-Aware Startup)** — P0 ✅
+  - [x] `session_bootstrap.py` — Ao iniciar sessão, ler automaticamente: `SOUL.md` + `MEMORY.md` + daily notes (hoje + ontem)
+  - [x] Injetar contexto de memória no system prompt antes de qualquer resposta (`build_prompt()`)
+  - [x] Suportar `USER.md` (preferências do usuário: idioma, estilo, restrições)
+  - [x] Cache inteligente — só re-ler se arquivo mudou (hash check MD5)
+  - [x] Hot-reload via `invalidate()` / `invalidate_all()` sem restart
+
+- [x] **Auto-Journaling (Aprendizado Contínuo)** — P1 ✅
+  - [x] `auto_journal.py` — Hook pós-resposta que extrai automaticamente:
+    - [x] Decisões tomadas → `MEMORY.md` (categoria: decisões)
+    - [x] Preferências detectadas → `MEMORY.md` (categoria: preferências)
+    - [x] Erros/falhas → `MEMORY.md` (categoria: lições aprendidas)
+    - [x] Novos fatos relevantes → `MEMORY.md` (categoria: conhecimento)
+  - [x] Classificador de relevância (keyword-based, zero LLM tokens)
+  - [x] Deduplicação via SHA-256 hash
+  - [x] `summarize_day()` — consolida daily notes em key insights
+
+- [x] **Self-Reflection Engine** — P1 ✅
+  - [x] `reflection_engine.py` — Análise periódica das interações recentes:
+    - [x] Análise de falhas via failure indicators (keyword-based)
+    - [x] Frequência de tópicos (Counter-based, 10 categorias)
+    - [x] Confiança média por tópico (gap detection)
+    - [x] Sugestões de melhoria automáticas
+  - [x] Relatório semanal salvo em `workspace/memory/reflections/YYYY-WW.md`
+  - [x] Knowledge Gap Detector — identifica tópicos com ≥2 falhas
+
+- [x] **Cron Persistente (Self-Scheduling)** — P2 ✅
+  - [x] `cron_scheduler.py` — Scheduler persistente em JSON:
+    - [x] Jobs sobrevivem a restarts (JSON persistence `workspace/cron/jobs.json`)
+    - [x] Suporta: one-shot (`at`), recurring (`every`), interval (`30m/1h/7d`)
+    - [x] 2 modos: session_target `main` ou `isolated`
+    - [x] `run_now()` para execução imediata
+  - [x] API completa: `add()` / `remove()` / `list_jobs()` / `get()` / `run_now()`
+  - [x] Emite `EventType.CRON_TRIGGERED` com payload (channel, session_target)
+  - [ ] Use cases nativos (aguardando integração com channels):
+    - [ ] Morning briefing (resumo do dia anterior)
+    - [ ] Monitoring alerts (check periódico de APIs/serviços)
+    - [ ] Scheduled research (buscar novidades sobre tópicos definidos)
+    - [ ] Reminder system (lembretes criados pelo agent ou usuário)
+
+- [x] **Skills Auto-Discovery** — P3 ✅
+  - [x] `skills_discovery.py` — TF-IDF-like search no catálogo:
+    - [x] `search(query)` com scoring de relevância (0.0-1.0)
+    - [x] `detect_capability_gap(query)` — detecta quando falta skill
+    - [x] `suggest_for_query(query)` — sugere skills por intent
+  - [x] `watch_directory()` — hot-reload quando `SKILL.md` muda
+  - [ ] Upgrade para PGvector embeddings (futuro)
+  - [ ] Community skills directory (futuro: OptimusHub)
+
+- [x] **Testes** ✅
+  - [x] 30 testes em `tests/test_proactive.py` (Bootstrap 9, AutoJournal 8, Reflection 7, Cron 10, Discovery 6)
+
+---
+
+### Fase 11: Jarvis Mode (Semana 19-22) � EM PROGRESSO
+> Além do OpenClaw — o assistente que antecipa, aprende, e evolui sozinho
+
+- [x] **Proactive Research Engine** ✅
+  - [x] `proactive_researcher.py` — Motor de pesquisa proativa:
+    - [x] Sources configuráveis (RSS, GitHub, URL, API) com persistência JSON
+    - [x] Rate limiting por fonte (`check_interval`: 1h/6h/24h/7d)
+    - [x] `is_due_for_check()` verifica freshness automática
+    - [x] `generate_briefing()` com relevance scoring e markdown formatado
+  - [x] `add_source()`/`remove_source()`/`list_sources()`/`get_due_sources()`
+  - [ ] Integração real com RSS parser e GitHub API (futuro)
+
+- [x] **Predictive Actions (Antecipar Necessidades)** ✅
+  - [x] `intent_predictor.py` — Baseado em padrões históricos:
+    - [x] Detecta rotinas (day-of-week + time-of-day frequency analysis)
+    - [x] `predict_next()` sugere ações proativamente em português
+    - [x] 9 categorias de ação (deploy, bug_fix, meeting, research, etc.)
+  - [x] Pattern learning via keyword analysis nas daily notes
+  - [x] `save_patterns()` persistência em JSON
+
+- [x] **Ambient Awareness (Consciência de Contexto)** ✅
+  - [x] `context_awareness.py` — O agent sabe:
+    - [x] Fuso horário + horário local do usuário (configurável, default BRT)
+    - [x] Dia da semana com sugestões contextuais em português
+    - [x] Business hours detection (Seg-Sex 9-18h)
+    - [x] Time sensitivity (urgent/normal/relaxed)
+  - [x] `generate_greeting()` com dados de atividade de ontem
+  - [x] `build_context_prompt()` para injeção no system prompt
+
+- [x] **Emotional Intelligence (Tom Adaptativo)** ✅
+  - [x] `emotional_adapter.py` — Análise de sentimento keyword-based (zero LLM):
+    - [x] Frustrado/estressado → DIRETO e SOLUCIONADOR
+    - [x] Curioso/exploratório → DETALHADO e EDUCATIVO
+    - [x] Com pressa → ULTRA-CONCISO
+    - [x] Celebrando → compartilhar entusiasmo
+  - [x] Tone instructions em português para injeção no prompt
+  - [x] `log_mood()` persiste humor nas daily notes para continuidade
+
+- [x] **Voice Interface (Talk Mode)** ✅
+  - [x] `voice_interface.py` — Abstração com providers plugáveis:
+    - [x] STT: Stub + Google Cloud Speech + Whisper (stubs prontos)
+    - [x] TTS: Stub + Google TTS + ElevenLabs (stubs prontos)
+    - [x] Wake word detection: "optimus" / "hey optimus"
+    - [x] `strip_wake_word()` extrai comando do áudio
+  - [x] Config: language, voice_name, speed, wake_words
+  - [ ] Implementações reais dos providers (futuro: API keys)
+
+- [x] **Autonomous Task Execution** ✅
+  - [x] `autonomous_executor.py` — Para tasks de alta confiança, executar sem pedir permissão:
+    - [x] Confidence threshold configurável (default: 0.9)
+    - [x] Risk classification: LOW/MEDIUM/HIGH/CRITICAL
+    - [x] CRITICAL sempre requer aprovação (nunca auto-executa)
+    - [x] Audit trail completo em JSONL
+  - [x] Daily budget (default: 50/dia) para evitar runaway
+  - [x] Emite `EventType.TASK_COMPLETED` no EventBus
+
+- [x] **Cross-Agent Learning (Inteligência Coletiva)** ✅
+  - [x] `collective_intelligence.py` — Agents aprendem uns com os outros:
+    - [x] `share()` publica knowledge com deduplicação SHA-256
+    - [x] `query()` busca cross-agent com tracking de `used_by`
+    - [x] `find_expert()` identifica qual agent sabe mais sobre um tópico
+  - [x] `get_knowledge_graph()` visualiza quem sabe o quê
+  - [ ] Upgrade para PGvector embeddings (futuro)
+
+- [x] **Testes** ✅
+  - [x] 42 testes em `tests/test_jarvis.py` (Researcher 10, Predictor 11, Context 8, Emotional 9, Voice 6, Executor 10, Collective 8)
+
+---
+
+### Comparação Final: OpenClaw vs Agent Optimus (Pós Fase 11)
+
+| Capacidade | OpenClaw | Agent Optimus |
+|------------|----------|---------------|
+| Canais de comunicação | 14+ | 4+ (extensível via MCP) |
+| **Boot sequence com memória** | ✅ | ✅ (Fase 10) |
+| **Cron persistente** | ✅ | ✅ + Self-scheduling (Fase 10) |
+| **Skills auto-discovery** | ✅ ClawHub | ✅ + Semântico (Fase 10) |
+| **Self-Reflection** | ❌ | ✅ Knowledge Gap Detector (Fase 10) |
+| **Proactive Research** | ❌ | ✅ Pesquisa autônoma (Fase 11) |
+| **Predictive Actions** | ❌ | ✅ Antecipa necessidades (Fase 11) |
+| **Emotional Intelligence** | ❌ | ✅ Tom adaptativo (Fase 11) |
+| **Cross-Agent Learning** | ❌ | ✅ Inteligência coletiva (Fase 11) |
+| **Autonomous Execution** | ❌ | ✅ Piloto automático (Fase 11) |
+| **Voice Interface** | ✅ (ElevenLabs) | ✅ Wake word + streaming (Fase 11) |
+| **Tree-of-Thought** | ❌ | ✅ 3 estratégias + meta-avaliação |
+| **Uncertainty Quantifier** | ❌ | ✅ Calibração por PGvector |
+| **Multi-setor via MCP** | ❌ (single-user) | ✅ Qualquer API plugável |
+| **A2A Protocol** | ✅ sessions_* tools | ✅ Google ADK A2A |
+
+> [!IMPORTANT]
+> **Optimus = Jarvis.** Não apenas responde — *antecipa, aprende, evolui, e age*.
+> OpenClaw é um excelente assistente pessoal. Optimus é um **sistema operacional de inteligência**.
+
+---
+
 ## 🌍 Plataforma Multi-Setor (MCP Plugin System)
 
 **Agent Optimus não é um agent — é uma PLATAFORMA.** Qualquer API, database ou sistema pode ser plugado via MCP Server.
