@@ -58,10 +58,28 @@ async def on_standup_cron_triggered(event: Event) -> None:
         logger.error(f"FASE 0 #23: Standup generation failed: {e}")
 
 
+async def on_reminder_cron_triggered(event: Event) -> None:
+    """
+    Handle reminder cron jobs (job_name starts with 'Lembrete:').
+    Stores the reminder payload in PendingReminders for delivery on next user request.
+    """
+    data = event.data
+    job_name = data.get("job_name", "")
+    payload = data.get("payload", "")
+
+    if not job_name.startswith("Lembrete:"):
+        return
+
+    from src.collaboration.reminder_delivery import pending_reminders
+    pending_reminders.store(payload)
+    logger.info(f"Reminder queued for delivery: '{payload[:80]}'")
+
+
 def register_standup_handlers() -> None:
     """
-    Register standup cron handler on EventBus.
+    Register standup and reminder cron handlers on EventBus.
     Called from main.py lifespan startup (FASE 0 #23).
     """
     event_bus.on(EventType.CRON_TRIGGERED.value, on_standup_cron_triggered)
-    logger.info("FASE 0 #23: Standup handler registered on EventBus")
+    event_bus.on(EventType.CRON_TRIGGERED.value, on_reminder_cron_triggered)
+    logger.info("FASE 0 #23: Standup + reminder handlers registered on EventBus")

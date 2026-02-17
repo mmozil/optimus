@@ -54,15 +54,27 @@ class OptimusAgent(BaseAgent):
         self.config.temperature = persona.get("temperature", original_temp)
 
         # 6. Compose Dynamic System Prompt
-        # Order: Original System -> Bootstrap (Memory) -> Ambient (Time) -> Tone -> Persona
+        # Order: Original System -> Bootstrap (Memory) -> Ambient (Time) -> Tone -> Persona -> Reminders
         original_system = self._system_prompt
+
+        # Pending reminders must be delivered FIRST in this response
+        reminders = enriched_context.pop("pending_reminders", [])
+        reminder_prompt = ""
+        if reminders:
+            reminder_lines = "\n".join(f"- {r}" for r in reminders)
+            reminder_prompt = (
+                f"## ⏰ LEMBRETES PENDENTES (ENTREGUE IMEDIATAMENTE)\n"
+                f"Os seguintes lembretes foram agendados e devem ser informados ao usuário "
+                f"NO INÍCIO da sua resposta:\n{reminder_lines}"
+            )
 
         dynamic_sys_prompt = [
             original_system,
             bootstrap_prompt,
             ambient_prompt,
             f"## Current Tone Instruction\n{tone_instruction}" if tone_instruction else "",
-            persona_prompt
+            persona_prompt,
+            reminder_prompt,
         ]
 
         # Filter empty strings and join

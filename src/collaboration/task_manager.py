@@ -1,16 +1,22 @@
 """
 Agent Optimus — Task Manager.
 CRUD completo + lifecycle + subtasks + dependencies + priority.
+Tasks persist to workspace/tasks/tasks.json to survive restarts and multi-worker deployments.
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+TASKS_DIR = Path(__file__).parent.parent.parent / "workspace" / "tasks"
+TASKS_FILE = TASKS_DIR / "tasks.json"
 
 
 # FASE 0 #20: EventBus integration for NotificationService
@@ -89,11 +95,37 @@ class Task(BaseModel):
 class TaskManager:
     """
     Manages task lifecycle with full CRUD, status transitions, subtasks.
-    In-memory store for now; DB integration in production.
+    Persists to JSON to survive restarts and multi-worker deployments.
     """
 
     def __init__(self):
         self._tasks: dict[UUID, Task] = {}
+        TASKS_DIR.mkdir(parents=True, exist_ok=True)
+        self._load()
+
+    def _load(self) -> None:
+        """Load tasks from persistent JSON storage."""
+        if not TASKS_FILE.exists():
+            return
+        try:
+            data = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+            for item in data:
+                task = Task.model_validate(item)
+                self._tasks[task.id] = task
+            logger.info(f"TaskManager: loaded {len(self._tasks)} tasks from {TASKS_FILE}")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"TaskManager: failed to load tasks: {e}")
+
+    def _save(self) -> None:
+        """Persist tasks to JSON file."""
+        try:
+            data = [t.model_dump(mode="json") for t in self._tasks.values()]
+            TASKS_FILE.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False, default=str),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.error(f"TaskManager: failed to save tasks: {e}")
 
     # ============================================
     # CRUD
@@ -118,6 +150,7 @@ class TaskManager:
             task.status = TaskStatus.ASSIGNED
 
         self._tasks[task.id] = task
+        self._save()
 
         logger.info(f"Task created: {task.title}", extra={"props": {
             "task_id": str(task.id), "status": task.status, "priority": task.priority,
@@ -165,6 +198,7 @@ class TaskManager:
     async def delete(self, task_id: UUID) -> bool:
         if task_id in self._tasks:
             del self._tasks[task_id]
+            self._save()
             return True
         return False
 
@@ -216,6 +250,7 @@ class TaskManager:
         old_status = task.status
         task.status = new_status
         task.updated_at = datetime.now(timezone.utc)
+        self._save()
 
         logger.info(f"Task transitioned: {old_status} → {new_status}", extra={"props": {
             "task_id": str(task_id), "title": task.title, "agent": agent_name,

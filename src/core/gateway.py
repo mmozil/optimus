@@ -210,6 +210,13 @@ class Gateway:
             context["history"] = conv["messages"]
             context["conversation_id"] = conv["id"]
 
+            # 5b. Pending Reminders — inject into context for delivery
+            from src.collaboration.reminder_delivery import pending_reminders
+            reminders = pending_reminders.get_and_clear()
+            if reminders:
+                context["pending_reminders"] = reminders
+                logger.info(f"Gateway: injecting {len(reminders)} pending reminder(s) into context")
+
             # 6. Planning Engine: detect complex tasks and propose a plan
             from src.engine.planning_engine import planning_engine
             if not target_agent and await planning_engine.should_plan(message, context):
