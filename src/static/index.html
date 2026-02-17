@@ -4,465 +4,509 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Optimus — Chat</title>
+    <title>Agent Optimus</title>
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#10a37f">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
         :root {
-            --bg-color: #0d0d0d;
-            --chat-bg: #1a1a1a;
-            --user-msg-bg: #2d2d2d;
-            --ai-msg-bg: #0d0d0d;
-            --accent: #10a37f;
-            --text: #ececec;
-            --text-secondary: #9b9b9b;
+            --bg: #0d0d0d;
+            --surface: #1a1a1a;
+            --surface2: #242424;
+            --border: #2e2e2e;
+            --text: #e5e5e5;
+            --text-muted: #737373;
+            --accent: #3b82f6;
+            --red: #ef4444;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
 
         body {
-            background-color: var(--bg-color);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
             color: var(--text);
+            height: 100dvh;
             display: flex;
             flex-direction: column;
-            height: 100vh;
             overflow: hidden;
         }
 
-        /* Header */
+        /* ── Header ─────────────────────────────── */
         header {
-            padding: 1rem 2rem;
-            border-bottom: 1px solid #333;
+            height: 48px;
+            padding: 0 1.25rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(13, 13, 13, 0.9);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
         }
 
-        .logo {
-            font-weight: 700;
-            font-size: 1.2rem;
+        .header-left {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
 
-        .logo span {
-            color: var(--accent);
-        }
-
-        .status {
-            font-size: 0.8rem;
-            color: var(--accent);
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-
-        .status::before {
-            content: "";
-            width: 8px;
-            height: 8px;
-            background: var(--accent);
+        .header-dot {
+            width: 7px;
+            height: 7px;
+            background: #22c55e;
             border-radius: 50%;
         }
 
-        /* Chat Container */
-        #chat-container {
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .agent-select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 0.78rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .btn-logout {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: none;
+            border: 1px solid var(--border);
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .btn-logout:hover {
+            color: var(--red);
+            border-color: var(--red);
+        }
+
+        /* ── Chat area ───────────────────────────── */
+        #chat-wrap {
             flex: 1;
             overflow-y: auto;
-            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-container {
+            flex: 1;
+            max-width: 740px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 1rem;
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
-            max-width: 800px;
-            width: 100%;
-            margin: 0 auto;
+        }
+
+        /* Welcome state */
+        #welcome {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 0;
+            gap: 1rem;
+        }
+
+        #welcome h1 {
+            font-size: 1.8rem;
+            font-weight: 500;
+            color: var(--text);
+            letter-spacing: -0.02em;
+        }
+
+        #welcome p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
         }
 
         /* Messages */
         .message {
             display: flex;
-            gap: 1rem;
-            max-width: 100%;
-            animation: fadeIn 0.3s ease;
+            gap: 0.9rem;
+            animation: fadeUp 0.25s ease;
         }
 
         .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 4px;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-size: 0.7rem;
+            font-weight: 700;
             flex-shrink: 0;
+            margin-top: 2px;
+            letter-spacing: 0.02em;
         }
 
         .ai-avatar {
             background: var(--accent);
-            color: white;
+            color: #fff;
         }
 
         .user-avatar {
-            background: #555;
-            color: white;
+            background: var(--surface2);
+            color: var(--text-muted);
         }
 
-        .content {
-            line-height: 1.6;
-            padding-top: 0.4rem;
-            font-size: 1rem;
-            word-wrap: break-word;
+        .msg-content {
+            line-height: 1.65;
+            font-size: 0.93rem;
+            padding-top: 0.2rem;
+            word-break: break-word;
+            min-width: 0;
         }
 
-        .content p {
-            margin-bottom: 0.8rem;
-        }
+        .msg-content p { margin-bottom: 0.6rem; }
+        .msg-content p:last-child { margin-bottom: 0; }
 
-        .content pre {
-            background: #000;
-            padding: 1rem;
-            border-radius: 6px;
+        .msg-content pre {
+            background: #111;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
             overflow-x: auto;
+            font-size: 0.83rem;
             margin: 0.5rem 0;
-            font-family: monospace;
-            font-size: 0.9rem;
-            border: 1px solid #333;
         }
 
-        .content code {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.2rem 0.4rem;
+        .msg-content code {
+            background: rgba(255,255,255,0.08);
+            padding: 0.15rem 0.35rem;
             border-radius: 4px;
-            font-family: monospace;
+            font-size: 0.85em;
         }
 
-        /* Input Area */
-        .input-area {
-            padding: 2rem;
-            background: var(--bg-color);
-            border-top: 1px solid #333;
-            display: flex;
-            justify-content: center;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
+        .msg-content pre code {
+            background: none;
+            padding: 0;
         }
 
-        .input-wrapper {
-            max-width: 800px;
-            width: 100%;
-            position: relative;
-            background: #40414f;
-            border-radius: 12px;
-            border: 1px solid #565869;
-            display: flex;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-        }
-
-        .input-wrapper:focus-within {
-            border-color: #777;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-        }
-
-        textarea {
-            width: 100%;
-            background: transparent;
-            border: none;
-            color: white;
-            resize: none;
-            font-size: 1rem;
-            max-height: 200px;
-            padding: 0.8rem 0;
-            outline: none;
-            line-height: 1.5;
-        }
-
-        button#send-btn {
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            color: #ccc;
-            padding: 0.5rem;
-            transition: color 0.2s;
-        }
-
-        button#send-btn:hover {
-            color: white;
-        }
-
-        button#send-btn:disabled {
-            color: #555;
-            cursor: not-allowed;
-        }
-
-        /* Mic Button */
-        .mic-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #888;
-            font-size: 0.9rem;
-        }
-
-        button#mic-btn {
-            background: #333;
-            border: 1px solid #444;
-            color: white;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-
-        button#mic-btn:hover {
-            background: #444;
-        }
-
-        button#mic-btn.listening {
-            background: #cc0000;
-            border-color: #ff0000;
-            animation: pulse 1.5s infinite;
-        }
-
-        /* Loader */
-        .typing-indicator {
+        /* Typing dots */
+        .typing-dots {
             display: flex;
             gap: 4px;
-            padding: 10px 0;
+            padding: 0.3rem 0;
         }
 
-        .typing-indicator span {
-            width: 6px;
-            height: 6px;
-            background: #888;
+        .typing-dots span {
+            width: 5px;
+            height: 5px;
+            background: var(--text-muted);
             border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out both;
+            animation: blink 1.3s infinite ease-in-out both;
         }
 
-        .typing-indicator span:nth-child(1) {
-            animation-delay: -0.32s;
+        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes blink {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
         }
 
-        .typing-indicator span:nth-child(2) {
-            animation-delay: -0.16s;
+        /* ── Input area ──────────────────────────── */
+        .input-area {
+            padding: 0.75rem 1.5rem 1.25rem;
+            display: flex;
+            justify-content: center;
+            flex-shrink: 0;
         }
 
-        @keyframes bounce {
-
-            0%,
-            80%,
-            100% {
-                transform: scale(0);
-            }
-
-            40% {
-                transform: scale(1);
-            }
+        .input-box {
+            max-width: 740px;
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            display: flex;
+            align-items: flex-end;
+            gap: 0.25rem;
+            padding: 0.5rem 0.6rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .input-box:focus-within {
+            border-color: #404040;
+            box-shadow: 0 0 0 1px #2a2a2a;
         }
 
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(204, 0, 0, 0.4);
-            }
+        .input-box.recording {
+            border-color: var(--red);
+            box-shadow: 0 0 0 1px rgba(239,68,68,0.3);
+        }
 
-            70% {
-                box-shadow: 0 0 0 10px rgba(204, 0, 0, 0);
-            }
+        .icon-btn {
+            width: 34px;
+            height: 34px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.2s, background 0.2s;
+        }
 
-            100% {
-                box-shadow: 0 0 0 0 rgba(204, 0, 0, 0);
-            }
+        .icon-btn:hover {
+            color: var(--text);
+            background: var(--surface2);
+        }
+
+        .icon-btn:disabled {
+            color: #3a3a3a;
+            cursor: not-allowed;
+            background: transparent;
+        }
+
+        #mic-btn.active {
+            color: var(--red);
+            animation: pulse-red 1.4s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #send-btn:not(:disabled) {
+            color: var(--text);
+        }
+
+        #chat-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-size: 0.93rem;
+            resize: none;
+            max-height: 160px;
+            padding: 0.45rem 0.25rem;
+            line-height: 1.5;
+            font-family: inherit;
+        }
+
+        #chat-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Mic status toast */
+        #mic-toast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(6px);
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: var(--red);
+            font-size: 0.78rem;
+            padding: 0.35rem 0.9rem;
+            border-radius: 20px;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+        }
+
+        #mic-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* History divider */
+        .history-divider {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            padding: 0.25rem 0 0.75rem;
         }
 
         /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 4px; }
 
-        ::-webkit-scrollbar-track {
-            background: var(--bg-color);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #444;
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        /* Auth Overlay */
-        #auth-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-color);
-            z-index: 100;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .loader {
-            width: 48px;
-            height: 48px;
-            border: 5px solid #fff;
-            border-bottom-color: transparent;
-            border-radius: 50%;
-            display: inline-block;
-            box-sizing: border-box;
-            animation: rotation 1s linear infinite;
-        }
-
-        @keyframes rotation {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        .auth-msg {
-            margin-top: 1rem;
-            color: #888;
-            font-size: 0.9rem;
+        /* Animations */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 
 <body>
 
-    <!-- Auth / Loading Screen -->
-    <div id="auth-overlay">
-        <span class="loader"></span>
-        <p class="auth-msg">Conectando ao Agent Optimus...</p>
-    </div>
-
+    <!-- ── Header ─────────────────────────────── -->
     <header>
-        <div class="logo">🤖 <span>Agent Optimus</span></div>
-        <div class="status">Online</div>
+        <div class="header-left">
+            <div class="header-dot"></div>
+            <span>Agent Optimus</span>
+        </div>
+        <div class="header-right">
+            <select id="agent-select" class="agent-select">
+                <option value="optimus">Optimus</option>
+                <option value="shuri">Shuri · Análise</option>
+                <option value="loki">Loki · Escrita</option>
+                <option value="vision">Vision · Guardião</option>
+            </select>
+            <button class="btn-logout" id="logout-btn">Sair</button>
+        </div>
     </header>
 
-    <div id="chat-container">
-        <div class="message">
-            <div class="avatar ai-avatar">OP</div>
-            <div class="content">
-                <p>Olá! Eu sou o <strong>Optimus</strong>. Estou pronto para ajudar com suas tarefas.</p>
-                <p>Pode digitar ou falar <em>"Optimus"</em> para me ativar.</p>
+    <!-- ── Chat ───────────────────────────────── -->
+    <div id="chat-wrap">
+        <div id="chat-container">
+
+            <!-- Welcome (shown while empty) -->
+            <div id="welcome">
+                <h1>Como posso ajudar?</h1>
+                <p>Envie uma mensagem ou use o microfone.</p>
             </div>
+
         </div>
     </div>
 
+    <!-- ── Input ──────────────────────────────── -->
     <div class="input-area">
-        <div class="input-wrapper">
-            <textarea id="chat-input" rows="1" placeholder="Envie uma mensagem..."></textarea>
-            <button id="send-btn" disabled>
-                <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
-                    stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-            </button>
-        </div>
+        <div class="input-box" id="input-box">
 
-        <div class="mic-container">
-            <button id="mic-btn" title="Ativar Escuta Contínua">
-                <svg id="mic-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"
-                    stroke-linecap="round" stroke-linejoin="round" height="24" width="24"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
+            <!-- Textarea -->
+            <textarea id="chat-input" rows="1" placeholder="Mensagem..."></textarea>
+
+            <!-- Mic -->
+            <button class="icon-btn" id="mic-btn" title="Gravar mensagem de voz">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
             </button>
-            <span id="mic-status">Toque para falar</span>
+
+            <!-- Send -->
+            <button class="icon-btn" id="send-btn" disabled title="Enviar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
+                </svg>
+            </button>
+
         </div>
     </div>
 
-    <!-- Markdown Parser (Simple) -->
+    <!-- Mic status toast -->
+    <div id="mic-toast">Gravando...</div>
+
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/js/auth.js?v=2"></script>
-
     <script>
         const API_URL = window.location.origin;
 
-        // === Auth Guard ===
+        // ── Auth guard ──────────────────────────────────────────────
         if (!auth.isAuthenticated()) {
             window.location.href = '/login.html';
         }
 
-        const user = auth.getUser(); // Get user info from token
         let TOKEN = localStorage.getItem('optimus_token');
 
+        // ── DOM refs ────────────────────────────────────────────────
         const chatContainer = document.getElementById('chat-container');
-        const chatInput = document.getElementById('chat-input');
-        const sendBtn = document.getElementById('send-btn');
-        const micBtn = document.getElementById('mic-btn');
-        const micStatus = document.getElementById('mic-status');
-        const authOverlay = document.getElementById('auth-overlay');
+        const chatWrap      = document.getElementById('chat-wrap');
+        const chatInput     = document.getElementById('chat-input');
+        const sendBtn       = document.getElementById('send-btn');
+        const micBtn        = document.getElementById('mic-btn');
+        const inputBox      = document.getElementById('input-box');
+        const welcome       = document.getElementById('welcome');
+        const agentSelect   = document.getElementById('agent-select');
+        const micToast      = document.getElementById('mic-toast');
 
-        // Remove overlay immediately since we check auth at top
-        if (authOverlay) authOverlay.style.display = 'none';
+        document.getElementById('logout-btn').addEventListener('click', auth.logout);
 
-        // Add Logout Button Logic
-        const header = document.querySelector('header');
-        const logoutBtn = document.createElement('button');
-        logoutBtn.innerHTML = 'Sair';
-        logoutBtn.className = 'text-xs bg-red-900/40 text-red-200 px-3 py-1 rounded hover:bg-red-900/60 transition-colors ml-4 border border-red-900/50';
-        logoutBtn.onclick = auth.logout;
-
-        // Append logout to header status area or create a new area
-        // Let's add it next to "Online" status
-        const statusDiv = document.querySelector('.status');
-        statusDiv.appendChild(logoutBtn);
-
-
-        // === PWA Registration ===
+        // ── PWA ─────────────────────────────────────────────────────
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/service-worker.js')
-                .then(() => console.log('Service Worker Registered'));
+            navigator.serviceWorker.register('/static/service-worker.js').catch(() => {});
         }
 
-        // === Load Chat History ===
+        // ── Helpers ─────────────────────────────────────────────────
+        let hasMessages = false;
+
+        function showWelcome(visible) {
+            welcome.style.display = visible ? '' : 'none';
+        }
+
+        function addMessage(text, isUser) {
+            if (!hasMessages) {
+                hasMessages = true;
+                showWelcome(false);
+            }
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `
+                <div class="avatar ${isUser ? 'user-avatar' : 'ai-avatar'}">${isUser ? 'EU' : 'OP'}</div>
+                <div class="msg-content">${isUser ? `<p>${escapeHtml(text)}</p>` : marked.parse(text)}</div>
+            `;
+            chatContainer.appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            return div;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function addTyping() {
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `
+                <div class="avatar ai-avatar">OP</div>
+                <div class="msg-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+            `;
+            chatContainer.appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            return div;
+        }
+
+        // ── Textarea auto-resize ─────────────────────────────────────
+        chatInput.addEventListener('input', () => {
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
+            sendBtn.disabled = chatInput.value.trim().length === 0;
+        });
+
+        chatInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!sendBtn.disabled) handleSend();
+            }
+        });
+
+        // ── Chat history ─────────────────────────────────────────────
         async function loadHistory() {
+            const agent = agentSelect.value;
             try {
-                const resp = await fetch(`${API_URL}/api/v1/chat/history?agent=optimus&limit=30`, {
+                const resp = await fetch(`${API_URL}/api/v1/chat/history?agent=${agent}&limit=30`, {
                     headers: { 'Authorization': `Bearer ${TOKEN}` }
                 });
                 if (!resp.ok) return;
@@ -470,73 +514,29 @@
                 const messages = data.data || [];
                 if (messages.length === 0) return;
 
-                // Clear welcome message before showing history
-                chatContainer.innerHTML = '';
+                hasMessages = true;
+                showWelcome(false);
 
-                // Add a subtle divider
-                const divider = document.createElement('div');
-                divider.style.cssText = 'text-align:center;color:#555;font-size:0.75rem;padding:0.5rem 0 1rem;';
-                divider.textContent = `— histórico das últimas ${messages.length} mensagens —`;
-                chatContainer.appendChild(divider);
+                const div = document.createElement('div');
+                div.className = 'history-divider';
+                div.textContent = `— últimas ${messages.length} mensagens —`;
+                chatContainer.insertBefore(div, welcome.nextSibling);
 
-                messages.forEach(msg => {
-                    const isUser = msg.role === 'user';
-                    addMessage(msg.content, isUser);
-                });
-
-                // Scroll to bottom after loading
-                chatContainer.lastElementChild?.scrollIntoView({ behavior: 'instant' });
+                messages.forEach(msg => addMessage(msg.content, msg.role === 'user'));
             } catch (e) {
-                console.warn('Could not load history:', e);
+                console.warn('History load failed:', e);
             }
         }
 
-        // === Auto-Resize Textarea ===
-        chatInput.addEventListener('input', function () {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-            if (this.value.trim().length > 0) sendBtn.removeAttribute('disabled');
-            else sendBtn.setAttribute('disabled', 'true');
-        });
-
-        // === Chat Logic ===
-        function addMessage(text, isUser) {
-            const div = document.createElement('div');
-            div.className = 'message';
-            div.innerHTML = `
-                <div class="avatar ${isUser ? 'user-avatar' : 'ai-avatar'}">${isUser ? 'EU' : 'OP'}</div>
-                <div class="content">${isUser ? `<p>${text}</p>` : marked.parse(text)}</div>
-            `;
-            chatContainer.appendChild(div);
-            // chatContainer.scrollTop = chatContainer.scrollHeight; // removed to allow smooth scroll
-            div.scrollIntoView({ behavior: 'smooth' });
-            return div;
-        }
-
-        function addTyping() {
-            const div = document.createElement('div');
-            div.className = 'message typing';
-            div.innerHTML = `
-                <div class="avatar ai-avatar">OP</div>
-                <div class="content">
-                    <div class="typing-indicator"><span></span><span></span><span></span></div>
-                </div>
-            `;
-            chatContainer.appendChild(div);
-            div.scrollIntoView({ behavior: 'smooth' });
-            return div;
-        }
-
-        async function sendMessage(textOverride = null) {
-            const text = textOverride || chatInput.value.trim();
-            if (!text) return;
+        // ── Send message ─────────────────────────────────────────────
+        async function sendMessage(text) {
+            if (!text || !text.trim()) return;
+            const agent = agentSelect.value;
 
             addMessage(text, true);
-            if (!textOverride) {
-                chatInput.value = '';
-                chatInput.style.height = 'auto';
-                sendBtn.disabled = true;
-            }
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            sendBtn.disabled = true;
 
             const typingDiv = addTyping();
 
@@ -547,36 +547,44 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${TOKEN}`
                     },
-                    body: JSON.stringify({ message: text, agent: 'optimus' })
+                    body: JSON.stringify({ message: text, agent })
                 });
 
-                if (resp.status === 401) {
-                    auth.logout(); // Token expired
-                    return;
-                }
-
-                if (!resp.ok) throw new Error("API Error");
+                if (resp.status === 401) { auth.logout(); return; }
+                if (!resp.ok) throw new Error('API Error');
 
                 const data = await resp.json();
-
                 typingDiv.remove();
 
-                if (data.data && data.data.content) {
-                    const responseText = data.data.content;
-                    addMessage(responseText, false);
+                const content = data?.data?.content;
+                if (content) {
+                    addMessage(content, false);
                 } else {
-                    addMessage("Erro: Resposta vazia da API.", false);
+                    addMessage('Erro: resposta vazia da API.', false);
                 }
-
             } catch (e) {
                 typingDiv.remove();
-                addMessage("Desculpe, ocorreu um erro de conexão. Tente novamente.", false);
+                addMessage('Erro de conexão. Tente novamente.', false);
                 console.error(e);
             }
         }
 
-        // === TTS — Edge TTS via backend ===
+        // ── Handle send button (also stops recording if active) ───────
+        async function handleSend() {
+            if (isRecording) {
+                // Stop recording → transcribe → send
+                stopRecording(true);
+            } else {
+                const text = chatInput.value.trim();
+                if (text) sendMessage(text);
+            }
+        }
+
+        sendBtn.addEventListener('click', handleSend);
+
+        // ── TTS ──────────────────────────────────────────────────────
         let currentAudio = null;
+
         async function speak(text) {
             try {
                 const resp = await fetch(`${API_URL}/api/v1/audio/tts`, {
@@ -598,26 +606,42 @@
             }
         }
 
-        // === STT — Groq Whisper via backend (MediaRecorder) ===
+        // ── STT (Mic) ────────────────────────────────────────────────
         let mediaRecorder = null;
-        let audioChunks = [];
-        let isRecording = false;
+        let audioChunks   = [];
+        let isRecording   = false;
+        let autoSendAfterTranscribe = false;
+
+        function showMicToast(visible) {
+            micToast.classList.toggle('show', visible);
+        }
 
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 audioChunks = [];
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
                 mediaRecorder.onstop = async () => {
                     stream.getTracks().forEach(t => t.stop());
-                    micStatus.textContent = "Transcrevendo...";
-                    micBtn.classList.remove('listening');
+                    micBtn.classList.remove('active');
+                    inputBox.classList.remove('recording');
+                    showMicToast(false);
+                    isRecording = false;
 
-                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    micToast.textContent = 'Transcrevendo...';
+                    showMicToast(true);
+
+                    const blob = new Blob(audioChunks, { type: mimeType });
                     const formData = new FormData();
                     formData.append('file', blob, 'audio.webm');
 
+                    let transcript = '';
                     try {
                         const resp = await fetch(`${API_URL}/api/v1/audio/stt`, {
                             method: 'POST',
@@ -626,56 +650,72 @@
                         });
                         if (resp.ok) {
                             const data = await resp.json();
-                            const transcript = data.text?.trim();
-                            if (transcript) {
-                                chatInput.value = transcript;
-                                chatInput.style.height = 'auto';
-                                chatInput.style.height = chatInput.scrollHeight + 'px';
-                                sendBtn.removeAttribute('disabled');
-                                chatInput.focus();
-                            }
+                            transcript = data.text?.trim() || '';
                         }
                     } catch (e) {
                         console.error('STT error:', e);
                     }
-                    micStatus.textContent = "Toque para falar";
+
+                    showMicToast(false);
+                    micToast.textContent = 'Gravando...';
+
+                    if (transcript) {
+                        if (autoSendAfterTranscribe) {
+                            // Send directly without putting in input
+                            autoSendAfterTranscribe = false;
+                            sendMessage(transcript);
+                        } else {
+                            // Fill textarea for user review
+                            chatInput.value = transcript;
+                            chatInput.style.height = 'auto';
+                            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
+                            sendBtn.disabled = false;
+                            chatInput.focus();
+                        }
+                    }
                 };
+
                 mediaRecorder.start();
                 isRecording = true;
-                micBtn.classList.add('listening');
-                micStatus.textContent = "Gravando... Toque para parar";
+                autoSendAfterTranscribe = false;
+                micBtn.classList.add('active');
+                inputBox.classList.add('recording');
+                micToast.textContent = 'Gravando...';
+                showMicToast(true);
+
             } catch (e) {
-                micStatus.textContent = "Microfone negado";
                 console.error('Mic error:', e);
+                alert('Não foi possível acessar o microfone. Verifique as permissões.');
             }
         }
 
-        function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-                isRecording = false;
-            }
+        function stopRecording(andSend = false) {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+            autoSendAfterTranscribe = andSend;
+            mediaRecorder.stop();
         }
 
         micBtn.addEventListener('click', () => {
-            if (isRecording) stopRecording();
-            else startRecording();
-        });
-
-        // === Events ===
-        sendBtn.addEventListener('click', () => sendMessage());
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
+            if (isRecording) {
+                // Second click: stop + auto-send
+                stopRecording(true);
+            } else {
+                startRecording();
             }
         });
 
-        // Load history on startup
-        loadHistory();
+        // ── Init ─────────────────────────────────────────────────────
+        agentSelect.addEventListener('change', () => {
+            // Clear chat and reload history for selected agent
+            chatContainer.innerHTML = '';
+            chatContainer.appendChild(welcome);
+            hasMessages = false;
+            showWelcome(true);
+            loadHistory();
+        });
 
+        loadHistory();
     </script>
 </body>
-
 
 </html>
