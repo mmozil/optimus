@@ -282,20 +282,20 @@ class MCPToolRegistry:
 
     async def _tool_db_query(self, query: str, limit: int = 100) -> str:
         """Execute read-only query."""
-        from src.infra.supabase_client import async_session
+        from src.infra.supabase_client import get_async_session
         from sqlalchemy import text
 
-        async with async_session() as session:
+        async with get_async_session() as session:
             result = await session.execute(text(f"{query} LIMIT {limit}"))
             rows = result.fetchall()
             return str([dict(row._mapping) for row in rows])
 
     async def _tool_db_execute(self, statement: str) -> str:
         """Execute write statement."""
-        from src.infra.supabase_client import async_session
+        from src.infra.supabase_client import get_async_session
         from sqlalchemy import text
 
-        async with async_session() as session:
+        async with get_async_session() as session:
             await session.execute(text(statement))
             await session.commit()
             return "Statement executed successfully."
