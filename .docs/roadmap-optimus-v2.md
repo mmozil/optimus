@@ -49,8 +49,8 @@
 ## STATUS: 54% Código Morto Identificado
 
 | Categoria | Módulos | Órfãos | % Morto |
-|-----------|---------|--------|--------|
-| Engine | 11 | 8 | 73% |
+|-----------|---------|--------|-------- |
+| Engine    |   11    |    8   |   73%   |
 | Memory | 8 | 3 | 38% |
 | Channels | 7 | 6 | 86% |
 | Skills | 6 | 3 | 50% |
@@ -216,6 +216,103 @@ ReAct seleciona: research_search(query="IA latest news")
 Tavily retorna 5 articles
 Agent: "Encontrei 5 artigos recentes: [links] ... resumo..."
 ```
+
+---
+
+## FASE 2B — Browser Automation (Estilo Manus.im)
+
+> **Junto com FASE 2 — O agent FAZ coisas no browser, não só responde**
+
+### Como o Manus.im funciona (referência)
+
+```
+Manus = VM Cloud + Chrome Real + Streaming de Tela + File Output
+- User pede algo → Manus abre Chrome na VM
+- Navega, clica, preenche forms, extrai dados
+- User vê a tela do browser em real-time
+- Entrega: screenshots, PDFs, planilhas, downloads
+```
+
+### O que vamos fazer no Optimus (versão pragmática)
+
+**Playwright headless** rodando no Docker do Optimus. Sem VM extra. Sem custo extra.
+
+### Call Path: Agent Browses the Web
+
+```
+User: "Pesquise preços de iPhone no Mercado Livre"
+    ↓
+ReAct loop: LLM chooses tool=browser_navigate
+    ↓
+Playwright abre Chrome headless no server
+    ↓
+Navega para mercadolivre.com.br
+    ↓
+tool=browser_extract (extrai dados da página)
+    ↓
+Returns: [{title, price, url}, ...]
+    ↓
+Agent: "Encontrei 10 resultados: iPhone 15 R$4.299..."
+```
+
+### MCP Tools (Browser)
+
+```
+browser_navigate(url)       → Abre URL, retorna título + status
+browser_click(selector)     → Clica em elemento CSS
+browser_type(selector, text)→ Preenche campo
+browser_extract(selector)   → Extrai texto/HTML de elementos
+browser_screenshot()        → Captura screenshot, retorna base64
+browser_pdf()              → Gera PDF da página
+browser_wait(selector)      → Espera elemento aparecer
+```
+
+### Passos
+
+1. [ ] **Dependency**: Adicionar `playwright` ao requirements.txt
+   - `pip install playwright && playwright install chromium`
+   - Chamado por: Dockerfile na build
+
+2. [ ] **Service**: `src/core/browser_service.py`
+   - Singleton: 1 browser context por request
+   - Timeout: 30s max por ação
+   - Cleanup: fecha context após resposta
+   - Chamado por: MCP tools (browser_*)
+
+3. [ ] **MCP Tools**: 7 tools de browser em `mcp_tools.py`
+   - Chamado por: ReAct loop quando LLM ativa tool
+   - Cada tool retorna texto/dados (não HTML bruto)
+
+4. [ ] **Dockerfile**: instalar Chromium no container
+   - `RUN playwright install --with-deps chromium`
+
+5. [ ] **Security**: sandboxing
+   - No file system access do browser
+   - Timeout por request (30s)
+   - Blacklist de URLs perigosos (localhost, 127.0.0.1, etc.)
+
+**Teste E2E:**
+```
+1. User: "Abra google.com e pesquise por 'clima SP'"
+2. ReAct: browser_navigate("https://google.com")
+3. ReAct: browser_type("textarea[name=q]", "clima SP")
+4. ReAct: browser_click("input[type=submit]")
+5. ReAct: browser_extract("#search")
+6. Agent: "Segundo o Google, a temperatura em SP hoje é 28°C..."
+```
+
+### Diferença do Manus
+
+| Feature | Manus.im | Optimus FASE 2B |
+|---------|----------|-----------------|
+| Browser | Chrome real em VM | Playwright headless no Docker |
+| Streaming de tela | Sim (real-time) | Não (screenshots sob demanda) |
+| File output | Downloads da VM | Retorna texto/dados/screenshot |
+| Custo | $39/mês+ | $0 (roda no mesmo Docker) |
+| Complexidade | Alta (VM per-user) | Baixa (1 browser no server) |
+| **Resultado para o user** | **Vê o browser** | **Recebe dados + screenshots** |
+
+> **Futuro**: Adicionar streaming via WebSocket para user ver browser em tempo real (como Manus). Mas primeiro: funcionar headless.
 
 ---
 
@@ -411,6 +508,7 @@ Optimus roda em sua máquina
 | **FASE 0** | 🔴 In Progress | 28/28 módulos com call path + test + prod |
 | **FASE 1** | ⬜ Pending | User novo: onboarding → preferences → prompt customizado |
 | **FASE 2** | ⬜ Pending | User: "pesquise X" → resultado real da Tavily |
+| **FASE 2B** | ⬜ Pending | User: "pesquise preços no ML" → Playwright navega + extrai dados |
 | **FASE 3** | ⬜ Pending | User cria agent → aparece em chat → responde |
 | **FASE 4A** | ⬜ Pending | User: "leia meus emails" → gmail_search() funciona |
 | **FASE 5** | ✅ Validar | Voice recording + transcription + response |
