@@ -98,9 +98,11 @@ class Gateway:
             "message_length": len(message),
         }) as span:
 
+            agent_name = target_agent or "optimus"
+
             # 1. Initialize/Refresh Session Context
             from src.memory.session_bootstrap import session_bootstrap
-            await session_bootstrap.load_context()
+            await session_bootstrap.load_context(agent_name)
 
             # 2. Analyze Sentiment
             from src.engine.emotional_adapter import emotional_adapter
@@ -130,7 +132,6 @@ class Gateway:
 
             # 5. Load Conversation History
             from src.core.session_manager import session_manager
-            agent_name = target_agent or "optimus"
             conv = await session_manager.get_or_create_conversation(user_id, agent_name)
             context["history"] = conv["messages"]
             context["conversation_id"] = conv["id"]
@@ -194,9 +195,11 @@ class Gateway:
         """Streaming version of route_message."""
         await self.initialize()
 
+        agent_name = target_agent or "optimus"
+
         # 1. Context loading (same as regular route)
         from src.memory.session_bootstrap import session_bootstrap
-        await session_bootstrap.load_context()
+        await session_bootstrap.load_context(agent_name)
 
         from src.engine.emotional_adapter import emotional_adapter
         sentiment = emotional_adapter.analyze(message)
@@ -219,7 +222,6 @@ class Gateway:
 
         # 3. Load History
         from src.core.session_manager import session_manager
-        agent_name = target_agent or "optimus"
         conv = await session_manager.get_or_create_conversation(user_id, agent_name)
         context["history"] = conv["messages"]
         context["conversation_id"] = conv["id"]
