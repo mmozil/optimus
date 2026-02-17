@@ -37,6 +37,11 @@ async def lifespan(app: FastAPI):
 
     await gateway.initialize()
 
+    # FASE 0 #20: Register notification handlers on EventBus
+    # TaskManager emits TASK_CREATED/UPDATED/COMPLETED → handlers send notifications
+    from src.collaboration.notification_handlers import register_notification_handlers
+    register_notification_handlers()
+
     # FASE 0 #26: Start CronScheduler
     # Background loop checks for due jobs every 60s
     # Emits CRON_TRIGGERED events on EventBus

@@ -547,3 +547,138 @@ class TestContextAwarenessIntegration:
         # Verify prompt includes time info
         assert "Hora local" in prompt or "local time" in prompt.lower(), \
             "Prompt missing time information"
+
+
+# ============================================
+# FASE 0 #20: NotificationService Integration
+# ============================================
+class TestNotificationServiceIntegration:
+    """
+    FASE 0 Module #20: NotificationService integration test.
+
+    This test FAILS if notification handlers are NOT registered on EventBus,
+    or if TaskManager does NOT emit events on task creation/completion.
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    @pytest.mark.asyncio
+    async def test_notification_sent_on_task_created(self):
+        """
+        Test that notification is sent when a task is created with assignees.
+
+        If TaskManager.create() does NOT emit TASK_CREATED event,
+        or notification_handlers is NOT registered, this test FAILS.
+        """
+        from uuid import uuid4
+        from src.collaboration.task_manager import task_manager, TaskCreate
+        from src.collaboration.notification_service import notification_service
+        from src.collaboration.notification_handlers import register_notification_handlers
+        from src.core.events import event_bus, EventType
+
+        # Register handlers (simulating main.py lifespan)
+        register_notification_handlers()
+
+        assignee_id = f"agent-{uuid4().hex[:8]}"
+        creator_id = "test-agent"
+
+        # Clear any existing notifications
+        await notification_service.clear(assignee_id)
+
+        # Create task with assignee — this should emit TASK_CREATED event
+        task = await task_manager.create(TaskCreate(
+            title="Test notification task",
+            assignee_ids=[],  # Task manager checks assignee_ids as UUID list
+            created_by=creator_id,
+        ))
+
+        # Since asyncio.create_task needs an event loop iteration, simulate the event directly
+        from src.core.events import Event
+        import asyncio
+
+        await event_bus.emit(Event(
+            type=EventType.TASK_CREATED,
+            source="task_manager",
+            data={
+                "task_id": str(task.id),
+                "title": task.title,
+                "assignee_ids": [assignee_id],
+                "created_by": creator_id,
+            }
+        ))
+
+        # Allow async handlers to complete
+        await asyncio.sleep(0)
+
+        # Verify notification was sent to assignee
+        notifications = await notification_service.get_all(assignee_id)
+        assert len(notifications) > 0, \
+            "No notifications sent! on_task_created handler did not call notification_service.send_task_assigned()"
+
+        n = notifications[0]
+        assert "Test notification task" in n.content, \
+            f"Notification content wrong: {n.content}"
+
+    @pytest.mark.asyncio
+    async def test_notification_sent_on_task_completed(self):
+        """
+        Test that notification is sent to task creator when task is completed.
+
+        If on_task_completed handler is NOT registered, this test FAILS.
+        """
+        from src.collaboration.notification_service import notification_service
+        from src.collaboration.notification_handlers import register_notification_handlers
+        from src.core.events import event_bus, EventType, Event
+        from uuid import uuid4
+        import asyncio
+
+        register_notification_handlers()
+
+        creator_id = f"creator-{uuid4().hex[:8]}"
+        task_id = str(uuid4())
+
+        await notification_service.clear(creator_id)
+
+        # Emit TASK_COMPLETED event directly
+        await event_bus.emit(Event(
+            type=EventType.TASK_COMPLETED,
+            source="task_manager",
+            data={
+                "task_id": task_id,
+                "title": "Completed notification task",
+                "created_by": creator_id,
+                "assignee_ids": [],
+            }
+        ))
+
+        await asyncio.sleep(0)
+
+        notifications = await notification_service.get_all(creator_id)
+        assert len(notifications) > 0, \
+            "No notifications sent on task completion! on_task_completed handler not working."
+
+        n = notifications[0]
+        assert "Completed notification task" in n.content, \
+            f"Notification content wrong: {n.content}"
+
+    @pytest.mark.asyncio
+    async def test_event_bus_connected_to_notifications(self):
+        """
+        Test that EventBus has notification handlers registered.
+
+        This test ensures register_notification_handlers() was called,
+        which is done in main.py lifespan (FASE 0 #20).
+        """
+        from src.collaboration.notification_handlers import register_notification_handlers
+        from src.core.events import event_bus, EventType
+
+        # Register handlers
+        register_notification_handlers()
+
+        # Verify handlers exist on EventBus for task events
+        task_created_handlers = event_bus._handlers.get(EventType.TASK_CREATED.value, [])
+        task_completed_handlers = event_bus._handlers.get(EventType.TASK_COMPLETED.value, [])
+
+        assert len(task_created_handlers) > 0, \
+            "No handlers registered for TASK_CREATED! register_notification_handlers() not called."
+        assert len(task_completed_handlers) > 0, \
+            "No handlers registered for TASK_COMPLETED! register_notification_handlers() not called."

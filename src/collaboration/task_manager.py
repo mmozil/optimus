@@ -13,6 +13,13 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+# FASE 0 #20: EventBus integration for NotificationService
+def _get_event_bus():
+    """Lazy import to avoid circular dependencies."""
+    from src.core.events import event_bus, EventType
+    return event_bus, EventType
+
+
 class TaskStatus(str, Enum):
     INBOX = "inbox"
     ASSIGNED = "assigned"
@@ -116,6 +123,22 @@ class TaskManager:
             "task_id": str(task.id), "status": task.status, "priority": task.priority,
         }})
 
+        # FASE 0 #20: Emit TASK_CREATED event for NotificationService
+        event_bus, EventType = _get_event_bus()
+        import asyncio
+        asyncio.create_task(event_bus.emit_simple(
+            EventType.TASK_CREATED.value,
+            source="task_manager",
+            data={
+                "task_id": str(task.id),
+                "title": task.title,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "assignee_ids": [str(aid) for aid in task.assignee_ids],
+                "created_by": task.created_by,
+            }
+        ))
+
         return task
 
     async def get(self, task_id: UUID) -> Task | None:
@@ -197,6 +220,34 @@ class TaskManager:
         logger.info(f"Task transitioned: {old_status} → {new_status}", extra={"props": {
             "task_id": str(task_id), "title": task.title, "agent": agent_name,
         }})
+
+        # FASE 0 #20: Emit TASK_UPDATED event
+        event_bus, EventType = _get_event_bus()
+        import asyncio
+        asyncio.create_task(event_bus.emit_simple(
+            EventType.TASK_UPDATED.value,
+            source="task_manager",
+            data={
+                "task_id": str(task_id),
+                "title": task.title,
+                "old_status": old_status.value,
+                "new_status": new_status.value,
+                "agent": agent_name,
+            }
+        ))
+
+        # FASE 0 #20: Emit TASK_COMPLETED event when task is marked done
+        if new_status == TaskStatus.DONE:
+            asyncio.create_task(event_bus.emit_simple(
+                EventType.TASK_COMPLETED.value,
+                source="task_manager",
+                data={
+                    "task_id": str(task_id),
+                    "title": task.title,
+                    "created_by": task.created_by,
+                    "assignee_ids": [str(aid) for aid in task.assignee_ids],
+                }
+            ))
 
         return task
 

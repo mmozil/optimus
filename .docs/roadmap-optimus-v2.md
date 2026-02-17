@@ -91,7 +91,7 @@
 | 17 | `ChatCommands` | Gateway.route_message (se msg[0]=='/') | [x] |
 | 18 | `VoiceInterface` | Web UI wake word listener | [ ] |
 | 19 | `ThreadManager` | Task/message comment system | [ ] |
-| 20 | `NotificationService` | Task lifecycle events | [ ] |
+| 20 | `NotificationService` | Task lifecycle events | [x] |
 | 21 | `TaskManager` | Chat commands + UI task CRUD | [ ] |
 | 22 | `ActivityFeed` | Event bus subscribers | [ ] |
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [ ] |
@@ -107,6 +107,48 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #20 NotificationService — CONCLUÍDO
+
+**Call Path:**
+```
+TaskManager.create(TaskCreate(assignee_ids=[...]))
+    ↓
+asyncio.create_task(event_bus.emit_simple("task.created", data={...}))
+    ↓
+notification_handlers.on_task_created(event) [notification_handlers.py:24]
+    ↓
+notification_service.send_task_assigned(target_agent=assignee_id, ...)
+    ↓
+Notification enfileirada em notification_service._queue[assignee_id]
+
+TaskManager.transition(task_id, TaskStatus.DONE)
+    ↓
+asyncio.create_task(event_bus.emit_simple("task.completed", data={...}))
+    ↓
+notification_handlers.on_task_completed(event) [notification_handlers.py:62]
+    ↓
+notification_service.send(target_agent=created_by, content="Task concluída: ...")
+```
+
+**Arquivos modificados:**
+- `src/collaboration/task_manager.py` linhas 119-133 (create emits TASK_CREATED)
+- `src/collaboration/task_manager.py` linhas 201-227 (transition emits TASK_UPDATED/COMPLETED)
+- `src/collaboration/notification_handlers.py` (novo — handlers + register_notification_handlers)
+- `src/main.py` linhas 41-44 (lifespan registra handlers)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestNotificationServiceIntegration`
+- Testa: notification enviada ao criar task, notification ao concluir, handlers registrados no EventBus
+- **4/4 testes passando** ✅
+
+**Funcionalidade:**
+- TaskManager emite eventos no EventBus para todo ciclo de vida de task
+- notification_handlers escuta eventos e chama NotificationService
+- NotificationService mantém queue in-memory por agente
+- Desbloqueia: #21 TaskManager via commands, #22 ActivityFeed
 
 ---
 
