@@ -6,10 +6,17 @@
 const API_BASE = '/api/v1/auth';
 
 const auth = {
-    // Check if user is logged in
+    // Check if user is logged in AND token is not expired
     isAuthenticated: () => {
         const token = localStorage.getItem('optimus_token');
-        return !!token;
+        if (!token) return false;
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            // exp is in seconds; give 60s buffer to avoid edge cases
+            return payload.exp && (payload.exp - 60) > (Date.now() / 1000);
+        } catch (e) {
+            return false;
+        }
     },
 
     // Get current user info from token (decode payload)
@@ -29,6 +36,40 @@ const auth = {
         }
     },
 
+    // Refresh the access token using the stored refresh token
+    refreshToken: async () => {
+        const refreshToken = localStorage.getItem('optimus_refresh_token');
+        if (!refreshToken) return false;
+        try {
+            const response = await fetch(`${API_BASE}/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+            if (!response.ok) return false;
+            const data = await response.json();
+            localStorage.setItem('optimus_token', data.data.access_token);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    // Get a valid token — auto-refreshes if expired
+    getValidToken: async () => {
+        if (auth.isAuthenticated()) {
+            return localStorage.getItem('optimus_token');
+        }
+        // Try to refresh
+        const refreshed = await auth.refreshToken();
+        if (refreshed) {
+            return localStorage.getItem('optimus_token');
+        }
+        // Token invalid and refresh failed — redirect to login
+        auth.logout();
+        return null;
+    },
+
     // Login function
     login: async (email, password) => {
         try {
@@ -46,6 +87,10 @@ const auth = {
             const data = await response.json();
             // API returns { status, data: { access_token, refresh_token, user } }
             localStorage.setItem('optimus_token', data.data.access_token);
+            // Save refresh token for auto-renewal
+            if (data.data.refresh_token) {
+                localStorage.setItem('optimus_refresh_token', data.data.refresh_token);
+            }
             localStorage.setItem('optimus_user', JSON.stringify(data.data.user));
             return { success: true };
         } catch (error) {
@@ -76,6 +121,8 @@ const auth = {
     // Logout function
     logout: () => {
         localStorage.removeItem('optimus_token');
+        localStorage.removeItem('optimus_refresh_token');
+        localStorage.removeItem('optimus_user');
         window.location.href = '/login.html';
     },
 

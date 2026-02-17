@@ -669,9 +669,14 @@
         async function loadHistory() {
             const agent = agentSelect.value;
             try {
+                // Get a valid token (auto-refreshes if expired)
+                const token = await auth.getValidToken();
+                if (!token) return; // redirected to login by getValidToken
+
                 const resp = await fetch(`${API_URL}/api/v1/chat/history?agent=${agent}&limit=30`, {
-                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
+                if (resp.status === 401) { auth.logout(); return; }
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const messages = data.data || [];

@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # === JWT Authentication (Phase 15) ===
     JWT_SECRET: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours — enough for a full workday
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # === Sentry ===
