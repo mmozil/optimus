@@ -173,6 +173,25 @@ class MCPToolRegistry:
             handler=self._tool_fs_list,
         ))
 
+        # --- Finance Tools ---
+        self.register(MCPTool(
+            name="get_exchange_rate",
+            description=(
+                "Get real-time currency exchange rates. Use this when the user asks about "
+                "dollar price (dólar), euro, or any currency. Supports pairs like USD-BRL, "
+                "EUR-BRL, BTC-BRL, GBP-BRL, etc."
+            ),
+            category="research",
+            parameters={
+                "pairs": {
+                    "type": "string",
+                    "required": True,
+                    "description": "Currency pairs separated by commas, e.g. 'USD-BRL' or 'USD-BRL,EUR-BRL,BTC-BRL'",
+                },
+            },
+            handler=self._tool_get_exchange_rate,
+        ))
+
         # --- Research Tools ---
         self.register(MCPTool(
             name="research_search",
@@ -501,6 +520,42 @@ class MCPToolRegistry:
             return "\n".join(str(f.relative_to(p)) for f in files)
 
         return await asyncio.to_thread(_list)
+
+    async def _tool_get_exchange_rate(self, pairs: str = "USD-BRL") -> str:
+        """Get real-time exchange rates from AwesomeAPI (free, no key required)."""
+        import httpx
+        from datetime import datetime, timezone
+
+        pairs_clean = pairs.upper().strip().replace(" ", "")
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"https://economia.awesomeapi.com.br/json/last/{pairs_clean}",
+                    headers={"User-Agent": "AgentOptimus/1.0"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            lines = [f"💱 **Cotações em tempo real** ({datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC)\n"]
+            for key, rate in data.items():
+                name = rate.get("name", key)
+                bid = float(rate.get("bid", 0))
+                ask = float(rate.get("ask", 0))
+                pct = rate.get("pctChange", "0")
+                high = rate.get("high", "-")
+                low = rate.get("low", "-")
+                sign = "📈" if float(pct) >= 0 else "📉"
+                lines.append(
+                    f"**{name}**\n"
+                    f"  Compra: R$ {bid:.4f} | Venda: R$ {ask:.4f}\n"
+                    f"  Variação: {sign} {pct}% | Máx: {high} | Mín: {low}"
+                )
+            return "\n\n".join(lines)
+
+        except httpx.HTTPStatusError as e:
+            return f"❌ Par inválido '{pairs}'. Exemplos válidos: USD-BRL, EUR-BRL, BTC-BRL, GBP-BRL"
+        except Exception as e:
+            return f"❌ Erro ao buscar cotação: {e}"
 
     async def _tool_research_search(self, query: str, max_results: int = 5) -> str:
         """Web search — uses Tavily if configured, otherwise DuckDuckGo Instant Answer."""
