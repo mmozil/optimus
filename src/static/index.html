@@ -459,6 +459,38 @@
                 .then(() => console.log('Service Worker Registered'));
         }
 
+        // === Load Chat History ===
+        async function loadHistory() {
+            try {
+                const resp = await fetch(`${API_URL}/api/v1/chat/history?agent=optimus&limit=30`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const messages = data.data || [];
+                if (messages.length === 0) return;
+
+                // Clear welcome message before showing history
+                chatContainer.innerHTML = '';
+
+                // Add a subtle divider
+                const divider = document.createElement('div');
+                divider.style.cssText = 'text-align:center;color:#555;font-size:0.75rem;padding:0.5rem 0 1rem;';
+                divider.textContent = `— histórico das últimas ${messages.length} mensagens —`;
+                chatContainer.appendChild(divider);
+
+                messages.forEach(msg => {
+                    const isUser = msg.role === 'user';
+                    addMessage(msg.content, isUser);
+                });
+
+                // Scroll to bottom after loading
+                chatContainer.lastElementChild?.scrollIntoView({ behavior: 'instant' });
+            } catch (e) {
+                console.warn('Could not load history:', e);
+            }
+        }
+
         // === Auto-Resize Textarea ===
         chatInput.addEventListener('input', function () {
             this.style.height = 'auto';
@@ -638,6 +670,9 @@
                 sendMessage();
             }
         });
+
+        // Load history on startup
+        loadHistory();
 
     </script>
 </body>

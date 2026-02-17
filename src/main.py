@@ -242,6 +242,21 @@ async def chat_stream(request: ChatRequest, user: CurrentUser = Depends(get_curr
     return EventSourceResponse(event_generator())
 
 
+@app.get("/api/v1/chat/history")
+async def get_chat_history(
+    agent: str = "optimus",
+    limit: int = 30,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return the last N messages for the user's conversation with an agent."""
+    from src.core.session_manager import session_manager
+
+    conv = await session_manager.get_or_create_conversation(user.id, agent)
+    messages = conv.get("messages", [])
+    # Return last `limit` messages
+    return {"status": "success", "data": messages[-limit:]}
+
+
 # ============================================
 # Admin-only endpoints
 # ============================================
