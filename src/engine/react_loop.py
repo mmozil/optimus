@@ -165,6 +165,17 @@ async def react_loop(
                 tool_calls_total=tool_calls_total,
             )
 
+        if not isinstance(result, dict):
+            logger.error(f"ReAct unexpected result type: {type(result).__name__} = {str(result)[:300]}")
+            return ReActResult(
+                content=str(result),
+                model=last_model,
+                usage=total_usage,
+                steps=steps,
+                iterations=iteration,
+                tool_calls_total=tool_calls_total,
+            )
+
         last_model = result.get("model", "")
         _accumulate_usage(total_usage, result.get("usage", {}))
 

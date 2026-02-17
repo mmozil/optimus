@@ -149,9 +149,7 @@ class BaseAgent:
             }
 
         except Exception as e:
-            logger.error(f"Agent '{self.name}' ReAct failed: {e}", extra={"props": {
-                "agent": self.name, "error": str(e),
-            }})
+            logger.exception(f"Agent '{self.name}' ReAct failed: {e}")
             # Fall back to simple processing so the user still gets a response
             return await self._process_simple(message, context)
 
