@@ -53,7 +53,14 @@ async def run_migrations():
                                 stmt = "\n".join([l for l in lines if not l.strip().startswith("--")])
                             
                             if stmt.strip():
-                                await session.execute(text(stmt))
+                                try:
+                                    await session.execute(text(stmt))
+                                except Exception as e:
+                                    msg = str(e).lower()
+                                    if "already exists" in msg or "duplicate" in msg:
+                                        logger.warning(f"⚠️ Skipping duplicate object in {filename}: {stmt[:50]}...")
+                                    else:
+                                        raise e
                         
                         await session.commit()
                         logger.info(f"✅ Migration {filename} applied successfully.")
