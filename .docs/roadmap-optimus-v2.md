@@ -97,7 +97,7 @@
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [ ] |
 | 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
-| 26 | `CronScheduler` | main.py lifespan | [ ] |
+| 26 | `CronScheduler` | main.py lifespan | [x] |
 | 27 | `ContextAwareness` | Session bootstrap + greeting | [ ] |
 | 28 | `ConfirmationService` | ReAct human-in-the-loop | [ ] |
 
@@ -148,8 +148,49 @@ return {"agent": "chat_commands", "content": result.text}
 - `/standup` — Gera standup
 
 **Pendente:**
-- [ ] Testar em produção (https://optimus.tier.finance/)
-- [ ] Verificar comandos funcionam no chat web
+- [x] Testar em produção (https://optimus.tier.finance/) — TESTADO ✅
+- [x] Verificar comandos funcionam no chat web — FUNCIONANDO ✅
+
+---
+
+### ✅ #26 CronScheduler — CONCLUÍDO
+
+**Call Path:**
+```
+uvicorn src.main:app
+    ↓
+lifespan() context manager [main.py:22]
+    ↓
+await cron_scheduler.start() [main.py:42]
+    ↓
+Background loop starts (checks every 60s)
+    ↓
+Due jobs execute → emit CRON_TRIGGERED events
+```
+
+**Arquivos modificados:**
+- `src/main.py` linhas 25, 42-45 (lifespan startup)
+- `src/main.py` linhas 48-49 (lifespan shutdown)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestCronSchedulerIntegration`
+- Testa: scheduler pode iniciar, jobs executam, lista jobs
+- **3/3 testes passando** ✅
+
+**Funcionalidade:**
+- Background loop roda a cada 60s verificando jobs pendentes
+- Persiste jobs em JSON (`workspace/cron/jobs.json`)
+- Tipos de schedule: `at` (one-shot), `every` (interval), `cron` (expressão)
+- Emite eventos `CRON_TRIGGERED` no EventBus
+
+**Desbloqueia módulos dependentes:**
+- #6 `proactive_researcher` (cron 3x/dia)
+- #7 `reflection_engine` (cron semanal)
+- #23 `standup_generator` (cron diário 09:00 BRT)
+
+**Pendente:**
+- [ ] Criar cron jobs reais em produção
+- [ ] Validar que loop está rodando (logs do servidor)
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado

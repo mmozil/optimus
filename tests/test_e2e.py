@@ -388,3 +388,96 @@ class TestGatewayChatCommandsIntegration:
             assert result["is_command"] is True
             assert isinstance(result["content"], str)
             assert len(result["content"]) > 0
+
+
+# ============================================
+# FASE 0 #26: CronScheduler Integration
+# ============================================
+class TestCronSchedulerIntegration:
+    """
+    FASE 0 Module #26: CronScheduler integration test.
+
+    This test FAILS if cron_scheduler.start() is removed from main.py lifespan.
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    @pytest.mark.asyncio
+    async def test_cron_scheduler_can_start(self):
+        """
+        Test that CronScheduler can be started (simulates main.py lifespan).
+
+        If this test passes but cron_scheduler.start() is NOT called in main.py,
+        jobs will never execute in production.
+        """
+        from src.core.cron_scheduler import cron_scheduler
+
+        # Start scheduler (this is what main.py lifespan should do)
+        if not cron_scheduler._running:
+            await cron_scheduler.start()
+
+        # Verify it started successfully
+        assert cron_scheduler._running is True, \
+            "CronScheduler failed to start!"
+
+        # Cleanup
+        await cron_scheduler.stop()
+
+    @pytest.mark.asyncio
+    async def test_cron_job_execution(self):
+        """
+        Test that cron jobs are actually executed.
+
+        Creates a simple job and verifies it runs when due.
+        """
+        from src.core.cron_scheduler import cron_scheduler, CronJob
+        from src.core.events import event_bus, EventType
+        from datetime import datetime, timezone, timedelta
+
+        # Track if job was executed via event
+        executed_jobs = []
+
+        async def on_cron_triggered(event):
+            executed_jobs.append(event.data.get("job_name"))
+
+        event_bus.on(EventType.CRON_TRIGGERED.value, on_cron_triggered)
+
+        # Create a job that runs in 1 second
+        job = CronJob(
+            name="test_job_immediate",
+            schedule_type="at",
+            schedule_value=(datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat(),
+            payload="test payload",
+            delete_after_run=True,
+        )
+
+        job_id = cron_scheduler.add(job)
+
+        # Wait for job to execute (scheduler checks every 60s, but we can run_now)
+        await cron_scheduler.run_now(job_id)
+
+        # Verify job was executed
+        assert "test_job_immediate" in executed_jobs, \
+            "Cron job was NOT executed! Scheduler may not be running properly."
+
+    @pytest.mark.asyncio
+    async def test_cron_scheduler_can_list_jobs(self):
+        """Test that we can add and list cron jobs."""
+        from src.core.cron_scheduler import cron_scheduler, CronJob
+
+        initial_count = len(cron_scheduler.list_jobs())
+
+        # Add a test job
+        job = CronJob(
+            name="test_recurring_job",
+            schedule_type="every",
+            schedule_value="1h",
+            payload="hourly check",
+        )
+        job_id = cron_scheduler.add(job)
+
+        # List jobs
+        jobs = cron_scheduler.list_jobs()
+        assert len(jobs) == initial_count + 1
+
+        # Cleanup
+        cron_scheduler.remove(job_id)

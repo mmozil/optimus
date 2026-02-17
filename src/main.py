@@ -23,9 +23,10 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     from src.infra.tracing import init_tracing
     from src.infra.migrate_all import run_migrations
-    
+    from src.core.cron_scheduler import cron_scheduler
+
     init_tracing()
-    
+
     # Run DB migrations
     try:
         await run_migrations()
@@ -33,9 +34,18 @@ async def lifespan(app: FastAPI):
         print(f"Migration failed: {e}")
         # We continue even if migration fails, to allow debugging
         pass
-        
+
     await gateway.initialize()
+
+    # FASE 0 #26: Start CronScheduler
+    # Background loop checks for due jobs every 60s
+    # Emits CRON_TRIGGERED events on EventBus
+    await cron_scheduler.start()
+
     yield
+
+    # Shutdown: stop cron scheduler
+    await cron_scheduler.stop()
 
 
 app = FastAPI(
