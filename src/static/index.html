@@ -558,8 +558,8 @@
 
                 typingDiv.remove();
 
-                if (data.data && data.data.response) {
-                    const responseText = data.data.response;
+                if (data.data && data.data.content) {
+                    const responseText = data.data.content;
                     addMessage(responseText, false);
                     speak(responseText); // Auto-speak response
                 } else {

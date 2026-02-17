@@ -1076,9 +1076,55 @@ async def heartbeat(agent_id):
 
 ---
 
-## ✅ Status Atual: 100% CONCLUÍDO (Fases 1-21)
+## ✅ Status Atual: Em Produção (Fases 1-21 Concluídas)
 O Agent Optimus atingiu a maturidade de **Plataforma Multimodal de Inteligência Artificial**.
-Pronto para produção.
+Core funcional em produção. Fase 22 em andamento (hardening e features reais).
+
+---
+
+### Fase 22: Production Hardening & Real Integrations 🔴 EM ANDAMENTO
+> Fechar gaps encontrados no primeiro deploy real em produção
+
+#### 🐛 Bugs Corrigidos (Deploy)
+- [x] `uuid_generate_v4()` → `gen_random_uuid()` na migration 011
+- [x] Import errado `async_session` → `get_async_session` (session_manager + mcp_tools)
+- [x] `session_bootstrap.load_context()` sem `agent_name` no gateway
+- [x] `session_bootstrap.build_prompt()` → chamado no `BootstrapContext` retornado, não no objeto SessionBootstrap
+- [x] `auto_journal.process_interaction()` → método correto é `extract_and_save()`
+- [x] Migração `google.generativeai` → `google.genai` (pacote depreciado)
+- [x] ReAct loop: fallback para `_process_simple` em vez de retornar erro ao usuário
+- [x] `search_knowledge_base` MCPTool: parâmetros em formato JSON Schema em vez de flat dict (causava `AttributeError: 'str' object has no attribute 'get'`)
+- [x] Chain `complex`: `claude-sonnet` (sem chave Anthropic) → `gemini-2.5-flash`
+- [x] LiteLLM pricing warnings suprimidos em produção
+- [x] **Frontend: `data.data.response` → `data.data.content`** (bug crítico — chat retornava 200 OK mas UI mostrava "Resposta vazia")
+- [x] `sse-starlette` adicionado ao requirements.txt (faltava para endpoint de streaming)
+
+#### 🔧 Gaps Conhecidos a Implementar
+
+**P0 — Chat & Core (bloqueia uso)**
+- [ ] **Busca Web Real** — `research_search` é stub; integrar [Tavily API](https://tavily.com) ou [SerpAPI](https://serpapi.com)
+- [ ] **Suprimir warning `GOOGLE_API_KEY + GEMINI_API_KEY`** — LiteLLM detecta as duas variáveis; remover `GEMINI_API_KEY` do ambiente Coolify ou do `_configure_api_keys()`
+
+**P1 — Features (melhora experiência)**
+- [ ] **Busca semântica na memória de longo prazo** — atualmente é keyword-based; migrar para PGvector (embeddings já existem)
+- [ ] **WORKING.md sincronizado com Supabase** — atualmente file-based apenas; sincronizar com tabela `agents.learning_data`
+- [ ] **Chat Commands no WebChat** — `/status`, `/think`, `/agents`, `/learn` — já implementados em `chat_commands.py` mas não conectados ao chat endpoint
+- [ ] **Sessão persistente entre reloads** — usuário perde histórico ao recarregar a página
+
+**P2 — Canais (expansão)**
+- [ ] **Telegram Bot** — código existe em `channels/telegram.py`; configurar webhook no Coolify com `TELEGRAM_TOKEN`
+- [ ] **WhatsApp via Evolution API** — código existe em `channels/whatsapp.py`; requer deploy da Evolution API
+- [ ] **Cron Jobs nativos** — `cron_scheduler.py` implementado mas não inicializado no `lifespan` do main.py
+
+**P3 — Agentes adicionais (squad completo)**
+- [ ] Registrar `analyst` (Shuri), `writer` (Loki), `guardian` (Vision) no Gateway
+- [ ] Criar `souls/analyst.md`, `souls/writer.md`, `souls/guardian.md`
+- [ ] Routing automático por intent (ex: perguntas de código → Friday, pesquisa → Fury)
+
+**P4 — Observabilidade (produção saudável)**
+- [ ] Grafana Dashboard com métricas Prometheus (já coletadas, falta visualização)
+- [ ] Alertas Telegram para erros CRITICAL em produção (`TelegramAlertHandler`)
+- [ ] Daily Standup automático às 09:00 BRT
 
 ---
 
