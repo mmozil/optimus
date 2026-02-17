@@ -233,6 +233,24 @@ class MCPToolRegistry:
             handler=self._tool_memory_learn,
         ))
 
+        # --- Scheduling Tools ---
+        self.register(MCPTool(
+            name="schedule_reminder",
+            description=(
+                "Schedule a future reminder or action. Use this when the user asks you to "
+                "remind them about something in N minutes/hours, or to do something later. "
+                "Creates a persistent cron job AND a visible task. "
+                "NOTE: The reminder will appear in logs/task list, but real push notification "
+                "to the user requires them to be in the chat (no background push yet)."
+            ),
+            category="tasks",
+            parameters={
+                "message": {"type": "string", "required": True, "description": "What to remind about"},
+                "minutes": {"type": "integer", "description": "Minutes from now (default: 10)"},
+            },
+            handler=self._tool_schedule_reminder,
+        ))
+
         # --- Task Management Tools ---
         self.register(MCPTool(
             name="task_create",
@@ -285,6 +303,47 @@ class MCPToolRegistry:
     # ============================================
     # Tool Handlers
     # ============================================
+
+    async def _tool_schedule_reminder(self, message: str, minutes: int = 10) -> str:
+        """Schedule a future reminder via CronScheduler + TaskManager."""
+        from datetime import datetime, timedelta, timezone
+        from src.core.cron_scheduler import cron_scheduler, CronJob
+        from src.collaboration.task_manager import task_manager, TaskCreate, TaskPriority
+
+        if minutes < 1 or minutes > 1440:
+            return "❌ Minutos deve ser entre 1 e 1440 (24h)."
+
+        target_time = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        target_local = target_time.strftime("%H:%M")
+
+        # 1. Create persistent cron job (survives restarts)
+        job = CronJob(
+            name=f"Lembrete: {message[:60]}",
+            schedule_type="at",
+            schedule_value=target_time.isoformat(),
+            payload=message,
+            delete_after_run=True,
+        )
+        job_id = cron_scheduler.add(job)
+
+        # 2. Create a visible task so /task list shows it
+        task = await task_manager.create(TaskCreate(
+            title=f"⏰ Lembrete às {target_local}: {message}",
+            description=f"Agendado para {target_time.strftime('%Y-%m-%d %H:%M')} UTC. Job ID: {job_id}",
+            priority=TaskPriority.HIGH,
+            created_by="optimus",
+        ))
+
+        return (
+            f"⏰ **Lembrete agendado!**\n"
+            f"- **Mensagem:** {message}\n"
+            f"- **Em:** {minutes} minutos (~{target_local} UTC)\n"
+            f"- **Job ID:** `{job_id}`\n"
+            f"- **Task ID:** `{str(task.id)[:8]}`\n\n"
+            f"_Use `/task list` para ver o lembrete. "
+            f"Nota: o sistema enviará o lembrete via logs quando o tempo chegar. "
+            f"Push para o chat será disponível em breve._"
+        )
 
     async def _tool_task_create(self, title: str, description: str = "", priority: str = "medium") -> str:
         """Create a task in TaskManager."""
