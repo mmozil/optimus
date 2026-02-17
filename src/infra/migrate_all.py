@@ -23,6 +23,46 @@ async def run_migrations():
     
     logger.info(f"Found {len(files)} migration files in {migrations_dir}")
 
+    def split_sql_statements(sql: str) -> list[str]:
+        """Split SQL by semicolons, correctly ignoring semicolons inside dollar-quoted strings."""
+        statements: list[str] = []
+        current: list[str] = []
+        in_dollar_quote = False
+        dollar_tag = ""
+        i = 0
+        while i < len(sql):
+            ch = sql[i]
+            if not in_dollar_quote:
+                if ch == "$":
+                    j = sql.find("$", i + 1)
+                    if j != -1:
+                        tag = sql[i : j + 1]
+                        in_dollar_quote = True
+                        dollar_tag = tag
+                        current.append(sql[i : j + 1])
+                        i = j + 1
+                        continue
+                elif ch == ";":
+                    stmt = "".join(current).strip()
+                    if stmt:
+                        statements.append(stmt)
+                    current = []
+                    i += 1
+                    continue
+            else:
+                if sql[i : i + len(dollar_tag)] == dollar_tag:
+                    current.append(dollar_tag)
+                    i += len(dollar_tag)
+                    in_dollar_quote = False
+                    dollar_tag = ""
+                    continue
+            current.append(ch)
+            i += 1
+        last = "".join(current).strip()
+        if last:
+            statements.append(last)
+        return statements
+
     # Retry logic
     max_retries = 10
     retry_interval = 2  # seconds
@@ -42,9 +82,8 @@ async def run_migrations():
                         
                         logger.info(f"Applying migration: {filename}...")
                         
-                        # Split statements by semicolon
-                        # TODO: This is a simple split. Complex PL/pgSQL might need more robust parsing.
-                        statements = [s.strip() for s in sql_content.split(";") if s.strip()]
+                        # Split statements by semicolon, respecting dollar-quoted strings
+                        statements = split_sql_statements(sql_content)
                         
                         for stmt in statements:
                             # Skip comments-only statements
