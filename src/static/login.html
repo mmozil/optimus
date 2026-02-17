@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Agent Optimus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#0a0a0a',
+                        surface: '#121212',
+                        primary: '#3b82f6', // Linear-like blue
+                        border: '#27272a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a;
+            color: #e5e5e5;
+        }
+
+        .glass-panel {
+            background: rgba(18, 18, 18, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-field {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .input-field:focus {
+            border-color: #3b82f6;
+            outline: none;
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        /* Linear gradient text for logo */
+        .text-gradient {
+            background: linear-gradient(to right, #e2e8f0, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex items-center justify-center relative overflow-hidden">
+
+    <!-- Background Effects -->
+    <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[120px]"></div>
+
+    <div class="w-full max-w-md p-8 rounded-2xl glass-panel relative z-10">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-semibold tracking-tight text-gradient mb-2">Agent Optimus</h1>
+            <p class="text-sm text-gray-400">Entre para acessar sua inteligência.</p>
+        </div>
+
+        <form id="loginForm" class="space-y-5">
+            <div>
+                <label for="email"
+                    class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Email</label>
+                <input type="email" id="email" required
+                    class="w-full px-4 py-3 rounded-lg text-sm text-white input-field placeholder-gray-600"
+                    placeholder="nome@empresa.com">
+            </div>
+
+            <div>
+                <label for="password"
+                    class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Senha</label>
+                <input type="password" id="password" required
+                    class="w-full px-4 py-3 rounded-lg text-sm text-white input-field placeholder-gray-600"
+                    placeholder="••••••••">
+            </div>
+
+            <div id="errorMessage"
+                class="hidden text-red-400 text-sm text-center bg-red-900/20 p-2 rounded border border-red-900/50">
+            </div>
+
+            <button type="submit"
+                class="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors shadow-lg shadow-white/5">
+                Entrar
+            </button>
+        </form>
+
+        <div class="mt-8 text-center text-sm text-gray-500">
+            Ainda não tem conta?
+            <a href="/register.html"
+                class="text-white hover:underline decoration-blue-500 decoration-2 underline-offset-4">Criar acesso</a>
+        </div>
+    </div>
+
+    <script src="/static/js/auth.js"></script>
+    <script>
+        // Redirect if already logged in
+        if (auth.isAuthenticated()) {
+            window.location.href = '/';
+        }
+
+        const form = document.getElementById('loginForm');
+        const errorDiv = document.getElementById('errorMessage');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = form.querySelector('button');
+
+            // Loading state
+            btn.innerHTML = '<span class="animate-pulse">Autenticando...</span>';
+            btn.disabled = true;
+            errorDiv.classList.add('hidden');
+
+            const result = await auth.login(email, password);
+
+            if (result.success) {
+                window.location.href = '/';
+            } else {
+                errorDiv.textContent = result.message;
+                errorDiv.classList.remove('hidden');
+                btn.innerHTML = 'Entrar';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>

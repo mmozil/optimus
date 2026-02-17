@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Conta | Agent Optimus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#0a0a0a',
+                        surface: '#121212',
+                        primary: '#3b82f6',
+                        border: '#27272a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a;
+            color: #e5e5e5;
+        }
+
+        .glass-panel {
+            background: rgba(18, 18, 18, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-field {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .input-field:focus {
+            border-color: #3b82f6;
+            outline: none;
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        .text-gradient {
+            background: linear-gradient(to right, #e2e8f0, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex items-center justify-center relative overflow-hidden">
+
+    <div class="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/10 rounded-full blur-[120px]"></div>
+    <div class="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]"></div>
+
+    <div class="w-full max-w-md p-8 rounded-2xl glass-panel relative z-10">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-semibold tracking-tight text-white mb-2">Junte-se ao Futuro</h1>
+            <p class="text-sm text-gray-400">Crie sua conta no Agent Optimus.</p>
+        </div>
+
+        <form id="registerForm" class="space-y-4">
+            <div>
+                <label for="name" class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Nome
+                    Completo</label>
+                <input type="text" id="name" required
+                    class="w-full px-4 py-3 rounded-lg text-sm text-white input-field placeholder-gray-600"
+                    placeholder="Ex: Marcelo Mozil">
+            </div>
+
+            <div>
+                <label for="email"
+                    class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Email</label>
+                <input type="email" id="email" required
+                    class="w-full px-4 py-3 rounded-lg text-sm text-white input-field placeholder-gray-600"
+                    placeholder="nome@empresa.com">
+            </div>
+
+            <div>
+                <label for="password"
+                    class="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Senha</label>
+                <input type="password" id="password" required
+                    class="w-full px-4 py-3 rounded-lg text-sm text-white input-field placeholder-gray-600"
+                    placeholder="Mínimo 8 caracteres">
+            </div>
+
+            <div id="errorMessage"
+                class="hidden text-red-400 text-sm text-center bg-red-900/20 p-2 rounded border border-red-900/50">
+            </div>
+            <div id="successMessage"
+                class="hidden text-emerald-400 text-sm text-center bg-emerald-900/20 p-2 rounded border border-emerald-900/50">
+                Conta criada! Redirecionando...
+            </div>
+
+            <button type="submit"
+                class="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors shadow-lg shadow-white/5 mt-2">
+                Criar Conta
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-gray-500">
+            Já tem conta?
+            <a href="/login.html"
+                class="text-white hover:underline decoration-blue-500 decoration-2 underline-offset-4">Fazer Login</a>
+        </div>
+    </div>
+
+    <script src="/static/js/auth.js"></script>
+    <script>
+        const form = document.getElementById('registerForm');
+        const errorDiv = document.getElementById('errorMessage');
+        const successDiv = document.getElementById('successMessage');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = form.querySelector('button');
+
+            // Loading state
+            btn.innerHTML = '<span class="animate-pulse">Criando...</span>';
+            btn.disabled = true;
+            errorDiv.classList.add('hidden');
+
+            const result = await auth.register(email, password, name);
+
+            if (result.success) {
+                successDiv.classList.remove('hidden');
+                // Auto login after 1.5s
+                setTimeout(async () => {
+                    await auth.login(email, password);
+                    window.location.href = '/';
+                }, 1500);
+            } else {
+                errorDiv.textContent = result.message;
+                errorDiv.classList.remove('hidden');
+                btn.innerHTML = 'Criar Conta';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>
