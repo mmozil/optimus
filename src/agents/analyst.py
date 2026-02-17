@@ -22,9 +22,9 @@ class AnalystAgent(BaseAgent):
             name="analyst",
             role="Product Analyst",
             level="specialist",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
+            model_chain="default",
             temperature=0.3,
-            description="Análise de dados, métricas de produto e business intelligence",
         )
         super().__init__(config, **kwargs)
 

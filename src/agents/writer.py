@@ -22,9 +22,9 @@ class WriterAgent(BaseAgent):
             name="writer",
             role="Content Writer",
             level="specialist",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
+            model_chain="default",
             temperature=0.8,
-            description="Redação de conteúdo, copy, documentação e textos criativos",
         )
         super().__init__(config, **kwargs)
 

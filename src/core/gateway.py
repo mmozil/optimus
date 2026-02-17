@@ -29,6 +29,9 @@ class Gateway:
 
         from src.agents.developer import FridayAgent
         from src.agents.researcher import FuryAgent
+        from src.agents.analyst import AnalystAgent
+        from src.agents.writer import WriterAgent
+        from src.agents.guardian import GuardianAgent
         from src.infra.redis_client import AgentRateLimiter, redis_client
 
         # Set up shared rate limiter
@@ -67,6 +70,39 @@ class Gateway:
             max_tokens=4096,
             temperature=0.5,
             agent_class=FuryAgent,
+        )
+
+        AgentFactory.create(
+            name="analyst",
+            role="Product Analyst",
+            level="specialist",
+            model="gemini-2.5-flash",
+            model_chain="default",
+            max_tokens=4096,
+            temperature=0.3,
+            agent_class=AnalystAgent,
+        )
+
+        AgentFactory.create(
+            name="writer",
+            role="Content Writer",
+            level="specialist",
+            model="gemini-2.5-flash",
+            model_chain="default",
+            max_tokens=4096,
+            temperature=0.8,
+            agent_class=WriterAgent,
+        )
+
+        AgentFactory.create(
+            name="guardian",
+            role="QA/Security Guardian",
+            level="specialist",
+            model="gemini-2.5-flash",
+            model_chain="default",
+            max_tokens=4096,
+            temperature=0.2,
+            agent_class=GuardianAgent,
         )
 
         self._initialized = True

@@ -22,9 +22,9 @@ class GuardianAgent(BaseAgent):
             name="guardian",
             role="QA/Security Guardian",
             level="specialist",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
+            model_chain="default",
             temperature=0.2,
-            description="QA, auditoria de segurança, code review e compliance",
         )
         super().__init__(config, **kwargs)
 
