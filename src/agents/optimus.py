@@ -76,7 +76,7 @@ class OptimusAgent(BaseAgent):
             response_text = result.get("content", "")
             if response_text:
                 # Check if auto-journaling is appropriate (could use filters here)
-                await auto_journal.process_interaction(message, response_text)
+                await auto_journal.extract_and_save(self.name, message, response_text)
 
             # Enrich result metadata
             result["persona"] = persona["name"]
