@@ -570,14 +570,13 @@
         }
 
         // ── Handle send button (also stops recording if active) ───────
-        async function handleSend() {
+        function handleSend() {
             if (isRecording) {
-                // Stop recording → transcribe → send
-                stopRecording(true);
-            } else {
-                const text = chatInput.value.trim();
-                if (text) sendMessage(text);
+                stopRecording(true); // stop → transcribe → send
+                return;
             }
+            const text = chatInput.value.trim();
+            if (text) sendMessage(text);
         }
 
         sendBtn.addEventListener('click', handleSend);
@@ -608,97 +607,141 @@
 
         // ── STT (Mic) ────────────────────────────────────────────────
         let mediaRecorder = null;
+        let recordingStream = null;
         let audioChunks   = [];
         let isRecording   = false;
-        let autoSendAfterTranscribe = false;
+        let pendingSend   = false;
+        let recordingMime = 'audio/webm';
 
-        function showMicToast(visible) {
+        function showMicToast(msg, visible) {
+            micToast.textContent = msg;
             micToast.classList.toggle('show', visible);
         }
 
         async function startRecording() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 audioChunks = [];
-                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-                mediaRecorder = new MediaRecorder(stream, { mimeType });
+                recordingMime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                              : MediaRecorder.isTypeSupported('audio/ogg')  ? 'audio/ogg'
+                              : '';
+
+                if (!recordingMime) {
+                    showMicToast('Formato de áudio não suportado', true);
+                    setTimeout(() => showMicToast('', false), 3000);
+                    recordingStream.getTracks().forEach(t => t.stop());
+                    return;
+                }
+
+                mediaRecorder = new MediaRecorder(recordingStream, { mimeType: recordingMime });
 
                 mediaRecorder.ondataavailable = e => {
                     if (e.data.size > 0) audioChunks.push(e.data);
                 };
 
-                mediaRecorder.onstop = async () => {
-                    stream.getTracks().forEach(t => t.stop());
-                    micBtn.classList.remove('active');
-                    inputBox.classList.remove('recording');
-                    showMicToast(false);
-                    isRecording = false;
+                mediaRecorder.onstop = handleRecordingStop;
 
-                    micToast.textContent = 'Transcrevendo...';
-                    showMicToast(true);
-
-                    const blob = new Blob(audioChunks, { type: mimeType });
-                    const formData = new FormData();
-                    formData.append('file', blob, 'audio.webm');
-
-                    let transcript = '';
-                    try {
-                        const resp = await fetch(`${API_URL}/api/v1/audio/stt`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${TOKEN}` },
-                            body: formData
-                        });
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            transcript = data.text?.trim() || '';
-                        }
-                    } catch (e) {
-                        console.error('STT error:', e);
-                    }
-
-                    showMicToast(false);
-                    micToast.textContent = 'Gravando...';
-
-                    if (transcript) {
-                        if (autoSendAfterTranscribe) {
-                            // Send directly without putting in input
-                            autoSendAfterTranscribe = false;
-                            sendMessage(transcript);
-                        } else {
-                            // Fill textarea for user review
-                            chatInput.value = transcript;
-                            chatInput.style.height = 'auto';
-                            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
-                            sendBtn.disabled = false;
-                            chatInput.focus();
-                        }
-                    }
-                };
-
-                mediaRecorder.start();
+                // Use timeslice to get chunks every 500ms (prevents empty blob)
+                mediaRecorder.start(500);
                 isRecording = true;
-                autoSendAfterTranscribe = false;
+                pendingSend = false;
                 micBtn.classList.add('active');
                 inputBox.classList.add('recording');
-                micToast.textContent = 'Gravando...';
-                showMicToast(true);
+                sendBtn.disabled = false; // enable send while recording
+                showMicToast('Gravando... toque no mic ou enviar para parar', true);
 
             } catch (e) {
                 console.error('Mic error:', e);
-                alert('Não foi possível acessar o microfone. Verifique as permissões.');
+                showMicToast('Microfone negado. Verifique permissões.', true);
+                setTimeout(() => showMicToast('', false), 3000);
+            }
+        }
+
+        async function handleRecordingStop() {
+            // Clean up recording state
+            if (recordingStream) {
+                recordingStream.getTracks().forEach(t => t.stop());
+                recordingStream = null;
+            }
+            micBtn.classList.remove('active');
+            inputBox.classList.remove('recording');
+            isRecording = false;
+
+            const shouldSend = pendingSend;
+            pendingSend = false;
+
+            if (audioChunks.length === 0) {
+                showMicToast('Nenhum áudio capturado', true);
+                setTimeout(() => showMicToast('', false), 2000);
+                sendBtn.disabled = chatInput.value.trim().length === 0;
+                return;
+            }
+
+            showMicToast('Transcrevendo...', true);
+
+            const blob = new Blob(audioChunks, { type: recordingMime });
+            const formData = new FormData();
+            const ext = recordingMime.includes('webm') ? 'webm' : 'ogg';
+            formData.append('file', blob, `audio.${ext}`);
+
+            let transcript = '';
+            try {
+                const resp = await fetch(`${API_URL}/api/v1/audio/stt`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    body: formData
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    transcript = (data.text || '').trim();
+                } else {
+                    const err = await resp.text();
+                    console.error('STT response error:', resp.status, err);
+                    showMicToast('Erro na transcrição (' + resp.status + ')', true);
+                    setTimeout(() => showMicToast('', false), 3000);
+                    sendBtn.disabled = chatInput.value.trim().length === 0;
+                    return;
+                }
+            } catch (e) {
+                console.error('STT fetch error:', e);
+                showMicToast('Erro de conexão com STT', true);
+                setTimeout(() => showMicToast('', false), 3000);
+                sendBtn.disabled = chatInput.value.trim().length === 0;
+                return;
+            }
+
+            showMicToast('', false);
+
+            if (!transcript) {
+                showMicToast('Não consegui entender o áudio', true);
+                setTimeout(() => showMicToast('', false), 2500);
+                sendBtn.disabled = chatInput.value.trim().length === 0;
+                return;
+            }
+
+            // Always put text in input so user sees what was transcribed
+            chatInput.value = transcript;
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
+            sendBtn.disabled = false;
+
+            if (shouldSend) {
+                // Auto-send after a brief moment so user sees the text
+                setTimeout(() => sendMessage(chatInput.value.trim()), 150);
+            } else {
+                chatInput.focus();
             }
         }
 
         function stopRecording(andSend = false) {
             if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-            autoSendAfterTranscribe = andSend;
+            pendingSend = andSend;
             mediaRecorder.stop();
         }
 
         micBtn.addEventListener('click', () => {
             if (isRecording) {
-                // Second click: stop + auto-send
-                stopRecording(true);
+                stopRecording(true); // stop + auto-send
             } else {
                 startRecording();
             }
