@@ -203,12 +203,8 @@ class MCPToolRegistry:
             category="research",
             handler=search_knowledge_base,
             parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The question or topic to search for."},
-                    "limit": {"type": "integer", "description": "Max results (default 5)."}
-                },
-                "required": ["query"]
+                "query": {"type": "string", "required": True, "description": "The question or topic to search for."},
+                "limit": {"type": "integer", "description": "Max results (default 5)."},
             },
             agent_levels=["lead", "specialist"]
         ))
