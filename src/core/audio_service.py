@@ -134,5 +134,31 @@ class AudioService:
         )
         return response.text
 
+    async def text_to_speech(
+        self,
+        text: str,
+        voice: str = "pt-BR-FranciscaNeural",
+    ) -> bytes:
+        """
+        Convert text to speech using Microsoft Edge TTS (free, no API key).
+        Returns raw MP3 bytes.
+
+        Available pt-BR voices:
+        - pt-BR-FranciscaNeural (female, default)
+        - pt-BR-AntonioNeural   (male)
+        """
+        try:
+            import edge_tts
+        except ImportError:
+            raise RuntimeError("edge-tts not installed. Run: pip install edge-tts")
+
+        communicate = edge_tts.Communicate(text, voice=voice)
+        audio = io.BytesIO()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio.write(chunk["data"])
+        return audio.getvalue()
+
+
 # Singleton
 audio_service = AudioService()

@@ -532,7 +532,7 @@
                 if (data.data && data.data.content) {
                     const responseText = data.data.content;
                     addMessage(responseText, false);
-                    // speak(responseText); // Optional: disabled by default for cleaner UX
+                    speak(responseText); // Edge TTS
                 } else {
                     addMessage("Erro: Resposta vazia da API.", false);
                 }
@@ -544,53 +544,92 @@
             }
         }
 
-        // === Voice Logic (Web Speech API) ===
-        // ... (Keep existing Voice Logic) ... 
-        // [Simplified for brevity in replacement, essentially identical]
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const micIcon = document.getElementById('mic-icon'); // Ensure icon logic if needed
-
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'pt-BR';
-            let wakeWord = "optimus";
-
-            recognition.onstart = () => {
-                micBtn.classList.add('listening');
-                micStatus.textContent = "Ouvindo... Diga 'Optimus'";
-            };
-
-            recognition.onend = () => {
-                micBtn.classList.remove('listening');
-                micStatus.textContent = "Toque para falar";
-                if (micBtn.dataset.active === "true") recognition.start();
-            };
-
-            recognition.onresult = (event) => {
-                const transcript = Array.from(event.results).map(r => r[0].transcript).join('').toLowerCase();
-                if (event.results[0].isFinal && transcript.includes(wakeWord)) {
-                    const command = transcript.split(wakeWord)[1];
-                    if (command?.trim()) {
-                        micStatus.textContent = "Processando...";
-                        sendMessage(command.trim());
-                    }
-                }
-            };
-
-            micBtn.addEventListener('click', () => {
-                if (micBtn.dataset.active === "true") {
-                    micBtn.dataset.active = "false";
-                    recognition.stop();
-                } else {
-                    micBtn.dataset.active = "true";
-                    recognition.start();
-                }
-            });
-        } else {
-            micBtn.style.display = 'none';
+        // === TTS — Edge TTS via backend ===
+        let currentAudio = null;
+        async function speak(text) {
+            try {
+                const resp = await fetch(`${API_URL}/api/v1/audio/tts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${TOKEN}`
+                    },
+                    body: JSON.stringify({ text, voice: 'pt-BR-FranciscaNeural' })
+                });
+                if (!resp.ok) return;
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                if (currentAudio) { currentAudio.pause(); URL.revokeObjectURL(currentAudio.src); }
+                currentAudio = new Audio(url);
+                currentAudio.play();
+            } catch (e) {
+                console.warn('TTS failed:', e);
+            }
         }
+
+        // === STT — Groq Whisper via backend (MediaRecorder) ===
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                mediaRecorder.onstop = async () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    micStatus.textContent = "Transcrevendo...";
+                    micBtn.classList.remove('listening');
+
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const formData = new FormData();
+                    formData.append('file', blob, 'audio.webm');
+
+                    try {
+                        const resp = await fetch(`${API_URL}/api/v1/audio/stt`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${TOKEN}` },
+                            body: formData
+                        });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            const transcript = data.text?.trim();
+                            if (transcript) {
+                                chatInput.value = transcript;
+                                chatInput.style.height = 'auto';
+                                chatInput.style.height = chatInput.scrollHeight + 'px';
+                                sendBtn.removeAttribute('disabled');
+                                sendMessage();
+                            }
+                        }
+                    } catch (e) {
+                        console.error('STT error:', e);
+                    }
+                    micStatus.textContent = "Toque para falar";
+                };
+                mediaRecorder.start();
+                isRecording = true;
+                micBtn.classList.add('listening');
+                micStatus.textContent = "Gravando... Toque para parar";
+            } catch (e) {
+                micStatus.textContent = "Microfone negado";
+                console.error('Mic error:', e);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                isRecording = false;
+            }
+        }
+
+        micBtn.addEventListener('click', () => {
+            if (isRecording) stopRecording();
+            else startRecording();
+        });
 
         // === Events ===
         sendBtn.addEventListener('click', () => sendMessage());

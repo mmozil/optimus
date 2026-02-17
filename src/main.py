@@ -302,6 +302,58 @@ async def upload_knowledge(
 
 
 # ============================================
+# Audio (TTS + STT)
+# ============================================
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "pt-BR-FranciscaNeural"
+
+
+@app.post("/api/v1/audio/tts")
+async def text_to_speech(
+    request: TTSRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Convert text to speech using Edge TTS. Returns MP3 audio."""
+    from src.core.audio_service import audio_service
+    from fastapi.responses import Response
+
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+    try:
+        # Strip markdown symbols before speaking
+        import re
+        clean = re.sub(r"[*#_`~>]", "", request.text)
+        clean = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", clean)  # links
+        clean = clean.strip()[:2000]  # limit length
+
+        audio_bytes = await audio_service.text_to_speech(clean, voice=request.voice)
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/audio/stt")
+async def speech_to_text(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Transcribe audio using Groq Whisper. Returns the transcribed text."""
+    from src.core.audio_service import audio_service, TranscriptionBackend
+
+    try:
+        content = await file.read()
+        text = await audio_service.transcribe(
+            content=content,
+            mime_type=file.content_type or "audio/webm",
+            backend=TranscriptionBackend.WHISPER,
+        )
+        return {"status": "success", "text": text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
 # Debug Router (Manual DB Fix)
 # ============================================
 from src.api.v1.routers import debug
