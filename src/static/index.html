@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Optimus — Chat</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#10a37f">
     <style>
         :root {
             --bg-color: #0d0d0d;
@@ -15,121 +18,353 @@
             --text-secondary: #9b9b9b;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-        
-        body { background-color: var(--bg-color); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
 
         /* Header */
-        header { 
-            padding: 1rem 2rem; 
-            border-bottom: 1px solid #333; 
-            display: flex; 
-            align-items: center; 
+        header {
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
             justify-content: space-between;
             background: rgba(13, 13, 13, 0.9);
         }
-        .logo { font-weight: 700; font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; }
-        .logo span { color: var(--accent); }
-        .status { font-size: 0.8rem; color: var(--accent); display: flex; align-items: center; gap: 0.3rem; }
-        .status::before { content: ""; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+
+        .logo {
+            font-weight: 700;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        .status {
+            font-size: 0.8rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .status::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+        }
 
         /* Chat Container */
-        #chat-container { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 2rem; 
-            display: flex; 
-            flex-direction: column; 
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
             gap: 1.5rem;
-            max-width: 800px; 
-            width: 100%; 
+            max-width: 800px;
+            width: 100%;
             margin: 0 auto;
         }
 
         /* Messages */
-        .message { display: flex; gap: 1rem; max-width: 100%; animation: fadeIn 0.3s ease; }
-        .avatar { 
-            width: 36px; height: 36px; border-radius: 4px; 
-            display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;
+        .message {
+            display: flex;
+            gap: 1rem;
+            max-width: 100%;
+            animation: fadeIn 0.3s ease;
         }
-        .ai-avatar { background: var(--accent); color: white; }
-        .user-avatar { background: #555; color: white; }
-        
-        .content { 
-            line-height: 1.6; 
-            padding-top: 0.4rem; 
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .ai-avatar {
+            background: var(--accent);
+            color: white;
+        }
+
+        .user-avatar {
+            background: #555;
+            color: white;
+        }
+
+        .content {
+            line-height: 1.6;
+            padding-top: 0.4rem;
             font-size: 1rem;
             word-wrap: break-word;
         }
-        .content p { margin-bottom: 0.8rem; }
-        .content pre { 
-            background: #000; padding: 1rem; border-radius: 6px; overflow-x: auto; 
-            margin: 0.5rem 0; font-family: monospace; font-size: 0.9rem; border: 1px solid #333;
+
+        .content p {
+            margin-bottom: 0.8rem;
         }
-        .content code { 
-            background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; 
+
+        .content pre {
+            background: #000;
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+            border: 1px solid #333;
+        }
+
+        .content code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
         }
 
         /* Input Area */
-        .input-area { 
-            padding: 2rem; 
-            background: var(--bg-color); 
+        .input-area {
+            padding: 2rem;
+            background: var(--bg-color);
             border-top: 1px solid #333;
-            display: flex; 
+            display: flex;
             justify-content: center;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
-        .input-wrapper { 
-            max-width: 800px; width: 100%; position: relative; 
-            background: #40414f; border-radius: 12px; border: 1px solid #565869; 
-            display: flex; align-items: center; padding: 0.5rem 1rem;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-        }
-        .input-wrapper:focus-within { border-color: #777; box-shadow: 0 0 15px rgba(0,0,0,0.3); }
 
-        textarea { 
-            width: 100%; background: transparent; border: none; color: white; 
-            resize: none; font-size: 1rem; max-height: 200px; padding: 0.8rem 0; 
-            outline: none; line-height: 1.5;
+        .input-wrapper {
+            max-width: 800px;
+            width: 100%;
+            position: relative;
+            background: #40414f;
+            border-radius: 12px;
+            border: 1px solid #565869;
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
         }
-        
-        button#send-btn { 
-            background: transparent; border: none; cursor: pointer; color: #ccc; 
-            padding: 0.5rem; transition: color 0.2s;
+
+        .input-wrapper:focus-within {
+            border-color: #777;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
         }
-        button#send-btn:hover { color: white; }
-        button#send-btn:disabled { color: #555; cursor: not-allowed; }
+
+        textarea {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: white;
+            resize: none;
+            font-size: 1rem;
+            max-height: 200px;
+            padding: 0.8rem 0;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        button#send-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #ccc;
+            padding: 0.5rem;
+            transition: color 0.2s;
+        }
+
+        button#send-btn:hover {
+            color: white;
+        }
+
+        button#send-btn:disabled {
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        /* Mic Button */
+        .mic-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        button#mic-btn {
+            background: #333;
+            border: 1px solid #444;
+            color: white;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        button#mic-btn:hover {
+            background: #444;
+        }
+
+        button#mic-btn.listening {
+            background: #cc0000;
+            border-color: #ff0000;
+            animation: pulse 1.5s infinite;
+        }
 
         /* Loader */
-        .typing-indicator { display: flex; gap: 4px; padding: 10px 0; }
-        .typing-indicator span { 
-            width: 6px; height: 6px; background: #888; border-radius: 50%; 
-            animation: bounce 1.4s infinite ease-in-out both; 
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 10px 0;
         }
-        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
-        
-        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: #888;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .typing-indicator span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+            }
+
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(204, 0, 0, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(204, 0, 0, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(204, 0, 0, 0);
+            }
+        }
 
         /* Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg-color); }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
 
-        .hidden { display: none !important; }
-        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
         /* Auth Overlay */
         #auth-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--bg-color); z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
-        .loader { width: 48px; height: 48px; border: 5px solid #fff; border-bottom-color: transparent; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
-        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .auth-msg { margin-top: 1rem; color: #888; font-size: 0.9rem; }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #fff;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .auth-msg {
+            margin-top: 1rem;
+            color: #888;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
+
 <body>
 
     <!-- Auth / Loading Screen -->
@@ -148,7 +383,7 @@
             <div class="avatar ai-avatar">OP</div>
             <div class="content">
                 <p>Olá! Eu sou o <strong>Optimus</strong>. Estou pronto para ajudar com suas tarefas.</p>
-                <p>Como posso ser útil hoje?</p>
+                <p>Pode digitar ou falar <em>"Optimus"</em> para me ativar.</p>
             </div>
         </div>
     </div>
@@ -157,8 +392,26 @@
         <div class="input-wrapper">
             <textarea id="chat-input" rows="1" placeholder="Envie uma mensagem..."></textarea>
             <button id="send-btn" disabled>
-                <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
+                    stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
             </button>
+        </div>
+
+        <div class="mic-container">
+            <button id="mic-btn" title="Ativar Escuta Contínua">
+                <svg id="mic-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"
+                    stroke-linecap="round" stroke-linejoin="round" height="24" width="24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+            </button>
+            <span id="mic-status">Toque para falar</span>
         </div>
     </div>
 
@@ -173,14 +426,22 @@
         const chatContainer = document.getElementById('chat-container');
         const chatInput = document.getElementById('chat-input');
         const sendBtn = document.getElementById('send-btn');
+        const micBtn = document.getElementById('mic-btn');
+        const micStatus = document.getElementById('mic-status');
         const authOverlay = document.getElementById('auth-overlay');
         const authMsg = document.querySelector('.auth-msg');
 
+        // === PWA Registration ===
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/service-worker.js')
+                .then(() => console.log('Service Worker Registered'));
+        }
+
         // === Auto-Resize Textarea ===
-        chatInput.addEventListener('input', function() {
+        chatInput.addEventListener('input', function () {
             this.style.height = 'auto';
             this.style.height = (this.scrollHeight) + 'px';
-            if(this.value.trim().length > 0) sendBtn.removeAttribute('disabled');
+            if (this.value.trim().length > 0) sendBtn.removeAttribute('disabled');
             else sendBtn.setAttribute('disabled', 'true');
         });
 
@@ -212,7 +473,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password, display_name: "Guest User" })
                 });
-                
+
                 // 2. Login
                 resp = await fetch(`${API_URL}/api/v1/auth/login`, {
                     method: 'POST',
@@ -268,23 +529,23 @@
             return div;
         }
 
-        async function sendMessage() {
-            const text = chatInput.value.trim();
+        async function sendMessage(textOverride = null) {
+            const text = textOverride || chatInput.value.trim();
             if (!text) return;
 
             addMessage(text, true);
-            chatInput.value = '';
-            chatInput.style.height = 'auto';
-            sendBtn.disabled = true;
+            if (!textOverride) {
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                sendBtn.disabled = true;
+            }
 
             const typingDiv = addTyping();
 
             try {
-                // Use EventSource for SSE if backend supports, otherwise standard POST
-                // Trying standard POST first for simplicity
                 const resp = await fetch(`${API_URL}/api/v1/chat`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${TOKEN}`
                     },
@@ -294,12 +555,13 @@
                 if (!resp.ok) throw new Error("API Error");
 
                 const data = await resp.json();
-                
-                // Remove typing
+
                 typingDiv.remove();
-                
+
                 if (data.data && data.data.response) {
-                    addMessage(data.data.response, false);
+                    const responseText = data.data.response;
+                    addMessage(responseText, false);
+                    speak(responseText); // Auto-speak response
                 } else {
                     addMessage("Erro: Resposta vazia da API.", false);
                 }
@@ -311,8 +573,87 @@
             }
         }
 
+        // === Voice Logic (Web Speech API) ===
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isListening = false;
+        let wakeWord = "optimus";
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'pt-BR';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('listening');
+                micStatus.textContent = "Ouvindo... Diga 'Optimus'";
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micBtn.classList.remove('listening');
+                micStatus.textContent = "Toque para falar";
+                // Auto-restart if it was supposed to be listening (Always-On)
+                if (micBtn.dataset.active === "true") {
+                    recognition.start();
+                }
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = Array.from(event.results)
+                    .map(result => result[0].transcript)
+                    .join('')
+                    .toLowerCase();
+
+                console.log("Ouvido:", transcript);
+
+                if (event.results[0].isFinal) {
+                    if (transcript.includes(wakeWord)) {
+                        const command = transcript.split(wakeWord)[1]; // Get text AFTER "Optimus"
+                        if (command && command.trim().length > 0) {
+                            micStatus.textContent = "Processando: " + command;
+                            sendMessage(command.trim());
+                        } else {
+                            micStatus.textContent = "Sim? Pode falar.";
+                            // Play simple beep or visual feedback ideally
+                        }
+                    }
+                }
+            };
+        } else {
+            micBtn.style.display = 'none';
+            micStatus.textContent = "Voz não suportada neste navegador";
+        }
+
+        micBtn.addEventListener('click', () => {
+            if (!recognition) return;
+
+            if (micBtn.dataset.active === "true") {
+                // Stop
+                micBtn.dataset.active = "false";
+                recognition.stop();
+            } else {
+                // Start
+                micBtn.dataset.active = "true";
+                recognition.start();
+            }
+        });
+
+        // Simple TTS
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                // Remove Markdown symbols for speech
+                const cleanText = text.replace(/[*#_`]/g, '');
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                utterance.lang = 'pt-BR';
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
         // === Events ===
-        sendBtn.addEventListener('click', sendMessage);
+        sendBtn.addEventListener('click', () => sendMessage());
         chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -325,4 +666,5 @@
 
     </script>
 </body>
+
 </html>

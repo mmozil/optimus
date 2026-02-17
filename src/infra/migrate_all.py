@@ -11,6 +11,7 @@ async def run_migrations():
     """
     Executes all SQL files in the migrations/ directory in alphabetical order.
     Designed to be idempotent (files should use IF NOT EXISTS).
+    Include retry logic for DB startup.
     """
     migrations_dir = os.path.join(os.getcwd(), "migrations")
     if not os.path.exists(migrations_dir):
@@ -22,31 +23,45 @@ async def run_migrations():
     
     logger.info(f"Found {len(files)} migration files in {migrations_dir}")
 
-    async with get_async_session() as session:
-        for filename in files:
-            filepath = os.path.join(migrations_dir, filename)
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    sql_content = f.read()
+    # Retry logic
+    max_retries = 10
+    retry_interval = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            async with get_async_session() as session:
+                # Test connection
+                await session.execute(text("SELECT 1"))
                 
-                logger.info(f"Applying migration: {filename}...")
+                # If success, proceed to migrations
+                for filename in files:
+                    filepath = os.path.join(migrations_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            sql_content = f.read()
+                        
+                        logger.info(f"Applying migration: {filename}...")
+                        await session.execute(text(sql_content))
+                        await session.commit()
+                        logger.info(f"✅ Migration {filename} applied successfully.")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to apply migration {filename}: {e}")
+                        # Depending on severity, we might want to stop or continue.
+                        # For now, we log and re-raise to stop startup on critical DB error.
+                        raise e
                 
-                # Split by statements if needed, but usually executemany or execute block works
-                # For simplicity and support of pgvector extension, we execute as block if possible
-                # or split by semicolon if we encounter issues. 
-                # SQLAlchemy execute() usually handles multi-statement if the driver supports it.
-                # asyncpg supports it.
-                
-                await session.execute(text(sql_content))
-                await session.commit()
-                
-                logger.info(f"✅ Migration {filename} applied successfully.")
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to apply migration {filename}: {e}")
-                # We do not raise here to allow later phases to potentially retry or partial success
-                # But for a robust system, we might want to stop. 
-                # Given this is a auto-fix attempt, we log and re-raise to fail fast on startup.
+                # If we get here, all good
+                logger.info("🎉 All migrations applied successfully.")
+                return
+
+        except (OSError, Exception) as e:
+            # Catch connection errors (ConnectionRefusedError is subclass of OSError)
+            if attempt < max_retries - 1:
+                logger.warning(f"⚠️ DB Connection failed ({e}). Retrying in {retry_interval}s... ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(retry_interval)
+            else:
+                logger.error(f"❌ Could not connect to DB after {max_retries} attempts.")
                 raise e
 
 if __name__ == "__main__":
