@@ -793,3 +793,116 @@ class TestTaskManagerIntegration:
         assert result is not None
         assert "Pendentes" in result.text, \
             "Task status did not include pending count from task_manager.get_pending_count()"
+
+
+# ============================================
+# FASE 0 #22: ActivityFeed Integration
+# ============================================
+class TestActivityFeedIntegration:
+    """
+    FASE 0 Module #22: ActivityFeed integration test.
+
+    This test FAILS if activity_handlers are NOT registered on EventBus.
+    ActivityFeed.record() is NEVER called without these handlers.
+    Without this, /standup always shows empty data.
+
+    Call Path:
+    EventBus.emit("task.created")
+        → activity_handlers.on_task_created(event)
+            → activity_feed.record("task_created", ...)
+    """
+
+    @pytest.mark.asyncio
+    async def test_task_event_recorded_in_feed(self):
+        """
+        Test that task creation events are recorded in ActivityFeed.
+
+        If activity_handlers NOT registered, activity_feed stays empty
+        even after tasks are created. This test FAILS in that case.
+        """
+        from src.collaboration.activity_handlers import register_activity_handlers
+        from src.collaboration.activity_feed import activity_feed
+        from src.core.events import event_bus, EventType, Event
+        from uuid import uuid4
+        import asyncio
+
+        register_activity_handlers()
+
+        # Clear feed for clean test
+        activity_feed._activities.clear()
+
+        # Emit TASK_CREATED event
+        task_title = f"ActivityFeed test task {uuid4().hex[:6]}"
+        await event_bus.emit(Event(
+            type=EventType.TASK_CREATED,
+            source="task_manager",
+            data={
+                "task_id": str(uuid4()),
+                "title": task_title,
+                "priority": "medium",
+                "assignee_ids": [],
+                "created_by": "test_agent",
+            }
+        ))
+
+        await asyncio.sleep(0)
+
+        # CRITICAL: ActivityFeed must have recorded this event
+        recent = await activity_feed.get_recent(limit=10)
+        assert len(recent) > 0, \
+            "ActivityFeed is EMPTY after task creation! activity_handlers not registered."
+
+        messages = [a.message for a in recent]
+        assert any(task_title in m for m in messages), \
+            f"Task title not found in feed. Activities: {messages}"
+
+    @pytest.mark.asyncio
+    async def test_message_event_recorded_in_feed(self):
+        """
+        Test that MESSAGE_RECEIVED events are recorded in ActivityFeed.
+
+        Emitted by gateway.route_message() for every non-command message.
+        """
+        from src.collaboration.activity_handlers import register_activity_handlers
+        from src.collaboration.activity_feed import activity_feed, ActivityType
+        from src.core.events import event_bus, EventType, Event
+        from uuid import uuid4
+        import asyncio
+
+        register_activity_handlers()
+        activity_feed._activities.clear()
+
+        await event_bus.emit(Event(
+            type=EventType.MESSAGE_RECEIVED,
+            source="gateway",
+            data={
+                "user_id": "test_user",
+                "agent_name": "optimus",
+                "message_preview": "Olá, como está o projeto?",
+            }
+        ))
+
+        await asyncio.sleep(0)
+
+        recent = await activity_feed.get_recent(limit=10)
+        assert len(recent) > 0, \
+            "ActivityFeed is EMPTY after message! gateway did not emit MESSAGE_RECEIVED."
+
+        assert any(a.type == ActivityType.MESSAGE_SENT for a in recent), \
+            "MESSAGE_SENT activity type not found in feed."
+
+    @pytest.mark.asyncio
+    async def test_activity_handlers_registered_on_eventbus(self):
+        """
+        Test that EventBus has activity handlers registered.
+        Validates that register_activity_handlers() was called in main.py lifespan.
+        """
+        from src.collaboration.activity_handlers import register_activity_handlers
+        from src.core.events import event_bus, EventType
+
+        register_activity_handlers()
+
+        assert len(event_bus._handlers.get(EventType.TASK_CREATED.value, [])) > 0, \
+            "No activity handler for TASK_CREATED!"
+        assert len(event_bus._handlers.get(EventType.MESSAGE_RECEIVED.value, [])) > 0, \
+            "No activity handler for MESSAGE_RECEIVED!"

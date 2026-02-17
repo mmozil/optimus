@@ -93,7 +93,7 @@
 | 19 | `ThreadManager` | Task/message comment system | [ ] |
 | 20 | `NotificationService` | Task lifecycle events | [x] |
 | 21 | `TaskManager` | Chat commands + UI task CRUD | [x] |
-| 22 | `ActivityFeed` | Event bus subscribers | [ ] |
+| 22 | `ActivityFeed` | Event bus subscribers | [x] |
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [ ] |
 | 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
@@ -107,6 +107,43 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #22 ActivityFeed — CONCLUÍDO
+
+**Call Path:**
+```
+TaskManager.create()
+    → EventBus.emit("task.created") [task_manager.py:122]
+        → activity_handlers.on_task_created(event) [activity_handlers.py:24]
+            → activity_feed.record("task_created", "Task criada: '...'")
+
+Gateway.route_message(message, user_id)
+    → EventBus.emit("message.received") [gateway.py:163]
+        → activity_handlers.on_message_received(event) [activity_handlers.py:57]
+            → activity_feed.record("message_sent", "Mensagem para optimus: ...")
+
+TaskManager.transition(status=DONE)
+    → EventBus.emit("task.completed")
+        → activity_handlers.on_task_completed(event)
+            → activity_feed.record("task_status_changed", "Task concluída: '...'")
+```
+
+**Arquivos criados/modificados:**
+- `src/collaboration/activity_handlers.py` (novo — handlers + register_activity_handlers)
+- `src/main.py` linhas 47-50 (lifespan registra handlers)
+- `src/core/gateway.py` linhas 163-172 (emite MESSAGE_RECEIVED por mensagem)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestActivityFeedIntegration`
+- Testa: task event gravado no feed, message event gravado, handlers registrados
+- **3/3 testes passando** ✅
+
+**Impacto:**
+- ActivityFeed agora tem dados reais de todas as tasks e mensagens
+- /standup passa a ter dados concretos para gerar relatório
+- Histórico de atividades disponível para análise e auditoria
 
 ---
 

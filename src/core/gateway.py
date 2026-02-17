@@ -162,6 +162,18 @@ class Gateway:
 
             agent_name = target_agent or "optimus"
 
+            # FASE 0 #22: Emit MESSAGE_RECEIVED for ActivityFeed
+            from src.core.events import event_bus, EventType
+            await event_bus.emit_simple(
+                EventType.MESSAGE_RECEIVED.value,
+                source="gateway",
+                data={
+                    "user_id": user_id,
+                    "agent_name": agent_name,
+                    "message_preview": message[:200],
+                },
+            )
+
             # 1. Initialize/Refresh Session Context
             from src.memory.session_bootstrap import session_bootstrap
             await session_bootstrap.load_context(agent_name)

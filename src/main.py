@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI):
     from src.collaboration.notification_handlers import register_notification_handlers
     register_notification_handlers()
 
+    # FASE 0 #22: Register activity feed handlers on EventBus
+    # Records all task/message/cron events into ActivityFeed for /standup and audit
+    from src.collaboration.activity_handlers import register_activity_handlers
+    register_activity_handlers()
+
     # FASE 0 #26: Start CronScheduler
     # Background loop checks for due jobs every 60s
     # Emits CRON_TRIGGERED events on EventBus
