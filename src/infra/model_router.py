@@ -273,39 +273,68 @@ class ModelRouter:
             result["raw_message"] = message
         return result
 
+    async def _download_image(self, url: str) -> dict | None:
+        """Download image from URL and return as Gemini-compatible part."""
+        import httpx
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=10.0)
+                resp.raise_for_status()
+                
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                return {
+                    "mime_type": content_type,
+                    "data": resp.content
+                }
+        except Exception as e:
+            logger.error(f"Failed to download image from {url}: {e}")
+            return None
+
+    async def _prepare_native_messages(self, messages: list[dict]) -> tuple[list[dict], str | None]:
+        """Convert standard messages to native Gemini format with image handling."""
+        native_messages = []
+        system_instr = None
+        
+        # Extract system instruction
+        system_msg = next((m for m in messages if m["role"] == "system"), None)
+        if system_msg:
+            system_instr = system_msg["content"]
+
+        for m in messages:
+            if m["role"] == "system":
+                continue
+            
+            parts = []
+            content = m.get("content", "")
+            
+            # Handle multimodal list
+            if isinstance(content, list):
+                for p in content:
+                    if p.get("type") == "text":
+                        parts.append(p.get("text", ""))
+                    elif p.get("type") == "image_url":
+                        url = p["image_url"]["url"]
+                        image_data = await self._download_image(url)
+                        if image_data:
+                            parts.append(image_data)
+            else:
+                parts.append(content)
+                
+            native_messages.append({
+                "role": "user" if m["role"] == "user" else "model", 
+                "parts": parts
+            })
+            
+        return native_messages, system_instr
+
     async def _native_gemini_call(self, short_name, messages, temp, tokens, tools, include_raw):
         """Fallback to native Gemini SDK (generate_content_async)."""
         # Resolve model ID for native SDK
         if "2.5-pro" in short_name: model_id = "gemini-1.5-pro"
         else: model_id = "gemini-1.5-flash"
 
-        # LiteLLM formats to native
-        native_messages = []
-        system_instr = None
-        for m in messages:
-            if m["role"] == "system":
-                system_instr = m["content"]
-            else:
-                parts = []
-                content = m.get("content", "")
-                
-                if isinstance(content, list):
-                    # Multimodal content
-                    for p in content:
-                        if p["type"] == "text":
-                            parts.append(p["text"])
-                        elif p["type"] == "image_url":
-                            # Gemini handles raw bytes or media bits. 
-                            # For simplicity we'll assume the URL is already processed or we use PIL
-                            # This is a stub for the multimodal logic
-                            parts.append({"image_url": p["image_url"]["url"]})
-                else:
-                    parts.append(content)
-                    
-                native_messages.append({
-                    "role": "user" if m["role"] == "user" else "model", 
-                    "parts": parts
-                })
+        native_messages, system_instr = await self._prepare_native_messages(messages)
 
         model = genai.GenerativeModel(model_id, system_instruction=system_instr)
         start = time.monotonic()
@@ -364,32 +393,7 @@ class ModelRouter:
         """Yield tokens from native Gemini."""
         model_id = self._resolve_model(short_name).replace("gemini/", "")
         
-        # Prepare history and last message
-        native_messages = []
-        if messages:
-            system_instr = next((m["content"] for m in messages if m["role"] == "system"), None)
-            for m in messages:
-                if m["role"] == "system":
-                    continue
-                
-                parts = []
-                content = m.get("content", "")
-                
-                # Handle multimodal list
-                if isinstance(content, list):
-                    for p in content:
-                        if p.get("type") == "text":
-                            parts.append(p.get("text", ""))
-                        elif p.get("type") == "image_url":
-                            # This is a stub for the multimodal logic
-                            parts.append({"image_url": p["image_url"]["url"]})
-                else:
-                    parts.append(content)
-                    
-                native_messages.append({
-                    "role": "user" if m["role"] == "user" else "model", 
-                    "parts": parts
-                })
+        native_messages, system_instr = await self._prepare_native_messages(messages)
 
         model = genai.GenerativeModel(model_id, system_instruction=system_instr)
         start = time.monotonic()

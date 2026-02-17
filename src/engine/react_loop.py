@@ -96,7 +96,20 @@ async def react_loop(
 
     # Build user content without embedded history (it's now in messages)
     user_content = _build_user_content(user_message, context)
-    messages.append({"role": "user", "content": user_content})
+    
+    # Support multimodal: if attachments exist, format as list of parts
+    if context and context.get("attachments"):
+        content_parts = [{"type": "text", "text": user_content}]
+        for att in context["attachments"]:
+            mime = att.get("mime_type", "")
+            if mime and ("image" in mime or "pdf" in mime):
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": att.get("public_url", "")}
+                })
+        messages.append({"role": "user", "content": content_parts})
+    else:
+        messages.append({"role": "user", "content": user_content})
 
     # 2. Get tool declarations
     declarations = get_tool_declarations(mcp_tools, agent_level=agent_level)
@@ -108,6 +121,8 @@ async def react_loop(
     start_time = time.monotonic()
 
     # 3. ReAct loop
+    from src.infra.tracing import trace_span, trace_event
+
     for iteration in range(1, max_iterations + 1):
         # a. Check timeout
         elapsed = time.monotonic() - start_time
@@ -126,6 +141,9 @@ async def react_loop(
             )
 
         # b. REASON: call LLM
+        trace_event(f"react.reason", {
+            "agent": agent_name, "iteration": str(iteration),
+        })
         try:
             result = await model_router.generate_with_history(
                 messages=messages,
@@ -173,7 +191,7 @@ async def react_loop(
                 tool_calls_total=tool_calls_total,
             )
 
-        # d. ACT: execute each tool call
+        # d. ACT: execute each tool call (with self-correction)
         for tc in tool_calls:
             tool_name = tc["name"]
             tool_args = tc["arguments"]
@@ -203,7 +221,6 @@ async def react_loop(
                 step.duration_ms = (time.monotonic() - step_start) * 1000
                 steps.append(step)
 
-                # Append tool result as error
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call_id,
@@ -240,12 +257,34 @@ async def react_loop(
             steps.append(step)
 
             # e. OBSERVE: append tool result to messages
-            tool_output = step.result if step.success else f"Error: {step.error}"
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": tool_output,
-            })
+            if step.success:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": step.result,
+                })
+            else:
+                # Self-Correction: give the agent explicit error context
+                # so it can analyze the failure and try a different approach
+                correction_msg = (
+                    f"⚠️ TOOL FAILED: '{tool_name}' returned an error:\n"
+                    f"Error: {step.error}\n"
+                    f"Arguments used: {json.dumps(tool_args, ensure_ascii=False)}\n\n"
+                    f"Analyze this error carefully. Consider:\n"
+                    f"1. Are the parameters correct? (types, values, format)\n"
+                    f"2. Should you try a different tool instead?\n"
+                    f"3. Do you need more information before retrying?\n"
+                    f"Adjust your approach and try again, or explain if the task cannot be completed."
+                )
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": correction_msg,
+                })
+                logger.info(
+                    f"Self-correction triggered for {tool_name} (iter {iteration})",
+                    extra={"props": {"agent": agent_name, "error": step.error[:200]}}
+                )
 
     # 4. Max iterations reached
     logger.warning(f"ReAct loop reached max iterations ({max_iterations})", extra={

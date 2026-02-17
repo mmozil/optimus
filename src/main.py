@@ -1,25 +1,30 @@
 """
 Agent Optimus — FastAPI Application.
-~50 lines: app + middleware + routers + health.
+Auth + Chat + Files + Streaming.
 """
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from src.core.config import settings
 from src.core.gateway import gateway
 from src.core.files_service import files_service
+from src.core.auth_service import auth_service
+from src.infra.auth_middleware import (
+    CurrentUser, get_current_user, get_optional_user, require_role,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    # Startup: initialize agents
+    from src.infra.tracing import init_tracing
+    init_tracing()
     await gateway.initialize()
     yield
-    # Shutdown: cleanup
 
 
 app = FastAPI(
@@ -40,7 +45,7 @@ app.add_middleware(
 
 
 # ============================================
-# Health & Status
+# Health & Status (público)
 # ============================================
 @app.get("/health")
 async def health():
@@ -48,53 +53,129 @@ async def health():
 
 
 @app.get("/api/v1/agents")
-async def list_agents():
-    """List all registered agents."""
+async def list_agents(user: CurrentUser = Depends(get_current_user)):
+    """List all registered agents. Requires authentication."""
     agents = await gateway.get_agent_status()
     return {"status": "success", "data": agents}
 
 
 # ============================================
-# Chat
+# Auth Endpoints (públicos)
 # ============================================
-from pydantic import BaseModel
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str = ""
 
 
-class ChatRequest(BaseModel):
-    message: str
-    user_id: str = "default_user"
-    agent: str | None = None
-    context: dict | None = None
-    file_ids: list[str] | None = None  # Reference previously uploaded files
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@app.post("/api/v1/auth/register")
+async def register(request: RegisterRequest):
+    """Register a new user account."""
+    try:
+        result = await auth_service.register_user(
+            email=request.email,
+            password=request.password,
+            display_name=request.display_name,
+        )
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro inesperado: {e}")
+
+
+@app.post("/api/v1/auth/login")
+async def login(request: LoginRequest):
+    """Authenticate and receive JWT tokens."""
+    try:
+        result = await auth_service.login(
+            email=request.email,
+            password=request.password,
+        )
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro inesperado: {e}")
+
+
+@app.post("/api/v1/auth/refresh")
+async def refresh_token(request: RefreshRequest):
+    """Exchange a refresh token for a new access token."""
+    try:
+        result = await auth_service.refresh_access_token(request.refresh_token)
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@app.get("/api/v1/auth/me")
+async def get_me(user: CurrentUser = Depends(get_current_user)):
+    """Get current authenticated user info."""
+    return {
+        "status": "success",
+        "data": {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "auth_method": user.auth_method,
+        },
+    }
+
+
+# ============================================
+# Files (autenticado)
+# ============================================
 @app.post("/api/v1/files/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    user_id: str = Form("default_user"),
-    conversation_id: str | None = Form(None)
+    conversation_id: str | None = Form(None),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    """Upload a file and get its metadata/URL."""
+    """Upload a file. user_id is extracted from the JWT automatically."""
     try:
         content = await file.read()
         result = await files_service.upload_file(
             file_content=content,
             filename=file.filename,
-            user_id=user_id,
+            user_id=user.id,
             conversation_id=conversation_id,
-            mime_type=file.content_type
+            mime_type=file.content_type,
         )
-        return result
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Erro inesperado: {e}")
+
+
+# ============================================
+# Chat (autenticado)
+# ============================================
+class ChatRequest(BaseModel):
+    message: str
+    agent: str | None = None
+    context: dict | None = None
+    file_ids: list[str] | None = None
 
 
 @app.post("/api/v1/chat")
-async def chat(request: ChatRequest):
-    """Send a message to an agent."""
+async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
+    """Send a message to an agent. user_id is extracted from the JWT."""
     result = await gateway.route_message(
         message=request.message,
-        user_id=request.user_id,
+        user_id=user.id,
         target_agent=request.agent,
         context=request.context,
         file_ids=request.file_ids,
@@ -103,23 +184,103 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/api/v1/chat/stream")
-async def chat_stream(request: ChatRequest):
-    """Send a message to an agent and receive a streaming response."""
+async def chat_stream(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
+    """Send a message and receive a streaming response (SSE)."""
     from sse_starlette.sse import EventSourceResponse
     import json
 
     async def event_generator():
         async for chunk in gateway.stream_route_message(
             message=request.message,
-            user_id=request.user_id,
+            user_id=user.id,
             target_agent=request.agent,
             context=request.context,
             file_ids=request.file_ids,
         ):
             yield {
                 "event": chunk.get("type", "token"),
-                "data": json.dumps(chunk)
+                "data": json.dumps(chunk),
             }
         yield {"event": "done", "data": "[DONE]"}
 
     return EventSourceResponse(event_generator())
+
+
+# ============================================
+# Admin-only endpoints
+# ============================================
+@app.get("/api/v1/admin/users", dependencies=[Depends(require_role("admin"))])
+async def admin_list_users():
+    """List all users. Admin only."""
+    from src.infra.supabase_client import get_async_session
+    from sqlalchemy import text
+
+    async with get_async_session() as session:
+        result = await session.execute(
+            text("SELECT id, email, display_name, role, is_active, created_at FROM users ORDER BY created_at DESC")
+        )
+        rows = result.fetchall()
+
+    users = [
+        {
+            "id": str(r[0]),
+            "email": r[1],
+            "display_name": r[2],
+            "role": r[3],
+            "is_active": r[4],
+            "created_at": r[5].isoformat() if r[5] else None,
+        }
+        for r in rows
+    ]
+    return {"status": "success", "data": users}
+
+
+# ============================================
+# Knowledge Base (RAG)
+# ============================================
+@app.post("/api/v1/knowledge/upload")
+async def upload_knowledge(
+    file: UploadFile = File(...), 
+    user: CurrentUser = Depends(get_current_user)
+):
+    """Upload a document to the Knowledge Base (RAG)."""
+    from src.core.knowledge_base import knowledge_base
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Read raw bytes (supports PDF, DOCX, etc.)
+        content_bytes = await file.read()
+        
+        # Add to KB
+        file_id = await knowledge_base.add_document(
+            filename=file.filename,
+            content=content_bytes,
+            mime_type=file.content_type,
+            user_id=user.id
+        )
+        return {"status": "success", "file_id": file_id}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+
+
+@app.post("/api/v1/knowledge/search")
+async def search_knowledge(
+    request: SearchRequest,
+    user: CurrentUser = Depends(get_current_user)
+):
+    """Search the Knowledge Base."""
+    from src.core.knowledge_base import knowledge_base
+    results = await knowledge_base.search(request.query, limit=request.limit)
+    return {"status": "success", "data": results}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

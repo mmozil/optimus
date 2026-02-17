@@ -195,6 +195,24 @@ class MCPToolRegistry:
             handler=self._tool_research_fetch_url,
         ))
 
+        # --- Knowledge Base (RAG) Tools ---
+        from src.skills.knowledge_tool import search_knowledge_base
+        self.register(MCPTool(
+            name="search_knowledge_base",
+            description="Search the company knowledge base / long-term memory for documents and information.",
+            category="research",
+            handler=search_knowledge_base,
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The question or topic to search for."},
+                    "limit": {"type": "integer", "description": "Max results (default 5)."}
+                },
+                "required": ["query"]
+            },
+            agent_levels=["lead", "specialist"]
+        ))
+        
         # --- Memory Tools ---
         self.register(MCPTool(
             name="memory_search",
