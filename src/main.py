@@ -45,13 +45,18 @@ app.add_middleware(
 
 
 # ============================================
-# Root Redirect
+# Static Files & UI
 # ============================================
-@app.get("/", include_in_schema=False)
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Mount static directory
+app.mount("/static", StaticFiles(directory="src/static"), name="static")
+
+@app.get("/")
 async def root():
-    """Redirect to docs."""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/docs")
+    """Serve the Chat UI."""
+    return FileResponse("src/static/index.html")
 
 
 # ============================================
