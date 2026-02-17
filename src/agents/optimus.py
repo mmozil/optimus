@@ -29,8 +29,9 @@ class OptimusAgent(BaseAgent):
     async def process(self, message: str, context: dict | None = None) -> dict:
         """Process with context enrichment (Memory + Time + Persona + Sentiment)."""
         # 1. Base Context (Memory + Ambient)
-        # Bootstrapped context (SOUL + MEMORY) - loaded in Gateway
-        bootstrap_prompt = session_bootstrap.build_prompt()
+        # Bootstrapped context (SOUL + MEMORY) - loaded in Gateway, retrieved from cache
+        boot_ctx = await session_bootstrap.load_context(self.name)
+        bootstrap_prompt = boot_ctx.build_prompt()
 
         # Ambient context (Time, Day, Business Hours)
         ctx = context_awareness.build_context()
