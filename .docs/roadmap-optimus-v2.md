@@ -98,7 +98,7 @@
 | 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
 | 26 | `CronScheduler` | main.py lifespan | [x] |
-| 27 | `ContextAwareness` | Session bootstrap + greeting | [ ] |
+| 27 | `ContextAwareness` | Session bootstrap + greeting | [x] |
 | 28 | `ConfirmationService` | ReAct human-in-the-loop | [ ] |
 
 **Formato de entrega por módulo:**
@@ -191,6 +191,52 @@ Due jobs execute → emit CRON_TRIGGERED events
 **Pendente:**
 - [ ] Criar cron jobs reais em produção
 - [ ] Validar que loop está rodando (logs do servidor)
+
+---
+
+### ✅ #27 ContextAwareness — CONCLUÍDO
+
+**Call Path:**
+```
+Gateway.route_message()
+    ↓
+session_bootstrap.load_context(agent_name) [gateway.py:167]
+    ↓
+context_awareness.build_context() [session_bootstrap.py:150]
+    ↓
+context_awareness.enrich_with_activity() [session_bootstrap.py:151]
+    ↓
+Injected into system prompt → Agent vê contexto rico
+```
+
+**Arquivos modificados:**
+- `src/memory/session_bootstrap.py` linha 35 (BootstrapContext dataclass)
+- `src/memory/session_bootstrap.py` linhas 150-152 (load_context)
+- `src/memory/session_bootstrap.py` linha 47 (build_prompt - ambient first)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestContextAwarenessIntegration`
+- Testa: ambient context carregado, greeting presente, contexto no prompt
+- **3/3 testes passando** ✅
+
+**Funcionalidade injetada no prompt:**
+```
+## Ambient Context
+- **Hora local:** 14:30 (terça-feira)
+- **Horário comercial:** Sim
+- **Sensibilidade:** normal
+- **Ontem:** 5 atividades registradas
+- **Atividades hoje:** 2
+```
+
+**Impacto para o usuário:**
+- Agent responde com awareness de contexto: "Boa tarde! Terça-feira — bom dia para focar em implementação."
+- Sensibilidade ajustada (relaxed weekend vs normal workday)
+- Referências ao trabalho de ontem
+
+**Pendente:**
+- [ ] Validar greetings contextuais em produção
+- [ ] Testar em diferentes fusos horários
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado

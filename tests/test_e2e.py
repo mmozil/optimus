@@ -481,3 +481,69 @@ class TestCronSchedulerIntegration:
 
         # Cleanup
         cron_scheduler.remove(job_id)
+
+
+# ============================================
+# FASE 0 #27: ContextAwareness Integration
+# ============================================
+class TestContextAwarenessIntegration:
+    """
+    FASE 0 Module #27: ContextAwareness integration test.
+
+    This test FAILS if context_awareness is not called in session_bootstrap.load_context().
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    @pytest.mark.asyncio
+    async def test_ambient_context_in_bootstrap(self):
+        """
+        Test that ambient context is loaded during session bootstrap.
+
+        If context_awareness.build_context() is NOT called, the bootstrap
+        will not include timezone, greeting, or day-of-week context.
+        """
+        from src.memory.session_bootstrap import session_bootstrap
+
+        # Load bootstrap context
+        ctx = await session_bootstrap.load_context("optimus", force=True)
+
+        # CRITICAL: Must include ambient context
+        assert ctx.ambient_context, \
+            "Ambient context is EMPTY! session_bootstrap did not call context_awareness.build_context()"
+
+        # Verify it contains expected fields
+        assert "Ambient Context" in ctx.ambient_context, \
+            "Ambient context missing header"
+        assert "Hora local" in ctx.ambient_context, \
+            "Ambient context missing time info"
+
+    @pytest.mark.asyncio
+    async def test_ambient_context_includes_greeting(self):
+        """Test that ambient context includes contextual greeting."""
+        from src.core.context_awareness import context_awareness
+
+        # Build context
+        ctx = context_awareness.build_context(timezone_offset=-3)
+
+        # Verify greeting is set
+        assert ctx.greeting in ["Bom dia", "Boa tarde", "Boa noite"], \
+            f"Invalid greeting: {ctx.greeting}"
+
+        # Verify day-of-week is set
+        assert ctx.day_of_week, "Day of week not set"
+
+    @pytest.mark.asyncio
+    async def test_ambient_context_in_prompt(self):
+        """Test that ambient context is injected into final prompt."""
+        from src.memory.session_bootstrap import session_bootstrap
+
+        ctx = await session_bootstrap.load_context("optimus", force=True)
+        prompt = ctx.build_prompt()
+
+        # CRITICAL: Prompt must include ambient context
+        assert "Ambient Context" in prompt, \
+            "Ambient context NOT in final prompt! Integration failed."
+
+        # Verify prompt includes time info
+        assert "Hora local" in prompt or "local time" in prompt.lower(), \
+            "Prompt missing time information"

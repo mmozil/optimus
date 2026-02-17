@@ -31,6 +31,7 @@ class BootstrapContext:
     daily_today: str = ""
     daily_yesterday: str = ""
     user_prefs: str = ""
+    ambient_context: str = ""  # FASE 0 #27: ContextAwareness integration
     loaded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
@@ -40,6 +41,10 @@ class BootstrapContext:
     def build_prompt(self) -> str:
         """Build the bootstrap context block for injection into system prompt."""
         sections: list[str] = []
+
+        # FASE 0 #27: Ambient context FIRST (most important)
+        if self.ambient_context:
+            sections.append(self.ambient_context)
 
         if self.soul:
             sections.append(f"## Identity\n{self.soul}")
@@ -141,13 +146,21 @@ class SessionBootstrap:
             ctx.user_prefs = USER_FILE.read_text(encoding="utf-8")
             self._file_hashes[str(USER_FILE)] = self._hash_file(USER_FILE)
 
+        # FASE 0 #27: Build ambient context (timezone, day, greeting)
+        from src.core.context_awareness import context_awareness
+
+        ambient = context_awareness.build_context(timezone_offset=-3)  # BRT
+        ambient = await context_awareness.enrich_with_activity(ambient, agent_name)
+        ctx.ambient_context = context_awareness.build_context_prompt(ambient)
+
         # Cache the result
         self._cache[agent_name] = ctx
 
         logger.info(
             f"Bootstrap loaded for {agent_name}: "
             f"soul={len(ctx.soul)}c, memory={len(ctx.memory)}c, "
-            f"today={len(ctx.daily_today)}c, yesterday={len(ctx.daily_yesterday)}c"
+            f"today={len(ctx.daily_today)}c, yesterday={len(ctx.daily_yesterday)}c, "
+            f"ambient={len(ctx.ambient_context)}c"
         )
 
         return ctx
