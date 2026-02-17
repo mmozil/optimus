@@ -22,7 +22,18 @@ from src.infra.auth_middleware import (
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     from src.infra.tracing import init_tracing
+    from src.infra.migrate_all import run_migrations
+    
     init_tracing()
+    
+    # Run DB migrations
+    try:
+        await run_migrations()
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        # We continue even if migration fails, to allow debugging
+        pass
+        
     await gateway.initialize()
     yield
 
