@@ -532,7 +532,6 @@
                 if (data.data && data.data.content) {
                     const responseText = data.data.content;
                     addMessage(responseText, false);
-                    speak(responseText); // Edge TTS
                 } else {
                     addMessage("Erro: Resposta vazia da API.", false);
                 }
@@ -601,7 +600,7 @@
                                 chatInput.style.height = 'auto';
                                 chatInput.style.height = chatInput.scrollHeight + 'px';
                                 sendBtn.removeAttribute('disabled');
-                                sendMessage();
+                                chatInput.focus();
                             }
                         }
                     } catch (e) {
