@@ -41,7 +41,20 @@ async def run_migrations():
                             sql_content = f.read()
                         
                         logger.info(f"Applying migration: {filename}...")
-                        await session.execute(text(sql_content))
+                        
+                        # Split statements by semicolon
+                        # TODO: This is a simple split. Complex PL/pgSQL might need more robust parsing.
+                        statements = [s.strip() for s in sql_content.split(";") if s.strip()]
+                        
+                        for stmt in statements:
+                            # Skip comments-only statements
+                            if stmt.startswith("--"):
+                                lines = stmt.split("\n")
+                                stmt = "\n".join([l for l in lines if not l.strip().startswith("--")])
+                            
+                            if stmt.strip():
+                                await session.execute(text(stmt))
+                        
                         await session.commit()
                         logger.info(f"✅ Migration {filename} applied successfully.")
                         
