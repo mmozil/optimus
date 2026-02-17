@@ -48,6 +48,10 @@ logger = logging.getLogger(__name__)
 # Suppress litellm's verbose logging unless DEBUG
 if LITELLM_AVAILABLE:
     litellm.suppress_debug_info = not settings.DEBUG
+    if not settings.DEBUG:
+        import logging as _logging
+        _logging.getLogger("LiteLLM").setLevel(_logging.ERROR)
+        _logging.getLogger("litellm").setLevel(_logging.ERROR)
 
 # ============================================
 # Default Model Configuration (Fallbacks)
