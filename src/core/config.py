@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours — enough for a full workday
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # === Search APIs ===
+    TAVILY_API_KEY: str = ""  # https://tavily.com — best for real-time web search
+
     # === Sentry ===
     SENTRY_DSN: str = ""
 

@@ -503,8 +503,68 @@ class MCPToolRegistry:
         return await asyncio.to_thread(_list)
 
     async def _tool_research_search(self, query: str, max_results: int = 5) -> str:
-        """Web search stub — integrate with search API."""
-        return f"[Search stub] Query: '{query}' — integrate with Tavily/SerpAPI for real results."
+        """Web search — uses Tavily if configured, otherwise DuckDuckGo Instant Answer."""
+        from src.core.config import settings
+        import httpx
+
+        # ── Tavily (preferred, requires TAVILY_API_KEY) ────────────────
+        if settings.TAVILY_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(
+                        "https://api.tavily.com/search",
+                        json={
+                            "api_key": settings.TAVILY_API_KEY,
+                            "query": query,
+                            "max_results": max_results,
+                            "search_depth": "basic",
+                            "include_answer": True,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                lines = []
+                if data.get("answer"):
+                    lines.append(f"**Resposta:** {data['answer']}\n")
+                for r in data.get("results", [])[:max_results]:
+                    lines.append(f"- **{r.get('title', '')}**: {r.get('content', '')[:200]}")
+                    lines.append(f"  ({r.get('url', '')})")
+                return "\n".join(lines) if lines else "Nenhum resultado encontrado."
+            except Exception as e:
+                logger.warning(f"Tavily search failed: {e} — falling back to DuckDuckGo")
+
+        # ── DuckDuckGo Instant Answer (free fallback) ──────────────────
+        try:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+                resp = await client.get(
+                    "https://api.duckduckgo.com/",
+                    params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
+                    headers={"User-Agent": "AgentOptimus/1.0"},
+                )
+                data = resp.json()
+
+            lines = []
+            if data.get("AbstractText"):
+                lines.append(f"**Resumo:** {data['AbstractText']}")
+                if data.get("AbstractURL"):
+                    lines.append(f"Fonte: {data['AbstractURL']}")
+            for topic in data.get("RelatedTopics", [])[:3]:
+                if isinstance(topic, dict) and topic.get("Text"):
+                    lines.append(f"- {topic['Text'][:200]}")
+
+            if lines:
+                return "\n".join(lines)
+            return (
+                f"🔍 Busca por '{query}': DuckDuckGo não retornou resultado instantâneo. "
+                f"Configure TAVILY_API_KEY para pesquisa web completa."
+            )
+        except Exception as e:
+            logger.error(f"DuckDuckGo search failed: {e}")
+            return (
+                f"❌ Busca por '{query}' falhou ({e}). "
+                f"Configure TAVILY_API_KEY para habilitar pesquisa web em tempo real."
+            )
 
     async def _tool_research_fetch_url(self, url: str) -> str:
         """Fetch URL content."""
