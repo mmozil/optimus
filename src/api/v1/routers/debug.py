@@ -7,7 +7,7 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/fix-db")
+@router.get("/fix-db")
 async def trigger_migrations():
     """Manually trigger database migrations."""
     try:
