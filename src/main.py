@@ -45,6 +45,16 @@ app.add_middleware(
 
 
 # ============================================
+# Root Redirect
+# ============================================
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect to docs."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
+
+
+# ============================================
 # Health & Status (público)
 # ============================================
 @app.get("/health")
