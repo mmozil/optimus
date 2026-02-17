@@ -1195,4 +1195,218 @@ Core funcional em produção. Fase 22 em andamento (hardening e features reais).
 > [!IMPORTANT]
 > **Agent Optimus = Sistema Operacional de AI Agents**
 > Uma plataforma onde agents se conectam a **qualquer API** via MCP, operam em **qualquer setor**, aprendem entre sessões, e colaboram entre si.
-> **Sem limites de setor. Sem limites de escala. Sem 429.**
+
+### Fase 23: Authentication UI (Semana 23) ✅ CONCLUÍDA
+> Interface visual de Login e Registro para persistência de usuários SaaS.
+
+- [x] **Auth Pages** (HTML/Tailwind)
+  - [x] `login.html` — Email/Password + "Esqueci a senha"
+  - [x] `register.html` — Nome, Email, Senha, Confirmação
+  - [x] Integração com `/api/v1/auth/login` e `/api/v1/auth/register`
+- [x] **Session Logic** (JS)
+  - [x] `auth.js` — Gerenciamento de JWT (localStorage)
+  - [x] Redirect automático (Guest → Login → Dashboard)
+  - [x] Logout flow
+- [ ] **User Profile**
+  - [ ] Avatar upload (Gravatar fallback)
+  - [ ] Alteração de senha
+
+---
+
+## ⚠️ REGRA DE OURO — CHECKLIST OBRIGATÓRIO ANTES DE QUALQUER IMPLEMENTAÇÃO
+
+> **NÃO pode desenvolver sem validar isso primeiro.**
+> **Se algum checkpoint falhar, a feature NÃO é implementada até passar.**
+> **LEIA ISSO ANTES DE QUALQUER PULL REQUEST.**
+
+### Antes de Escrever Uma Linha de Código
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ CHECKLIST: Essa feature será realmente CHAMADA?             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ 1️⃣  CALL PATH DOCUMENTADO                                   │
+│    ❓ Qual função/classe vai chamar esse código?            │
+│    ❓ Em qual arquivo (main.py / gateway.py / base.py)?     │
+│    ❓ Em que condição? (startup / per-request / cron?)      │
+│    → Se não conseguir responder: NÃO IMPLEMENTE             │
+│                                                             │
+│ 2️⃣  TESTE QUE FALHA SEM A FEATURE                           │
+│    ❓ Criar teste que quebra se o código não for chamado?   │
+│    ❓ O teste será executado no CI?                         │
+│    ❓ Test falha se remover a chamada? (sanity check)       │
+│    → Se o teste passa mesmo com código morto: NÃO SERVE     │
+│                                                             │
+│ 3️⃣  FLUXO END-TO-END TESTADO EM PRODUÇÃO                    │
+│    ❓ Usuário toca em algo? (botão, comando, requisição)    │
+│    ❓ Feature é REALMENTE chamada pelo fluxo?               │
+│    ❓ Testado em produção (optimus.tier.finance)?           │
+│    ❓ Não falhou? Então está pronto                         │
+│    → Se não testou em prod: NÃO ESTÁ PRONTO                │
+│                                                             │
+│ 4️⃣  INTEGRAÇÃO NO ROADMAP DOCUMENTADA                       │
+│    ❓ Feature está listada em uma FASE?                     │
+│    ❓ Call path está documentado nesta seção?               │
+│    ❓ Status marcado como [x] completo ou [] pendente?      │
+│    → Sem isso: é código perdido                             │
+│                                                             │
+│ 5️⃣  NENHUM IMPORT/CÓDIGO MORTO SOBREVIVE                    │
+│    ❓ Rodar: grep -r "import nome_modulo" src/ | grep -v ".pyc"
+│    ❓ Cada import tem pelo menos 1 call site real?          │
+│    ❓ Ou será que apenas herança/base class (ok)?           │
+│    → Se importado mas NUNCA chamado: DELETE OU INTEGRAR     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### ❌ Exemplo: Feature REJEITADA
+
+```python
+# src/engine/tot_engine.py (REJEITADO)
+class ToTEngine:
+    def think(self, question):
+        # 500 linhas de código sofisticado
+        return hypotheses
+
+# PROBLEMA: Ninguém chama tot_engine.think()
+# - Não está em BaseAgent.process() ❌
+# - Não está em gateway.py ❌
+# - Não está em react_loop.py ❌
+# - Nenhum teste valida que é chamado ❌
+# - Nenhum usuário real vê efeito ❌
+# = CÓDIGO MORTO = DELETE
+```
+
+### ✅ Exemplo: Feature APROVADA
+
+```python
+# src/core/gateway.py (linha 144-145) — APROVADO
+sentiment = await emotional_adapter.analyze(message)
+if sentiment.is_frustrated:
+    system_prompt += " [Tone: Direct & Solution-Focused]"
+
+# APROVADO porque:
+# ✅ 1. Call path: gateway.py linha 144 → emotional_adapter.analyze()
+# ✅ 2. Teste: test_gateway.py::test_emotional_adapter_called()
+# ✅ 3. Teste falha se remover a linha ✅
+# ✅ 4. E2E: user frustrado → sentiment detectado → tom muda → funciona
+# ✅ 5. Roadmap: Fase 22 "Emotional Adapter" [x] completo
+# ✅ 6. Usado toda vez que usuário envia mensagem
+# ✅ 7. Nada de código morto
+```
+
+### Consequence of Violation
+
+Se código for desenvolvido **violando essa regra**:
+- 🗑️ **DELETE** do codebase na próxima review
+- 🚫 **Não aprova** PR sem call path claro
+- 📊 **CI futura**: lint que falha se module importado mas nunca chamado
+
+---
+
+## DIAGNÓSTICO REAL DE PRODUÇÃO (Fevereiro 2026)
+
+> **Avaliação honesta.** Código auditado linha a linha.
+> Separação entre o que FUNCIONA em produção vs o que é código morto.
+
+---
+
+### O que FUNCIONA de verdade (testado em prod)
+
+- [x] Chat básico — pergunta → resposta via Gemini (ReAct loop + fallback `_process_simple`)
+- [x] Login/Registro JWT — `login.html`, `register.html`, `auth.js`, middleware JWT
+- [x] Histórico de mensagens — últimas 30 carregadas no page load (tabela `conversations`)
+- [x] STT (Speech-to-Text) — Mic → MediaRecorder → Groq Whisper → transcrição
+- [x] TTS (Text-to-Speech) — Edge TTS (`pt-BR-FranciscaNeural`) via backend, on-demand
+- [x] Migrations SQL — rodam no boot com parser de dollar-quoted strings
+- [x] Multi-model failover — chains: default, complex, economy (Gemini Flash → Pro → GPT-4o)
+- [x] Session Bootstrap — SOUL.md + MEMORY.md carregados no system prompt
+- [x] Tool Calling nativo — Gemini function calling (db_query, run_python, etc.)
+- [x] Emotional Adapter — análise de sentimento injetada no prompt via gateway
+- [x] Planning Engine — decomposição de tarefas complexas via gateway
+- [x] Auto-Journal — extração de aprendizados pós-resposta no Optimus
+- [x] Persona Selector — seleção dinâmica de persona por intent no Optimus
+- [x] Agent Factory — instanciação de agents com registry
+- [x] Session Manager — histórico de conversa + add_message
+- [x] Cost Tracker — tracking assíncrono de uso (fire-and-forget)
+- [x] UI redesenhada — Chat "Como posso ajudar?", seletor de agente, mic inline
+- [x] Deploy CI/CD — Push → Coolify → Docker → produção automática
+
+---
+
+### O que EXISTE como código mas NÃO funciona / NÃO é chamado
+
+> **54% dos módulos (28 de 52) estão órfãos — nunca chamados no fluxo real.**
+
+#### ENGINE (7 de 11 não usados = 73% morto)
+
+- [ ] `tot_engine.py` / `tot_service.py` — Tree-of-Thought (3 estratégias + meta-avaliação) — **nunca chamado por nenhum agent**
+- [ ] `uncertainty.py` — UncertaintyQuantifier (calibração via PGvector) — **nunca chamado**
+- [ ] `intent_classifier.py` — Classificação de intent (8 tipos) — **substituído por planning_engine, mas não removido**
+- [ ] `intent_predictor.py` — Predição de padrões comportamentais — **stub Jarvis Phase 11, nunca chamado**
+- [ ] `autonomous_executor.py` — Execução autônoma de tarefas confiantes — **nunca chamado**
+- [ ] `proactive_researcher.py` — Pesquisa proativa (RSS, GitHub) — **stub sem API real, nunca chamado**
+- [ ] `reflection_engine.py` — Análise semanal de interações — **gera markdown que ninguém lê**
+
+#### MEMORY (3 de 8 não usados = 38% morto)
+
+- [ ] `working_memory.py` — WORKING.md manager (scratchpad por agent) — **nunca integrado no session context**
+- [ ] `rag.py` — RAG Pipeline (chunking + similarity + augment_prompt) — **nunca chamado; knowledge_tool existe separado**
+- [ ] `collective_intelligence.py` — Cross-agent knowledge sharing — **nunca chamado**
+
+#### CHANNELS (6 de 7 não usados = 86% morto)
+
+- [ ] `telegram.py` — TelegramChannel (python-telegram-bot) — **código existe, zero config, não inicializado**
+- [ ] `whatsapp.py` — WhatsAppChannel (Evolution API) — **código existe, sem Evolution API deployada**
+- [ ] `slack.py` — SlackChannel (Bolt) — **código existe, zero config**
+- [ ] `webchat.py` — WebChatChannel (REST+SSE) — **código existe, não chamado (UI usa API direto)**
+- [ ] `chat_commands.py` — 9 comandos (`/status`, `/think`, `/agents`, etc.) — **implementados, não conectados ao endpoint `/api/v1/chat`**
+- [ ] `voice_interface.py` — VoiceInterface (wake word + providers) — **todos providers são stubs; STT/TTS real é pelo audio_service.py**
+
+#### SKILLS (3 de 6 não usados = 50% morto)
+
+- [ ] `mcp_plugin.py` — Loader dinâmico de MCP externo — **nunca chamado**
+- [ ] `skills_discovery.py` — Busca semântica de skills (TF-IDF) — **nunca chamado**
+- [ ] `tools_manifest.py` — Gerador de TOOLS.md — **nunca chamado**
+
+#### COLLABORATION (2 de 5 não usados, 3 só via chat_commands = 100% fora do fluxo principal)
+
+- [ ] `thread_manager.py` — Comentários em tasks + subscriptions — **nunca chamado**
+- [ ] `notification_service.py` — Fila de notificações — **nunca chamado**
+- [ ] `task_manager.py` — CRUD de tasks — **só chamado pelo chat_commands (que também não é chamado)**
+- [ ] `activity_feed.py` — Log de eventos — **só chamado pelo standup_generator (que não é chamado)**
+- [ ] `standup_generator.py` — Daily standup — **só chamado pelo chat_commands (que não é chamado)**
+
+#### CORE/INFRA (6 de 12 não usados = 50% morto)
+
+- [ ] `orchestrator.py` — ADK-style Sequential/Parallel/Loop — **nunca chamado**
+- [ ] `a2a_protocol.py` — Agent-to-Agent discovery + messaging — **nunca chamado**
+- [ ] `cron_scheduler.py` — Scheduler persistente (JSON) — **framework existe, nenhum job registrado**
+- [ ] `cron_jobs_native.py` — Jobs pré-definidos (morning briefing, alerts) — **nunca chamado**
+- [ ] `context_awareness.py` — Fuso horário + business hours + greeting — **nunca chamado**
+- [ ] `confirmation_service.py` — Human-in-the-loop confirmations — **nunca chamado**
+- [ ] `performance.py` — SessionPruner + ContextCompactor + QueryCache — **nunca chamado**
+- [ ] `security.py` — Permission matrix (8 perms × 3 levels) — **importado no gateway mas nunca enforcement real**
+
+---
+
+### Bugs Corrigidos em Produção (Fase 22)
+
+- [x] `uuid_generate_v4()` → `gen_random_uuid()` na migration 011
+- [x] Import errado `async_session` → `get_async_session`
+- [x] `session_bootstrap.load_context()` sem `agent_name`
+- [x] `session_bootstrap.build_prompt()` chamado no objeto errado
+- [x] `auto_journal.process_interaction()` → `extract_and_save()`
+- [x] Migração `google.generativeai` → `google.genai`
+- [x] ReAct loop: fallback para `_process_simple`
+- [x] `search_knowledge_base` MCPTool: formato de parâmetros errado
+- [x] Chain `complex`: `claude-sonnet` → `gemini-2.5-flash`
+- [x] LiteLLM pricing warnings suprimidos
+- [x] Frontend: `data.data.response` → `data.data.content`
+- [x] `sse-starlette` adicionado ao requirements.txt
+- [x] Auth 404: rotas `/login.html` e `/register.html`
+- [x] Auth 422: `auth.js` form-urlencoded → JSON, `username` → `email`
+- [x] SQL parser: `migrate_all.py` dollar-quoted strings
+- [x] Mic: MediaRecorder sem timeslice + send desabilitado durante gravação
+
