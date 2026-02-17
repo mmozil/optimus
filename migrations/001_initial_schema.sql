@@ -44,9 +44,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 -- Add FK from agents to tasks (circular dependency resolved)
-ALTER TABLE agents
-    ADD CONSTRAINT fk_agents_current_task
-    FOREIGN KEY (current_task_id) REFERENCES tasks(id) ON DELETE SET NULL;
+-- ALTER TABLE agents
+--    ADD CONSTRAINT fk_agents_current_task
+--    FOREIGN KEY (current_task_id) REFERENCES tasks(id) ON DELETE SET NULL;
 
 -- ============================================
 -- 3. MESSAGES (comments on tasks)
