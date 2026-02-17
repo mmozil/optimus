@@ -69,6 +69,16 @@ async def root():
     """Serve the Chat UI."""
     return FileResponse("src/static/index.html")
 
+@app.get("/login.html")
+async def login_page():
+    """Serve the Login page."""
+    return FileResponse("src/static/login.html")
+
+@app.get("/register.html")
+async def register_page():
+    """Serve the Register page."""
+    return FileResponse("src/static/register.html")
+
 
 # ============================================
 # Health & Status (público)

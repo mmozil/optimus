@@ -34,17 +34,19 @@ const auth = {
         try {
             const response = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ username: email, password: password })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'Login failed');
+                throw new Error(errorData.detail || 'Credenciais inválidas.');
             }
 
             const data = await response.json();
-            localStorage.setItem('optimus_token', data.access_token);
+            // API returns { status, data: { access_token, refresh_token, user } }
+            localStorage.setItem('optimus_token', data.data.access_token);
+            localStorage.setItem('optimus_user', JSON.stringify(data.data.user));
             return { success: true };
         } catch (error) {
             return { success: false, message: error.message };
