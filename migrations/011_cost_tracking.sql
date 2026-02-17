@@ -3,7 +3,7 @@
 
 -- 1. Cost Entries: individual request costs
 CREATE TABLE IF NOT EXISTS cost_entries (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
     agent_name VARCHAR(50) NOT NULL,
     model VARCHAR(50) NOT NULL,
