@@ -233,6 +233,41 @@ class MCPToolRegistry:
             handler=self._tool_memory_learn,
         ))
 
+        # --- Task Management Tools ---
+        self.register(MCPTool(
+            name="task_create",
+            description="Create a new task in the task manager. Use this when the user asks you to create, add or register a task.",
+            category="tasks",
+            parameters={
+                "title": {"type": "string", "required": True, "description": "Task title"},
+                "description": {"type": "string", "description": "Task details or context"},
+                "priority": {"type": "string", "description": "Priority: low | medium | high | urgent (default: medium)"},
+            },
+            handler=self._tool_task_create,
+        ))
+
+        self.register(MCPTool(
+            name="task_list",
+            description="List tasks from the task manager. Optionally filter by status.",
+            category="tasks",
+            parameters={
+                "status": {"type": "string", "description": "Filter by status: inbox | assigned | in_progress | review | done | blocked"},
+                "limit": {"type": "integer", "description": "Max tasks to return (default: 10)"},
+            },
+            handler=self._tool_task_list,
+        ))
+
+        self.register(MCPTool(
+            name="task_update",
+            description="Update the status of a task. Use task_list first to get the task ID.",
+            category="tasks",
+            parameters={
+                "task_id": {"type": "string", "required": True, "description": "Task UUID from task_list"},
+                "status": {"type": "string", "required": True, "description": "New status: inbox | assigned | in_progress | review | done | blocked"},
+            },
+            handler=self._tool_task_update,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -250,6 +285,78 @@ class MCPToolRegistry:
     # ============================================
     # Tool Handlers
     # ============================================
+
+    async def _tool_task_create(self, title: str, description: str = "", priority: str = "medium") -> str:
+        """Create a task in TaskManager."""
+        from src.collaboration.task_manager import task_manager, TaskCreate, TaskPriority
+
+        priority_map = {
+            "low": TaskPriority.LOW,
+            "medium": TaskPriority.MEDIUM,
+            "high": TaskPriority.HIGH,
+            "urgent": TaskPriority.URGENT,
+        }
+        task = await task_manager.create(TaskCreate(
+            title=title,
+            description=description,
+            priority=priority_map.get(priority.lower(), TaskPriority.MEDIUM),
+            created_by="optimus",
+        ))
+        return f"✅ Task criada com sucesso!\n- **Título:** {task.title}\n- **ID:** `{str(task.id)[:8]}`\n- **Prioridade:** {task.priority.value}\n- **Status:** {task.status.value}"
+
+    async def _tool_task_list(self, status: str = "", limit: int = 10) -> str:
+        """List tasks from TaskManager."""
+        from src.collaboration.task_manager import task_manager, TaskStatus
+
+        status_filter = None
+        if status:
+            try:
+                status_filter = TaskStatus(status.lower())
+            except ValueError:
+                return f"❌ Status inválido: '{status}'. Use: inbox, assigned, in_progress, review, done, blocked"
+
+        tasks = await task_manager.list_tasks(status=status_filter)
+        if not tasks:
+            return "📋 Nenhuma task encontrada."
+
+        status_emoji = {
+            "inbox": "📥", "assigned": "📌", "in_progress": "🔄",
+            "review": "👀", "done": "✅", "blocked": "🚧",
+        }
+        lines = [f"📋 **{len(tasks)} task(s) encontrada(s):**\n"]
+        for t in tasks[:limit]:
+            emoji = status_emoji.get(t.status.value, "❓")
+            lines.append(f"{emoji} **{t.title}**")
+            lines.append(f"   ID: `{str(t.id)[:8]}` | Status: {t.status.value} | Prioridade: {t.priority.value}")
+        return "\n".join(lines)
+
+    async def _tool_task_update(self, task_id: str, status: str) -> str:
+        """Update task status in TaskManager."""
+        from src.collaboration.task_manager import task_manager, TaskStatus
+        from uuid import UUID
+
+        try:
+            task_uuid = UUID(task_id) if len(task_id) == 36 else None
+            if not task_uuid:
+                # Try to find by partial ID
+                tasks = await task_manager.list_tasks()
+                matches = [t for t in tasks if str(t.id).startswith(task_id)]
+                if not matches:
+                    return f"❌ Task não encontrada com ID: `{task_id}`"
+                task_uuid = matches[0].id
+        except ValueError:
+            return f"❌ ID inválido: `{task_id}`"
+
+        try:
+            new_status = TaskStatus(status.lower())
+        except ValueError:
+            return f"❌ Status inválido: '{status}'. Use: inbox, assigned, in_progress, review, done, blocked"
+
+        task = await task_manager.transition(task_uuid, new_status, agent_name="optimus")
+        if not task:
+            return f"❌ Transição inválida. Verifique o status atual da task."
+
+        return f"✅ Task atualizada!\n- **{task.title}**\n- Novo status: **{task.status.value}**"
 
     async def _tool_code_execute(self, language: str, code: str) -> str:
         """Execute code in sandbox."""
