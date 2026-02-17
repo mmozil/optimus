@@ -118,11 +118,12 @@ class Gateway:
     ) -> dict:
         """
         Route a message to the appropriate agent.
-        
+
         Enriched with:
         - Session Bootstrap (SOUL + MEMORY)
         - Emotional Analysis (Tone Adaptation)
         - File Attachments (Multimodal)
+        - Chat Commands (slash commands)
         """
         await self.initialize()
 
@@ -133,6 +134,31 @@ class Gateway:
             "target_agent": target_agent or "auto",
             "message_length": len(message),
         }) as span:
+
+            # FASE 0 #17: Chat Commands Integration
+            # Check for slash commands BEFORE routing to agents
+            from src.channels.chat_commands import chat_commands
+            from src.channels.base_channel import IncomingMessage, ChannelType
+
+            if chat_commands.is_command(message):
+                # Create IncomingMessage for command handler
+                cmd_message = IncomingMessage(
+                    channel=ChannelType.WEBCHAT,
+                    text=message,
+                    user_id=user_id,
+                    user_name=user_id,  # TODO: fetch real username from DB
+                    chat_id=user_id,
+                )
+
+                cmd_result = await chat_commands.execute(cmd_message)
+                if cmd_result:
+                    trace_event("chat_command_executed", {"command": message.split()[0]})
+                    return {
+                        "content": cmd_result.text,
+                        "agent": "chat_commands",
+                        "model": "none",
+                        "is_command": True,
+                    }
 
             agent_name = target_agent or "optimus"
 
@@ -230,6 +256,30 @@ class Gateway:
     ):
         """Streaming version of route_message."""
         await self.initialize()
+
+        # FASE 0 #17: Chat Commands Integration (Streaming)
+        from src.channels.chat_commands import chat_commands
+        from src.channels.base_channel import IncomingMessage, ChannelType
+
+        if chat_commands.is_command(message):
+            cmd_message = IncomingMessage(
+                channel=ChannelType.WEBCHAT,
+                text=message,
+                user_id=user_id,
+                user_name=user_id,
+                chat_id=user_id,
+            )
+            cmd_result = await chat_commands.execute(cmd_message)
+            if cmd_result:
+                # Return command result as single chunk
+                yield {
+                    "type": "token",
+                    "content": cmd_result.text,
+                    "agent": "chat_commands",
+                    "model": "none",
+                    "is_command": True,
+                }
+                return
 
         agent_name = target_agent or "optimus"
 

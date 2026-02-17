@@ -319,3 +319,72 @@ class TestE2EFullPipeline:
             data={"sender": msg.sender_id, "text": msg.text},
         ))
         assert len(events_log) == 1
+
+
+# ============================================
+# FASE 0 #17: Gateway → Chat Commands Integration
+# ============================================
+class TestGatewayChatCommandsIntegration:
+    """
+    FASE 0 Module #17: ChatCommands integration test.
+
+    This test FAILS if chat_commands check is removed from gateway.route_message().
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    @pytest.mark.asyncio
+    async def test_slash_command_intercepted_before_agent(self):
+        """
+        Test that slash commands are handled BEFORE routing to agents.
+
+        Flow:
+        User sends "/help" → Gateway → ChatCommands → Response (no agent)
+
+        If this test passes but feature is removed, the gateway would route
+        "/help" to the LLM agent instead of executing the command.
+        """
+        from src.core.gateway import gateway
+
+        # Send /help command
+        result = await gateway.route_message(
+            message="/help",
+            user_id="test_user",
+        )
+
+        # CRITICAL: Must be handled by chat_commands, NOT by agent
+        assert result["agent"] == "chat_commands", \
+            "Command was NOT intercepted! Gateway routed to agent instead of chat_commands."
+
+        assert result["is_command"] is True
+        assert "Comandos Disponíveis" in result["content"] or "/help" in result["content"].lower()
+
+    @pytest.mark.asyncio
+    async def test_normal_message_not_intercepted(self):
+        """Test that normal messages still go to agents."""
+        from src.core.gateway import gateway
+
+        result = await gateway.route_message(
+            message="Hello, how are you?",
+            user_id="test_user",
+        )
+
+        # Should NOT be handled by chat_commands
+        assert result["agent"] != "chat_commands"
+        assert result.get("is_command") is not True
+
+    @pytest.mark.asyncio
+    async def test_all_commands_work_via_gateway(self):
+        """Test that all slash commands are accessible via Gateway."""
+        from src.core.gateway import gateway
+
+        commands_to_test = ["/help", "/status", "/agents"]
+
+        for cmd in commands_to_test:
+            result = await gateway.route_message(message=cmd, user_id="test_user")
+
+            assert result["agent"] == "chat_commands", \
+                f"Command {cmd} was not intercepted by chat_commands"
+
+            assert result["is_command"] is True
+            assert isinstance(result["content"], str)
+            assert len(result["content"]) > 0

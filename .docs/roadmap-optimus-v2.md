@@ -88,7 +88,7 @@
 | 14 | `WhatsAppChannel` | main.py lifespan (se WHATSAPP_TOKEN) | [ ] |
 | 15 | `SlackChannel` | main.py lifespan (se SLACK_TOKEN) | [ ] |
 | 16 | `WebChatChannel` | main.py WebSocket handler | [ ] |
-| 17 | `ChatCommands` | Gateway.route_message (se msg[0]=='/') | [ ] |
+| 17 | `ChatCommands` | Gateway.route_message (se msg[0]=='/') | [x] |
 | 18 | `VoiceInterface` | Web UI wake word listener | [ ] |
 | 19 | `ThreadManager` | Task/message comment system | [ ] |
 | 20 | `NotificationService` | Task lifecycle events | [ ] |
@@ -107,6 +107,49 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #17 ChatCommands — CONCLUÍDO
+
+**Call Path:**
+```
+POST /api/v1/chat/message {message: "/help"}
+    ↓
+gateway.route_message() [gateway.py:111]
+    ↓
+chat_commands.is_command(message) [gateway.py:140]
+    ↓ TRUE
+chat_commands.execute(IncomingMessage) [gateway.py:150]
+    ↓
+CommandResult(text="📖 Comandos Disponíveis...")
+    ↓
+return {"agent": "chat_commands", "content": result.text}
+```
+
+**Arquivos modificados:**
+- `src/core/gateway.py` linhas 140-156 (route_message)
+- `src/core/gateway.py` linhas 239-257 (stream_route_message)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestGatewayChatCommandsIntegration`
+- Testa: `/help`, `/status`, `/agents` → interceptados ANTES do agent
+- **FALHA se remover a chamada** (validado ✅)
+
+**Comandos disponíveis:**
+- `/help` — Lista comandos
+- `/status` — Status dos agents
+- `/agents` — Lista agents ativos
+- `/think [quick|standard|deep]` — Ajusta nível de pensamento
+- `/task [list|create|status]` — Gerencia tasks
+- `/learn [agent_name]` — Mostra learnings
+- `/compact` — Compacta sessão
+- `/new` — Nova sessão
+- `/standup` — Gera standup
+
+**Pendente:**
+- [ ] Testar em produção (https://optimus.tier.finance/)
+- [ ] Verificar comandos funcionam no chat web
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado
@@ -312,7 +355,66 @@ browser_wait(selector)      → Espera elemento aparecer
 | Complexidade | Alta (VM per-user) | Baixa (1 browser no server) |
 | **Resultado para o user** | **Vê o browser** | **Recebe dados + screenshots** |
 
-> **Futuro**: Adicionar streaming via WebSocket para user ver browser em tempo real (como Manus). Mas primeiro: funcionar headless.
+---
+
+## FASE 2C — Browser Streaming via WebSocket (Opcional, Após 2B)
+
+> **User vê o browser em tempo real** (como Manus.im)
+
+### Call Path: Real-Time Browser Streaming
+
+```
+User: "Abra mercadolivre.com e pesquise iPhone"
+    ↓
+Frontend abre modal com iframe vazio
+    ↓
+WebSocket conecta: ws://optimus.tier.finance/ws/browser
+    ↓
+Backend: Playwright CDP → captura frames (10 FPS)
+    ↓
+WebSocket envia: base64 frame → frontend
+    ↓
+User VÊ o browser navegando em tempo real
+    ↓
+User pode clicar na tela → backend executa click
+```
+
+### Passos
+
+1. [ ] **WebSocket Endpoint**: `GET /ws/browser/{session_id}`
+   - Chamado por: frontend modal "Ver Browser"
+   - Protocol: WebSocket (bidirectional)
+
+2. [ ] **CDP Integration**: Playwright Chrome DevTools Protocol
+   - `page.on('framenavigated')` → envia screenshot
+   - `page.screenshot()` a cada 100ms (10 FPS)
+   - Encode base64 → send via WebSocket
+
+3. [ ] **Frontend**: Modal com canvas/img
+   - Recebe frames via WebSocket
+   - Renderiza em real-time
+   - User pode clicar → envia coordenadas de volta
+
+4. [ ] **Bidirectional**: User clica na tela
+   - Frontend → WebSocket → backend
+   - Backend: `page.mouse.click(x, y)`
+   - Continua streaming
+
+**Teste E2E:**
+```
+1. User: "Navegue no google.com"
+2. Frontend abre modal "Ver Browser"
+3. WebSocket conecta
+4. User VÊ o Chrome navegando em tempo real
+5. User clica em um link na tela
+6. Backend executa click
+7. Browser navega para nova página
+8. User continua vendo em tempo real
+```
+
+**Custo:** Streaming 10 FPS = ~500KB/s por sessão. Suportar 10 users simultâneos = 5MB/s bandwidth.
+
+**Quando implementar:** Após FASE 2B estar funcionando (headless primeiro, streaming depois).
 
 ---
 
