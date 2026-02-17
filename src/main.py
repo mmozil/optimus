@@ -291,6 +291,13 @@ async def upload_knowledge(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================
+# Debug Router (Manual DB Fix)
+# ============================================
+from src.api.v1.routers import debug
+app.include_router(debug.router, prefix="/api/v1/debug", tags=["Debug"])
+
+
 class SearchRequest(BaseModel):
     query: str
     limit: int = 5
