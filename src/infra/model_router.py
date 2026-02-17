@@ -65,7 +65,7 @@ DEFAULT_MODEL_MAP: dict[str, str] = {
 
 DEFAULT_FALLBACK_CHAINS: dict[str, list[str]] = {
     "default": ["gemini-2.5-flash", "gpt-4o-mini", "groq-llama"],
-    "complex": ["claude-sonnet", "gemini-2.5-pro", "gpt-4o"],
+    "complex": ["gemini-2.5-flash", "gemini-2.5-pro", "gpt-4o"],
     "economy": ["groq-llama", "gemini-2.0-flash"],
     "heartbeat": ["gemini-2.0-flash"],
 }
