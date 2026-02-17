@@ -92,7 +92,7 @@
 | 18 | `VoiceInterface` | Web UI wake word listener | [ ] |
 | 19 | `ThreadManager` | Task/message comment system | [ ] |
 | 20 | `NotificationService` | Task lifecycle events | [x] |
-| 21 | `TaskManager` | Chat commands + UI task CRUD | [ ] |
+| 21 | `TaskManager` | Chat commands + UI task CRUD | [x] |
 | 22 | `ActivityFeed` | Event bus subscribers | [ ] |
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [ ] |
 | 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
@@ -107,6 +107,48 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #21 TaskManager — CONCLUÍDO
+
+**Call Path:**
+```
+User: "/task create Revisar PR"
+    ↓
+POST /api/v1/chat {message: "/task create Revisar PR"}
+    ↓
+gateway.route_message() [gateway.py]
+    ↓
+chat_commands.is_command() → TRUE [gateway.py:140]
+    ↓
+chat_commands.execute() → _cmd_task("create", "Revisar PR") [chat_commands.py:130]
+    ↓
+task_manager.create(TaskCreate(title="Revisar PR")) [task_manager.py:95]
+    ↓
+EventBus.emit("task.created") → NotificationService [task_manager.py:122]
+
+User: "/task list"  → task_manager.list_tasks() [chat_commands.py:139]
+User: "/task status" → task_manager.get_pending_count() [chat_commands.py:159]
+```
+
+**Arquivos com call sites:**
+- `src/channels/chat_commands.py` linhas 130-170 (_cmd_task — já implementado)
+- `src/core/gateway.py` linhas 140-156 (intercepta antes do agent)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestTaskManagerIntegration`
+- Testa: `/task create` persiste no TaskManager, `/task list` lê do TaskManager, `/task status` retorna contagens
+- **3/3 testes passando** ✅
+
+**Subcomandos disponíveis:**
+- `/task list` — Lista até 10 tasks com status e prioridade
+- `/task create <título>` — Cria task e emite TASK_CREATED via EventBus
+- `/task status` — Mostra pending/blocked count
+
+**Desbloqueia:**
+- #22 ActivityFeed (precisa de tasks para gerar feed)
+- #23 StandupGenerator (lê tasks via task_manager.list_tasks())
 
 ---
 

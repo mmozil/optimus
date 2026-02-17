@@ -682,3 +682,114 @@ class TestNotificationServiceIntegration:
             "No handlers registered for TASK_CREATED! register_notification_handlers() not called."
         assert len(task_completed_handlers) > 0, \
             "No handlers registered for TASK_COMPLETED! register_notification_handlers() not called."
+
+
+# ============================================
+# FASE 0 #21: TaskManager Integration
+# ============================================
+class TestTaskManagerIntegration:
+    """
+    FASE 0 Module #21: TaskManager integration test via chat commands.
+
+    This test FAILS if /task commands do NOT call task_manager.
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+
+    Call Path:
+    Gateway.route_message("/task create X")
+        → chat_commands._cmd_task("create", "X")
+            → task_manager.create(TaskCreate(title="X"))
+                → EventBus.emit("task.created")
+    """
+
+    @pytest.mark.asyncio
+    async def test_task_create_via_command(self):
+        """
+        Test that /task create actually creates a task in TaskManager.
+
+        If _cmd_task() does NOT call task_manager.create(), no task is stored
+        and this test FAILS.
+        """
+        from src.core.gateway import gateway
+        from src.collaboration.task_manager import task_manager
+
+        initial_count = len(await task_manager.list_tasks())
+
+        # Send /task create command via gateway (full integration path)
+        result = await gateway.route_message(
+            message="/task create Tarefa de teste FASE 0 #21",
+            user_id="test_user_21",
+        )
+
+        # Verify command was intercepted
+        assert result["agent"] == "chat_commands", \
+            "/task was NOT intercepted by chat_commands. Check gateway integration."
+        assert result["is_command"] is True
+
+        # CRITICAL: A new task must have been created in TaskManager
+        tasks_after = await task_manager.list_tasks()
+        assert len(tasks_after) > initial_count, \
+            "task_manager.create() was NOT called! /task create did not persist the task."
+
+        # Verify the task has the correct title
+        titles = [t.title for t in tasks_after]
+        assert any("FASE 0 #21" in title for title in titles), \
+            f"Task with expected title not found. Tasks: {titles}"
+
+    @pytest.mark.asyncio
+    async def test_task_list_via_command(self):
+        """
+        Test that /task list reads from TaskManager.
+
+        If _cmd_task() does NOT call task_manager.list_tasks(), this test FAILS.
+        """
+        from src.channels.chat_commands import ChatCommandHandler
+        from src.channels.base_channel import IncomingMessage, ChannelType
+        from src.collaboration.task_manager import task_manager, TaskCreate
+
+        handler = ChatCommandHandler()
+
+        # Create a task first
+        await task_manager.create(TaskCreate(
+            title="Test list task #21",
+            created_by="test_user",
+        ))
+
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/task list",
+            user_id="test_user_21",
+            user_name="test_user_21",
+            chat_id="test_chat",
+        )
+        result = await handler.execute(msg)
+
+        assert result is not None, "/task list returned None"
+        assert result.is_command is True
+
+        # CRITICAL: Response must include task data from TaskManager
+        # If task_manager.list_tasks() is not called, this would return "Nenhuma task encontrada"
+        # even though we just created one
+        assert "Test list task #21" in result.text or "📋" in result.text, \
+            f"Task list not showing TaskManager data. Response: {result.text}"
+
+    @pytest.mark.asyncio
+    async def test_task_status_via_command(self):
+        """
+        Test that /task status queries TaskManager for pending/blocked counts.
+        """
+        from src.channels.chat_commands import ChatCommandHandler
+        from src.channels.base_channel import IncomingMessage, ChannelType
+
+        handler = ChatCommandHandler()
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/task status",
+            user_id="test_user_21",
+            user_name="test_user_21",
+            chat_id="test_chat",
+        )
+        result = await handler.execute(msg)
+
+        assert result is not None
+        assert "Pendentes" in result.text, \
+            "Task status did not include pending count from task_manager.get_pending_count()"
