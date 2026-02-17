@@ -149,16 +149,11 @@ class BaseAgent:
             }
 
         except Exception as e:
-            logger.error(f"Agent '{self.name}' ReAct failed", extra={"props": {
+            logger.error(f"Agent '{self.name}' ReAct failed: {e}", extra={"props": {
                 "agent": self.name, "error": str(e),
             }})
-            return {
-                "content": f"❌ Erro ao processar: {e}",
-                "agent": self.name,
-                "model": "error",
-                "rate_limited": False,
-                "usage": {},
-            }
+            # Fall back to simple processing so the user still gets a response
+            return await self._process_simple(message, context)
 
     async def _process_simple(self, message: str, context: dict | None = None) -> dict:
         """Original single-shot processing (no tools available)."""

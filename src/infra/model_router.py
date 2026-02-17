@@ -33,11 +33,13 @@ except (ImportError, ModuleNotFoundError):
     pass
 
 try:
-    import google.generativeai as _genai
+    from google import genai as _genai
     genai = _genai
     GOOGLE_GENAI_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     pass
+
+_GENAI_CLIENT = None  # initialized in _configure_api_keys
 
 from src.core.config import settings
 
@@ -75,10 +77,11 @@ FALLBACK_CHAINS = DEFAULT_FALLBACK_CHAINS
 
 def _configure_api_keys() -> None:
     """Set API keys in environment for LiteLLM to discover."""
+    global _GENAI_CLIENT
     if settings.GOOGLE_API_KEY:
         os.environ.setdefault("GEMINI_API_KEY", settings.GOOGLE_API_KEY)
         if GOOGLE_GENAI_AVAILABLE:
-            genai.configure(api_key=settings.GOOGLE_API_KEY)
+            _GENAI_CLIENT = genai.Client(api_key=settings.GOOGLE_API_KEY)
     if settings.OPENAI_API_KEY:
         os.environ.setdefault("OPENAI_API_KEY", settings.OPENAI_API_KEY)
     if settings.ANTHROPIC_API_KEY:
@@ -312,14 +315,19 @@ class ModelRouter:
             if isinstance(content, list):
                 for p in content:
                     if p.get("type") == "text":
-                        parts.append(p.get("text", ""))
+                        parts.append({"text": p.get("text", "")})
                     elif p.get("type") == "image_url":
                         url = p["image_url"]["url"]
                         image_data = await self._download_image(url)
                         if image_data:
-                            parts.append(image_data)
+                            import base64
+                            data = image_data["data"]
+                            parts.append({"inline_data": {
+                                "mime_type": image_data["mime_type"],
+                                "data": base64.b64encode(data).decode() if isinstance(data, bytes) else data,
+                            }})
             else:
-                parts.append(content)
+                parts.append({"text": content})
                 
             native_messages.append({
                 "role": "user" if m["role"] == "user" else "model", 
@@ -329,18 +337,22 @@ class ModelRouter:
         return native_messages, system_instr
 
     async def _native_gemini_call(self, short_name, messages, temp, tokens, tools, include_raw):
-        """Fallback to native Gemini SDK (generate_content_async)."""
-        # Resolve model ID for native SDK
+        """Fallback to native Gemini SDK (google-genai)."""
         if "2.5-pro" in short_name: model_id = "gemini-1.5-pro"
         else: model_id = "gemini-1.5-flash"
 
         native_messages, system_instr = await self._prepare_native_messages(messages)
 
-        model = genai.GenerativeModel(model_id, system_instruction=system_instr)
+        config_kwargs = {"temperature": temp, "max_output_tokens": tokens}
+        if system_instr:
+            config_kwargs["system_instruction"] = system_instr
+        config = genai.types.GenerateContentConfig(**config_kwargs)
+
         start = time.monotonic()
-        response = await model.generate_content_async(
-            native_messages,
-            generation_config=genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
+        response = await _GENAI_CLIENT.aio.models.generate_content(
+            model=model_id,
+            contents=native_messages,
+            config=config,
         )
         duration_ms = (time.monotonic() - start) * 1000
 
@@ -348,8 +360,8 @@ class ModelRouter:
 
         usage = {"prompt_tokens": 0, "completion_tokens": 0}
         if response.usage_metadata:
-            usage["prompt_tokens"] = response.usage_metadata.prompt_token_count
-            usage["completion_tokens"] = response.usage_metadata.candidates_token_count
+            usage["prompt_tokens"] = response.usage_metadata.prompt_token_count or 0
+            usage["completion_tokens"] = response.usage_metadata.candidates_token_count or 0
 
         result = {
             "content": response.text,
@@ -390,19 +402,20 @@ class ModelRouter:
                     yield {"type": "tool_call", "tool_call": tc}
 
     async def _native_gemini_stream(self, short_name, messages, temp, tokens, tools):
-        """Yield tokens from native Gemini."""
+        """Yield tokens from native Gemini (google-genai)."""
         model_id = self._resolve_model(short_name).replace("gemini/", "")
-        
+
         native_messages, system_instr = await self._prepare_native_messages(messages)
 
-        model = genai.GenerativeModel(model_id, system_instruction=system_instr)
-        start = time.monotonic()
-        
-        # Stream
-        async for chunk in await model.generate_content_async(
-            native_messages,
-            generation_config=genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens),
-            stream=True
+        config_kwargs = {"temperature": temp, "max_output_tokens": tokens}
+        if system_instr:
+            config_kwargs["system_instruction"] = system_instr
+        config = genai.types.GenerateContentConfig(**config_kwargs)
+
+        async for chunk in await _GENAI_CLIENT.aio.models.generate_content_stream(
+            model=model_id,
+            contents=native_messages,
+            config=config,
         ):
             if chunk.text:
                 yield {
@@ -428,14 +441,13 @@ class ModelRouter:
                 logger.warning(f"LiteLLM embedding failed: {e}")
 
         # 2. Try Native Gemini
-        if GOOGLE_GENAI_AVAILABLE:
+        if GOOGLE_GENAI_AVAILABLE and _GENAI_CLIENT:
             try:
-                result = genai.embed_content(
-                    model=f"models/{model}",
-                    content=text,
-                    task_type="retrieval_document"
+                result = await _GENAI_CLIENT.aio.models.embed_content(
+                    model=model,
+                    contents=text,
                 )
-                return result["embedding"]
+                return result.embeddings[0].values
             except Exception as e:
                 logger.error(f"Native embedding failed: {e}")
                 raise
