@@ -1,0 +1,17 @@
+[
+  {
+    "id": "4a4cac3f",
+    "name": "morning_briefing",
+    "schedule_type": "every",
+    "schedule_value": "24h",
+    "payload": "morning_briefing",
+    "session_target": "main",
+    "channel": "telegram",
+    "enabled": true,
+    "created_at": "2026-02-16T22:09:47.599793+00:00",
+    "last_run": "",
+    "next_run": "2026-02-17T22:09:47.599803+00:00",
+    "delete_after_run": false,
+    "run_count": 0
+  }
+]

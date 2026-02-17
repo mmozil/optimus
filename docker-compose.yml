@@ -44,7 +44,7 @@ services:
   # PostgreSQL 16 + pgvector
   # ─────────────────────────────────────────
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg17
     container_name: optimus-postgres
     restart: unless-stopped
     environment:

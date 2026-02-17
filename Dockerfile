@@ -54,6 +54,7 @@ COPY --chown=optimus:optimus pyproject.toml .
 COPY --chown=optimus:optimus src/ src/
 COPY --chown=optimus:optimus migrations/ migrations/
 COPY --chown=optimus:optimus workspace/ workspace/
+COPY --chown=optimus:optimus scripts/ scripts/
 
 # Cria diretórios para dados
 RUN mkdir -p /app/logs /app/data /app/plugins && \

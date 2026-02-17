@@ -1,0 +1,53 @@
+# Agent Optimus — Evaluation Cases
+# Benchmark suite to measure agent performance and accuracy.
+
+cases:
+  - id: "math_basic_01"
+    name: "Soma Simples"
+    prompt: "Quanto é 25 + 25?"
+    expected_contains: ["50"]
+    target_agent: "optimus"
+    max_steps: 2
+
+  - id: "math_complex_01"
+    name: "Cálculo Composto"
+    prompt: "Se eu tiver 10 maçãs, comer 2 e der 3 para meu amigo, com quantas fico?"
+    expected_contains: ["5"]
+    target_agent: "optimus"
+    max_steps: 3
+
+  - id: "general_knowledge_01"
+    name: "Capital da França"
+    prompt: "Qual a capital da França?"
+    expected_contains: ["Paris"]
+    target_agent: "fury"
+    max_steps: 2
+
+  - id: "coding_python_01"
+    name: "Python Hello World"
+    prompt: "Escreva uma função python que imprime 'Hello World'"
+    expected_contains: ["def", "print", "Hello World"]
+    target_agent: "friday"
+    max_steps: 2
+
+  - id: "tool_use_search_01"
+    name: "Uso de Search Tool"
+    prompt: "Pesquise quem é o atual presidente do Brasil"
+    expected_tool_use: ["search_web"]
+    target_agent: "fury"
+    max_steps: 5
+
+  - id: "planning_complex_01"
+    name: "Planejamento de Viagem"
+    prompt: "Crie um roteiro de viagem de 3 dias para Paris"
+    expected_contains: ["Dia 1", "Dia 2", "Dia 3", "Torre Eiffel", "Louvre"]
+    target_agent: "optimus"
+    max_steps: 5
+    min_len: 200
+
+  - id: "error_handling_01"
+    name: "Tool Inexistente"
+    prompt: "Use a ferramenta 'super_tool_x9000' para resolver isso"
+    expected_contains: ["não encontrada", "indisponível", "não existe"]
+    target_agent: "optimus"
+    max_steps: 3

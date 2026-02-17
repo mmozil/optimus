@@ -971,7 +971,282 @@ async def heartbeat(agent_id):
 
 ---
 
+### Fase 12: Agent Real — Tool Calling + ReAct Loop (Semana 23-26) 🔴 PENDENTE
+> **CRÍTICO:** Transformar de chatbot sofisticado para agent real que FAZ coisas
+
+- [ ] **Fix Async Blocking Bug (P0 — URGENTE)**
+  - [ ] `model_router.py` usa `model.generate_content()` síncrono dentro de `async def`
+  - [ ] Migrar para `generate_content_async()` do SDK Gemini
+  - [ ] Isso bloqueia o event loop em produção com múltiplos usuários — corrigir antes de tudo
+
+- [ ] **Function Calling Nativo (P0)**
+  - [ ] Migrar de "prompt engineering" para function calling real do Gemini
+  - [ ] O LLM recebe a lista de tools disponíveis e **decide sozinho** quando chamar qual tool, com quais parâmetros
+  - [ ] Declarar tools como schemas JSON (Gemini `FunctionDeclaration`)
+  - [ ] Processar `function_call` responses e executar a tool correspondente
+  - [ ] Retornar o resultado da tool de volta ao LLM para continuar raciocinando
+  - [ ] Integrar com as 8 MCP tools já existentes (`mcp_tools.py`)
+  - [ ] Permission check antes de executar tools destrutivas (já existe em `security.py`)
+
+- [ ] **ReAct Loop — Reason + Act + Observe (P0)**
+  - [ ] Implementar loop agentic no `BaseAgent.process()`:
+    1. LLM pensa sobre a mensagem
+    2. LLM decide chamar uma tool (ou responder diretamente)
+    3. Tool executa e retorna resultado
+    4. LLM observa o resultado e decide: chamar outra tool ou dar resposta final
+    5. Repetir até conclusão (max N iterations, configurável)
+  - [ ] Suportar multi-step: agent pode chamar 3-5 tools em sequência para completar uma tarefa
+  - [ ] Logging de cada step do loop (para observabilidade)
+  - [ ] Timeout global por request (evitar loops infinitos)
+  - [ ] Métricas: steps por request, tools chamadas, tempo por step
+
+- [ ] **Multi-Provider LLM via LiteLLM (P1)**
+  - [ ] Substituir `google.generativeai` por LiteLLM no `model_router.py`
+  - [ ] Suportar providers: Gemini, OpenAI (GPT-4o), Anthropic (Claude), Ollama (local), Groq
+  - [ ] Manter fallback chains mas agora cross-provider:
+    - `complex`: Claude Opus → Gemini Pro → GPT-4o
+    - `default`: Gemini Flash → GPT-4o-mini → Groq
+    - `economy`: Groq → Ollama local
+  - [ ] Configurável via `.env` — usuário escolhe providers disponíveis
+  - [ ] Adapter de function calling para cada provider (LiteLLM normaliza isso)
+
+- [ ] **Testes**
+  - [ ] Testes de function calling (tool selection, parameter extraction)
+  - [ ] Testes do ReAct loop (multi-step, timeout, max iterations)
+  - [ ] Testes de multi-provider (failover cross-provider)
+  - [ ] Testes do fix async (concurrent requests não bloqueiam)
+
+---
+
+### Fase 13: Code Execution + Streaming (Semana 27-30) 🔴 PENDENTE
+> O agent Developer (Friday) passa a EXECUTAR código de verdade
+
+- [ ] **Code Execution Sandbox (P0)**
+  - [ ] Container Docker isolado onde Friday executa código Python/JS/Bash
+  - [ ] Alternativas de runtime: Docker container local, E2B (cloud sandbox), Modal
+  - [ ] Fluxo: Friday gera código → executa no sandbox → lê output → corrige se erro → tenta de novo
+  - [ ] Timeout por execução (default: 30s)
+  - [ ] Limites de recursos: CPU, memória, rede (sem acesso externo por default)
+  - [ ] Persistência de arquivos entre execuções na mesma sessão
+  - [ ] Sanitização de output (truncar se muito longo)
+  - [ ] Integrar como MCP tool: `code_execute(language, code, timeout)`
+
+- [ ] **Streaming Token-by-Token (P1)**
+  - [ ] Endpoint SSE: `GET /api/v1/chat/stream` com `text/event-stream`
+  - [ ] Usar `generate_content_async()` com `stream=True` do Gemini
+  - [ ] Eventos SSE estruturados:
+    - `event: token` → chunk de texto
+    - `event: tool_call` → agent está chamando uma tool
+    - `event: tool_result` → resultado da tool
+    - `event: thinking` → agent está raciocinando (ReAct step)
+    - `event: done` → resposta completa
+  - [ ] WebSocket como alternativa para canais bidirecionais (Slack, WebChat)
+  - [ ] Adaptar channels (Telegram, WhatsApp) para enviar resposta progressiva (edit message)
+
+- [ ] **Conversation Memory Persistente (P1)**
+  - [ ] Nova tabela `conversations` (session_id, user_id, messages JSONB, created_at, updated_at)
+  - [ ] Session manager: criar, retomar, listar, arquivar conversas
+  - [ ] O agent busca histórico automaticamente pelo session_id (não depende do caller)
+  - [ ] Context window management: quando histórico excede N tokens, comprimir mensagens antigas via `ContextCompactor`
+  - [ ] TTL configurável por conversa (default: 7 dias de inatividade → arquivar)
+
+- [ ] **File Upload + Multimodal (P2)**
+  - [ ] Endpoint `POST /api/v1/upload` → armazena no Supabase Storage
+  - [ ] Suportar: imagens (PNG/JPG), PDFs, CSVs, documentos texto
+  - [ ] Gemini já é multimodal — passar imagem/PDF direto na request
+  - [ ] Para CSVs: converter para contexto textual ou executar análise no sandbox
+  - [ ] Integrar com RAG: documentos uploadados viram knowledge base automaticamente
+
+- [ ] **Testes**
+  - [ ] Testes de code execution (sucesso, erro, timeout, limites)
+  - [ ] Testes de streaming SSE (eventos corretos, ordem, completude)
+  - [ ] Testes de conversation memory (criar, retomar, comprimir, TTL)
+  - [ ] Testes de upload multimodal (tipos de arquivo, limites de tamanho)
+
+---
+
+### Fase 14: Production Hardening (Semana 31-34) 🔴 PENDENTE
+> Segurança, autenticação, observabilidade real — pronto para usuários reais
+
+- [ ] **Autenticação + Multi-Tenant (P0)**
+  - [ ] JWT authentication no FastAPI (middleware)
+  - [ ] API keys para integrações machine-to-machine
+  - [ ] Supabase Auth ou implementação própria com `python-jose`
+  - [ ] Multi-tenant: cada usuário tem seu próprio contexto, memória, histórico, agents
+  - [ ] Rate limiting por usuário (não apenas por agent)
+  - [ ] RBAC básico: admin (tudo), user (chat + upload), viewer (read-only)
+
+- [ ] **Planning Agent — Task Decomposition (P1)**
+  - [ ] Antes de executar tarefas complexas, o agent cria um plano com steps
+  - [ ] Mostra ao usuário: "Vou fazer X, Y, Z — posso prosseguir?"
+  - [ ] O usuário aprova, ajusta, ou rejeita o plano
+  - [ ] Cada step do plano é executado sequencialmente com feedback
+  - [ ] Integrar com o `Orchestrator` existente (steps → OrchestratorSteps)
+
+- [ ] **Self-Correction / Retry com Contexto (P1)**
+  - [ ] Quando uma tool falha, o agent analisa o erro (não apenas loga)
+  - [ ] Ajusta parâmetros ou muda de abordagem
+  - [ ] Tenta de novo de forma diferente (max 3 retries por step)
+  - [ ] Escala para human-in-the-loop se todas tentativas falharem
+  - [ ] Registra erro + correção no `auto_journal.py` para aprender
+
+- [ ] **Human-in-the-Loop (P1)**
+  - [ ] Para ações destrutivas (deletar, enviar email, deploy), o agent PAUSA e pede confirmação
+  - [ ] Risk classification já existe em `autonomous_executor.py` — integrar com ReAct loop
+  - [ ] Confirmação via canal ativo (Telegram, Slack, WebChat)
+  - [ ] Timeout de confirmação: se usuário não responde em N minutos, cancelar ação
+  - [ ] Whitelist de ações "sempre permitidas" configurável por usuário
+
+- [ ] **Agent Handoff Estruturado (P2)**
+  - [ ] Quando Optimus delega para Friday, o handoff inclui:
+    - Objetivo claro (o que fazer)
+    - Contexto relevante (não o contexto inteiro)
+    - Critério de sucesso (como saber que terminou)
+    - Deadline/timeout
+  - [ ] Protocolo tipado com Pydantic models (não string livre)
+  - [ ] Feedback loop: agent delegado reporta resultado estruturado
+  - [ ] Integrar com A2A Protocol existente
+
+- [ ] **Guardrails Estruturados (P2)**
+  - [ ] Validar outputs do LLM com schemas Pydantic antes de retornar
+  - [ ] Rejeitar respostas que violam regras (PII detection, content policy)
+  - [ ] Input sanitization: prevenir prompt injection
+  - [ ] Output validation: garantir que function calls têm parâmetros válidos
+  - [ ] Fallback: se output inválido, re-gerar com instrução mais específica
+
+- [ ] **Edição de Arquivos Inteligente (P2)**
+  - [ ] Tool `file_edit` que faz edits cirúrgicos (find & replace com contexto)
+  - [ ] Não reescrever arquivo inteiro — localizar trecho exato e substituir
+  - [ ] Validação: `old_string` deve existir e ser único no arquivo
+  - [ ] Suporte a `replace_all` para renomear variáveis em todo o arquivo
+  - [ ] Integrar como MCP tool no ReAct loop (agent decide quando editar vs reescrever)
+
+- [ ] **Parallel Tool Calls (P2)**
+  - [ ] Quando o LLM retorna múltiplas function calls independentes, executar em paralelo
+  - [ ] Detectar dependências entre calls (se call B depende do resultado de call A, executar sequencial)
+  - [ ] `asyncio.gather()` para calls independentes, sequencial para dependentes
+  - [ ] Reduz latência significativamente em tarefas multi-tool (ex: ler 3 arquivos ao mesmo tempo)
+
+- [ ] **Modelo de Permissões Granular (P2)**
+  - [ ] 3 modos de permissão configuráveis por usuário:
+    - `auto`: aprova tudo automaticamente (para devs experientes)
+    - `balanced`: aprova leitura, pergunta em escrita/execução
+    - `strict`: pergunta antes de cada ação
+  - [ ] Permissão por tipo de ação (read, write, execute, delete, network) — não por nível de agent
+  - [ ] Whitelist de tools "sempre permitidas" e blacklist de tools "sempre bloqueadas"
+  - [ ] Persistir preferências de permissão por usuário no banco
+
+- [ ] **Context Window Management Avançado (P2)**
+  - [ ] Compressão automática quando conversa se aproxima do limite de contexto do modelo
+  - [ ] Estratégia: mensagens antigas são resumidas, mensagens recentes mantidas na íntegra
+  - [ ] Integrar `ContextCompactor` existente no fluxo real do `BaseAgent.process()`
+  - [ ] Preservar tool calls e resultados importantes (não comprimir ações críticas)
+  - [ ] Métrica: % de contexto utilizado por request (alertar se > 80%)
+
+- [ ] **Testes**
+  - [ ] Testes de autenticação (JWT, API keys, RBAC)
+  - [ ] Testes de planning agent (decomposição, aprovação, rejeição)
+  - [ ] Testes de self-correction (retry com contexto diferente)
+  - [ ] Testes de human-in-the-loop (confirmação, timeout, whitelist)
+  - [ ] Testes de guardrails (input validation, output validation, PII)
+  - [ ] Testes de file_edit (find & replace, unicidade, replace_all)
+  - [ ] Testes de parallel tool calls (independentes vs dependentes)
+  - [ ] Testes de permissões granulares (3 modos, whitelist, blacklist)
+  - [ ] Testes de context window management (compressão, preservação)
+
+---
+
+### Fase 15: World-Class Polish (Semana 35-38) 🔴 PENDENTE
+> Observabilidade, eval, knowledge base, integrações — nível estado da arte
+
+- [ ] **Observabilidade com Traces (P1)**
+  - [ ] OpenTelemetry integration (traces + spans + metrics)
+  - [ ] Cada ReAct step = 1 span (com duração, tokens, tool chamada)
+  - [ ] Cada request = 1 trace (end-to-end, incluindo delegações entre agents)
+  - [ ] Export para: Jaeger, Grafana Tempo, ou LangFuse (open-source)
+  - [ ] Dashboard: latência p50/p95/p99, token usage, tool success rate, cost per request
+  - [ ] Alertas: latência > 10s, error rate > 5%, cost > budget
+
+- [ ] **Eval Framework (P1)**
+  - [ ] Benchmark suite: conjunto de perguntas/tarefas com respostas esperadas
+  - [ ] Métricas: accuracy, relevance, tool selection correctness, task completion rate
+  - [ ] Rodar eval automaticamente no CI/CD (regressão detection)
+  - [ ] Comparar performance entre models (Gemini vs GPT vs Claude)
+  - [ ] A/B testing: testar prompts/configs diferentes no mesmo benchmark
+  - [ ] `tests/eval/` — separado dos unit tests, roda sob demanda
+
+- [ ] **Knowledge Base / RAG Avançado (P2)**
+  - [ ] Ingestão de documentos: upload → chunking inteligente → embeddings → PGvector
+  - [ ] Suportar: PDF, DOCX, Markdown, HTML, código fonte
+  - [ ] Re-ranking: após similarity search, re-rankar com cross-encoder
+  - [ ] Hybrid search: keyword (BM25) + semantic (embeddings) combinados
+  - [ ] Namespace por tenant/projeto (isolamento de knowledge bases)
+  - [ ] Atualização incremental (não re-processar documento inteiro se só 1 página mudou)
+
+- [ ] **Webhooks + Integrações Outbound (P2)**
+  - [ ] O agent pode chamar APIs externas como tools:
+    - Criar ticket no Jira/Linear
+    - Enviar mensagem no Slack/Discord
+    - Criar registro no CRM (HubSpot, Pipedrive)
+    - Fazer deploy (Coolify webhook, Vercel)
+  - [ ] Cada integração = 1 MCP plugin (reutiliza sistema existente)
+  - [ ] OAuth2 flow para integrações que precisam de auth do usuário
+  - [ ] Webhook receiver para eventos externos dispararem agents
+
+- [ ] **Rate Limiting Inteligente por Custo (P2)**
+  - [ ] Budget diário/mensal em dólares por tenant (não só por requests)
+  - [ ] Tracking de custo real por request (prompt_tokens × price + completion_tokens × price)
+  - [ ] Dashboard de custo por agent, por model, por tenant
+  - [ ] Alertas quando budget atinge 80% / 100%
+  - [ ] Auto-downgrade de modelo quando próximo do limite (Pro → Flash → Economy)
+
+- [ ] **Voice Interface Real (P3)**
+  - [ ] Implementar providers reais de STT: Whisper API (OpenAI) ou Google Cloud Speech
+  - [ ] Implementar providers reais de TTS: ElevenLabs ou Google Cloud TTS
+  - [ ] Streaming de áudio bidirecional (WebSocket)
+  - [ ] Detecção de fim de fala (VAD — Voice Activity Detection)
+  - [ ] Latência target: < 500ms entre fim da fala e início da resposta
+
+- [ ] **Testes**
+  - [ ] Eval benchmarks (mínimo 50 test cases por agent)
+  - [ ] Testes de RAG avançado (re-ranking, hybrid search, namespaces)
+  - [ ] Testes de integrações outbound (mock de APIs externas)
+  - [ ] Testes de cost tracking (cálculo correto, alertas, auto-downgrade)
+  - [ ] Load tests: 50 requests concorrentes sem degradação
+
+---
+
+### Comparação Final: Pré vs Pós Fases 12-15
+
+| Capacidade | Pré (Fase 11) | Pós (Fase 15) |
+|------------|---------------|---------------|
+| **Tool Calling** | Simulado via prompt | Nativo (LLM decide) |
+| **Agentic Loop** | Single round-trip | ReAct multi-step |
+| **Code Execution** | Não executa | Sandbox isolado |
+| **LLM Providers** | Só Gemini | Gemini + OpenAI + Anthropic + Ollama + Groq |
+| **Streaming** | Resposta completa | Token-by-token SSE |
+| **Auth** | Nenhuma | JWT + API keys + RBAC |
+| **Conversation Memory** | Stateless | Persistente com compressão |
+| **Multimodal** | Só texto | Imagens + PDFs + CSVs |
+| **Planning** | Não planeja | Decomposição + aprovação |
+| **Self-Correction** | Falha e para | Analisa + ajusta + retenta |
+| **Human-in-the-Loop** | Não pede confirmação | Pausa em ações destrutivas |
+| **Observabilidade** | Logs + métricas básicas | OpenTelemetry + traces + dashboards |
+| **Eval** | Sem benchmark | Suite automatizada no CI |
+| **RAG** | Básico (similarity) | Hybrid search + re-ranking |
+| **Cost Control** | Rate limit por request | Budget em $ por tenant |
+| **Voice** | Stubs | Whisper + ElevenLabs real |
+| **Classificação** | Chatbot sofisticado (7/10) | **Agent estado da arte (10/10)** |
+
+> [!IMPORTANT]
+> **Fases 12-15 transformam o Optimus de um chatbot com arquitetura de agent em um agent REAL.**
+> A ordem é intencional: primeiro o agent precisa FAZER coisas (Fase 12), depois fazer BEM (Fase 13-14), depois fazer com EXCELÊNCIA (Fase 15).
+
+---
+
 ## ✅ Critérios de Sucesso
+
+### Fases 1-11 (Fundação)
 
 | Critério | Meta |
 |----------|------|
@@ -985,6 +1260,23 @@ async def heartbeat(agent_id):
 | RAG accuracy | > 80% relevância |
 | Rate limit 429 errors | **ZERO** (rate limiter built-in) |
 | Novos setores plugados | < 1h por MCP Server |
+
+### Fases 12-15 (Estado da Arte)
+
+| Critério | Meta |
+|----------|------|
+| Tool calling accuracy | > 95% (LLM seleciona tool correta) |
+| ReAct loop completion | > 90% das tarefas multi-step concluídas |
+| Code execution success rate | > 85% (executa, testa, corrige) |
+| Streaming TTFB | < 200ms (time to first byte) |
+| Concurrent users sem degradação | 50+ requests paralelos |
+| Auth + multi-tenant | 100% das requests autenticadas em prod |
+| Eval benchmark score | > 80% no suite de avaliação |
+| RAG hybrid search accuracy | > 90% relevância (BM25 + semantic) |
+| Cost tracking accuracy | < 2% margem de erro no custo calculado |
+| Voice latency (end-to-end) | < 500ms (fala → resposta) |
+| Self-correction rate | > 70% dos erros corrigidos automaticamente |
+| Zero blocking async calls | 100% (nenhuma chamada síncrona no event loop) |
 
 ---
 
