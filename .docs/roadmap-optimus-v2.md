@@ -94,7 +94,7 @@
 | 20 | `NotificationService` | Task lifecycle events | [x] |
 | 21 | `TaskManager` | Chat commands + UI task CRUD | [x] |
 | 22 | `ActivityFeed` | Event bus subscribers | [x] |
-| 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [ ] |
+| 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [x] |
 | 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
 | 26 | `CronScheduler` | main.py lifespan | [x] |
@@ -107,6 +107,41 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #23 StandupGenerator — CONCLUÍDO
+
+**Call Path:**
+```
+CronScheduler._scheduler_loop() [cron_scheduler.py:241]
+    → _execute_job(job{name="daily_standup"}) [cron_scheduler.py:189]
+        → EventBus.emit(CRON_TRIGGERED) [cron_scheduler.py:198]
+            → standup_handlers.on_standup_cron_triggered(event) [standup_handlers.py:27]
+                → standup_generator.generate_team_standup() [standup_generator.py:88]
+                    → activity_feed.get_daily_summary() + task_manager.list_tasks()
+                → activity_feed.record("standup_generated", ...)
+                → workspace/standups/<date>.md saved
+```
+
+**Agendamento:**
+- `main.py: _schedule_daily_standup()` registra job "daily_standup" com `schedule_type="every"` / `24h`
+- Primeira execução calculada para próximo 12:00 UTC (09:00 BRT)
+- Job persiste em JSON (`workspace/cron/jobs.json`) — sobrevive a restarts
+
+**Arquivos criados/modificados:**
+- `src/collaboration/standup_handlers.py` (novo — handler + register_standup_handlers)
+- `src/main.py` — `_schedule_daily_standup()` + `register_standup_handlers()` no lifespan
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestStandupGeneratorIntegration`
+- Testa: handler registrado, CRON_TRIGGERED gera relatório, arquivo salvo, job errado ignorado
+- **4/4 testes passando** ✅
+
+**Impacto:**
+- StandupGenerator agora é acionado automaticamente todo dia às 09:00 BRT
+- Relatório salvo em `workspace/standups/<data>.md` e na ActivityFeed
+- `/standup` no chat agora reflete dados reais do dia
 
 ---
 

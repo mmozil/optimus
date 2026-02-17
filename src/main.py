@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, 
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import logging
+
 from src.core.config import settings
 from src.core.gateway import gateway
 from src.core.files_service import files_service
@@ -16,6 +18,43 @@ from src.core.auth_service import auth_service
 from src.infra.auth_middleware import (
     CurrentUser, get_current_user, get_optional_user, require_role,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _schedule_daily_standup(cron_scheduler) -> None:
+    """
+    Schedule the daily standup at 12:00 UTC (09:00 BRT).
+    Skips if a job named 'daily_standup' already exists (jobs persist across restarts).
+    """
+    from datetime import datetime, timedelta, timezone
+    from src.core.cron_scheduler import CronJob
+
+    existing = [j for j in cron_scheduler.list_jobs() if j.name == "daily_standup"]
+    if existing:
+        logger.info(f"FASE 0 #23: Daily standup already scheduled — next run: {existing[0].next_run}")
+        return
+
+    # Calculate next 12:00 UTC (today if not yet passed, otherwise tomorrow)
+    now = datetime.now(timezone.utc)
+    next_run = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    if next_run <= now:
+        next_run += timedelta(days=1)
+
+    job = CronJob(
+        name="daily_standup",
+        schedule_type="every",
+        schedule_value="24h",
+        payload="Generate team standup report",
+        delete_after_run=False,
+    )
+    job_id = cron_scheduler.add(job)
+
+    # Override next_run to 12:00 UTC (add() sets it to now+24h by default)
+    cron_scheduler._jobs[job_id].next_run = next_run.isoformat()
+    cron_scheduler._save()
+
+    logger.info(f"FASE 0 #23: Daily standup scheduled — first run at {next_run.isoformat()}")
 
 
 @asynccontextmanager
@@ -47,10 +86,19 @@ async def lifespan(app: FastAPI):
     from src.collaboration.activity_handlers import register_activity_handlers
     register_activity_handlers()
 
+    # FASE 0 #23: Register standup cron handler on EventBus
+    # CronScheduler fires CRON_TRIGGERED(job_name="daily_standup") → generates report
+    from src.collaboration.standup_handlers import register_standup_handlers
+    register_standup_handlers()
+
     # FASE 0 #26: Start CronScheduler
     # Background loop checks for due jobs every 60s
     # Emits CRON_TRIGGERED events on EventBus
     await cron_scheduler.start()
+
+    # FASE 0 #23: Schedule daily standup at 12:00 UTC (09:00 BRT)
+    # Only adds the job if it doesn't already exist (jobs persist across restarts)
+    _schedule_daily_standup(cron_scheduler)
 
     yield
 

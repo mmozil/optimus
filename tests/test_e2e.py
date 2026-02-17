@@ -906,3 +906,152 @@ class TestActivityFeedIntegration:
             "No activity handler for TASK_CREATED!"
         assert len(event_bus._handlers.get(EventType.MESSAGE_RECEIVED.value, [])) > 0, \
             "No activity handler for MESSAGE_RECEIVED!"
+
+
+# ============================================
+# FASE 0 #23 — StandupGenerator Integration
+# ============================================
+class TestStandupGeneratorIntegration:
+    """
+    REGRA DE OURO Checkpoint 2 — Tests that FAIL without #23:
+    - StandupGenerator is triggered by CronScheduler daily job
+    - CRON_TRIGGERED(job_name="daily_standup") → generate_team_standup()
+    - Report saved to workspace/standups/<date>.md
+    - standup_handlers registered on EventBus
+    """
+
+    @pytest.mark.asyncio
+    async def test_standup_handler_registered_on_eventbus(self):
+        """
+        Test that EventBus has standup handler for CRON_TRIGGERED.
+        Validates that register_standup_handlers() is called in main.py lifespan.
+        """
+        from src.collaboration.standup_handlers import register_standup_handlers
+        from src.core.events import event_bus, EventType
+
+        register_standup_handlers()
+
+        handlers = event_bus._handlers.get(EventType.CRON_TRIGGERED.value, [])
+        assert len(handlers) > 0, \
+            "No handler for CRON_TRIGGERED! register_standup_handlers() not called."
+
+    @pytest.mark.asyncio
+    async def test_standup_cron_event_generates_report(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED(job_name="daily_standup") generates a report.
+
+        Call Path:
+          EventBus.emit(CRON_TRIGGERED, {job_name: "daily_standup"})
+            → on_standup_cron_triggered(event)
+              → standup_generator.generate_team_standup()
+                → report recorded in ActivityFeed
+        """
+        import asyncio
+        from src.collaboration.standup_handlers import register_standup_handlers
+        from src.collaboration.activity_feed import activity_feed
+        from src.core.events import event_bus, EventType, Event
+
+        # Redirect standup file writes to tmp_path
+        import src.collaboration.standup_handlers as sh_module
+        monkeypatch.setattr(sh_module, "STANDUP_DIR", tmp_path)
+
+        register_standup_handlers()
+        activity_feed._activities.clear()
+
+        # Simulate CronScheduler firing the daily_standup job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "test_job",
+                "job_name": "daily_standup",
+                "payload": "Generate team standup report",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0)
+
+        # ActivityFeed must have standup_generated entry
+        recent = await activity_feed.get_recent(limit=10)
+        standup_entries = [a for a in recent if a.type == "standup_generated"]
+        assert len(standup_entries) > 0, \
+            "No 'standup_generated' activity! on_standup_cron_triggered did not fire."
+
+    @pytest.mark.asyncio
+    async def test_standup_report_saved_to_file(self, tmp_path, monkeypatch):
+        """
+        Test that the daily standup is written to workspace/standups/<date>.md.
+        """
+        import asyncio
+        from datetime import datetime, timezone
+        from src.collaboration.standup_handlers import register_standup_handlers
+        from src.collaboration.activity_feed import activity_feed
+        from src.core.events import event_bus, EventType, Event
+
+        import src.collaboration.standup_handlers as sh_module
+        monkeypatch.setattr(sh_module, "STANDUP_DIR", tmp_path)
+
+        register_standup_handlers()
+        activity_feed._activities.clear()
+
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "test_job_file",
+                "job_name": "daily_standup",
+                "payload": "Generate team standup report",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0)
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        report_file = tmp_path / f"{date_str}.md"
+
+        assert report_file.exists(), \
+            f"Standup file not created at {report_file}! Handler did not write report."
+        content = report_file.read_text(encoding="utf-8")
+        assert "Standup" in content, \
+            f"Standup file content is missing 'Standup' header. Got: {content[:200]}"
+
+    @pytest.mark.asyncio
+    async def test_standup_cron_ignores_other_jobs(self):
+        """
+        Test that CRON_TRIGGERED events for other jobs are ignored.
+        Only job_name='daily_standup' triggers report generation.
+        """
+        import asyncio
+        from src.collaboration.standup_handlers import register_standup_handlers
+        from src.collaboration.activity_feed import activity_feed
+        from src.core.events import event_bus, EventType, Event
+
+        register_standup_handlers()
+        activity_feed._activities.clear()
+
+        # Fire a different cron job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "other_job",
+                "job_name": "some_other_job",
+                "payload": "Do something else",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0)
+
+        recent = await activity_feed.get_recent(limit=10)
+        standup_entries = [a for a in recent if a.type == "standup_generated"]
+        assert len(standup_entries) == 0, \
+            "standup_generated recorded for a non-standup job! Handler must filter by job_name."
