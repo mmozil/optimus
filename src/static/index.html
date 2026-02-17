@@ -224,6 +224,57 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
+        /* ── Slash Command Autocomplete ─────────── */
+        .input-area {
+            position: relative;
+        }
+
+        .cmd-popup {
+            display: none;
+            position: absolute;
+            bottom: calc(100% - 0.5rem);
+            left: 1.5rem;
+            right: 1.5rem;
+            max-width: 740px;
+            margin: 0 auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 -6px 24px rgba(0,0,0,0.5);
+            z-index: 50;
+        }
+
+        .cmd-popup.visible { display: block; }
+
+        .cmd-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.55rem 1rem;
+            cursor: pointer;
+            transition: background 0.1s;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cmd-item:last-child { border-bottom: none; }
+
+        .cmd-item:hover,
+        .cmd-item.active { background: var(--surface2); }
+
+        .cmd-item .cmd-name {
+            font-family: 'Courier New', monospace;
+            font-size: 0.83rem;
+            color: var(--accent);
+            font-weight: 600;
+            min-width: 88px;
+        }
+
+        .cmd-item .cmd-hint {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
         /* ── Input area ──────────────────────────── */
         .input-area {
             padding: 0.75rem 1.5rem 1.25rem;
@@ -390,6 +441,10 @@
 
     <!-- ── Input ──────────────────────────────── -->
     <div class="input-area">
+
+        <!-- Slash Command Autocomplete Popup -->
+        <div class="cmd-popup" id="cmd-popup"></div>
+
         <div class="input-box" id="input-box">
 
             <!-- Textarea -->
@@ -488,14 +543,122 @@
             return div;
         }
 
+        // ── Slash Command Autocomplete ────────────────────────────────
+        const SLASH_COMMANDS = [
+            { cmd: '/help',    hint: 'Lista todos os comandos disponíveis' },
+            { cmd: '/status',  hint: 'Status dos agents, tokens e limites' },
+            { cmd: '/agents',  hint: 'Lista agents ativos e seus status' },
+            { cmd: '/think',   hint: 'Ajusta pensamento: quick | standard | deep' },
+            { cmd: '/task',    hint: 'Tasks: list | create <título> | status' },
+            { cmd: '/learn',   hint: 'Learnings do agent: /learn [nome]' },
+            { cmd: '/compact', hint: 'Compacta sessão atual' },
+            { cmd: '/new',     hint: 'Inicia nova sessão' },
+            { cmd: '/standup', hint: 'Gera standup do time' },
+        ];
+
+        const cmdPopup = document.getElementById('cmd-popup');
+        let cmdMatches = [];
+        let cmdActiveIndex = -1;
+
+        function renderCmdPopup(matches) {
+            cmdMatches = matches;
+            cmdActiveIndex = -1;
+            cmdPopup.innerHTML = '';
+
+            if (!matches.length) { hideCmdPopup(); return; }
+
+            matches.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'cmd-item';
+                el.innerHTML =
+                    `<span class="cmd-name">${item.cmd}</span>` +
+                    `<span class="cmd-hint">${item.hint}</span>`;
+                el.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    selectCmd(item.cmd);
+                });
+                cmdPopup.appendChild(el);
+            });
+
+            cmdPopup.classList.add('visible');
+        }
+
+        function hideCmdPopup() {
+            cmdPopup.classList.remove('visible');
+            cmdActiveIndex = -1;
+            cmdMatches = [];
+        }
+
+        function selectCmd(cmd) {
+            chatInput.value = cmd + ' ';
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
+            sendBtn.disabled = false;
+            hideCmdPopup();
+            chatInput.focus();
+        }
+
+        function setCmdActive(index) {
+            const items = cmdPopup.querySelectorAll('.cmd-item');
+            items.forEach(el => el.classList.remove('active'));
+            if (index >= 0 && index < items.length) {
+                items[index].classList.add('active');
+                cmdActiveIndex = index;
+            }
+        }
+
+        // Hide popup on outside click
+        document.addEventListener('click', e => {
+            if (!cmdPopup.contains(e.target) && e.target !== chatInput) hideCmdPopup();
+        });
+
         // ── Textarea auto-resize ─────────────────────────────────────
         chatInput.addEventListener('input', () => {
             chatInput.style.height = 'auto';
             chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
             sendBtn.disabled = chatInput.value.trim().length === 0;
+
+            // Autocomplete: show when starts with / and no space yet
+            const val = chatInput.value;
+            if (val.startsWith('/') && !val.includes(' ')) {
+                const q = val.toLowerCase();
+                renderCmdPopup(SLASH_COMMANDS.filter(c => c.cmd.startsWith(q)));
+            } else {
+                hideCmdPopup();
+            }
         });
 
         chatInput.addEventListener('keydown', e => {
+            // Autocomplete navigation
+            if (cmdPopup.classList.contains('visible')) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setCmdActive(Math.min(cmdActiveIndex + 1, cmdMatches.length - 1));
+                    return;
+                }
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setCmdActive(Math.max(cmdActiveIndex - 1, 0));
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (cmdActiveIndex >= 0) selectCmd(cmdMatches[cmdActiveIndex].cmd);
+                    else if (cmdMatches.length === 1) selectCmd(cmdMatches[0].cmd);
+                    return;
+                }
+                if (e.key === 'Enter' && cmdActiveIndex >= 0) {
+                    e.preventDefault();
+                    selectCmd(cmdMatches[cmdActiveIndex].cmd);
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    hideCmdPopup();
+                    return;
+                }
+            }
+
+            // Normal Enter to send
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 if (!sendBtn.disabled) handleSend();
