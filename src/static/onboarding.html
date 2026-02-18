@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bem-vindo ao Optimus</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 48px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .logo {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+      letter-spacing: -1px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .step-indicator {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #333;
+      transition: background 0.2s;
+    }
+
+    .step-dot.active { background: #fff; }
+    .step-dot.done { background: #666; }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    p {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 15px;
+      color: #e0e0e0;
+      margin-bottom: 20px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus { border-color: #555; }
+
+    select option { background: #1a1a1a; }
+
+    .btn {
+      width: 100%;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 4px;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #666;
+      border: 1px solid #333;
+      margin-top: 8px;
+    }
+
+    .btn-ghost:hover { color: #aaa; border-color: #555; }
+
+    .error {
+      background: #2a1010;
+      border: 1px solid #5a2020;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      color: #f88;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .success-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">✦ Optimus</div>
+    <div class="subtitle">Configuração inicial · 3 passos</div>
+
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot-1"></div>
+      <div class="step-dot" id="dot-2"></div>
+      <div class="step-dot" id="dot-3"></div>
+    </div>
+
+    <div id="error" class="error"></div>
+
+    <!-- Step 1: Name -->
+    <div class="step active" id="step-1">
+      <h2>Como posso te chamar?</h2>
+      <p>Seu nome de exibição para personalizar nossas conversas.</p>
+
+      <label for="preferred_name">Seu nome</label>
+      <input type="text" id="preferred_name" placeholder="Ex: Marcelo" autocomplete="off">
+
+      <button class="btn" onclick="goToStep(2)">Continuar →</button>
+    </div>
+
+    <!-- Step 2: Agent name -->
+    <div class="step" id="step-2">
+      <h2>Como você quer me chamar?</h2>
+      <p>Dê um nome para seu assistente — pode ser o padrão ou algo personalizado.</p>
+
+      <label for="agent_name">Nome do assistente</label>
+      <input type="text" id="agent_name" placeholder="Ex: Optimus, Aria, Max" value="Optimus" autocomplete="off">
+
+      <button class="btn" onclick="goToStep(3)">Continuar →</button>
+      <button class="btn btn-ghost" onclick="goToStep(1)">← Voltar</button>
+    </div>
+
+    <!-- Step 3: Preferences -->
+    <div class="step" id="step-3">
+      <h2>Preferências de comunicação</h2>
+      <p>Como prefere que seu assistente se comunique com você?</p>
+
+      <label for="language">Idioma</label>
+      <select id="language">
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+      </select>
+
+      <label for="communication_style">Estilo de comunicação</label>
+      <select id="communication_style">
+        <option value="casual">Casual — amigável e direto</option>
+        <option value="formal">Formal — profissional</option>
+        <option value="technical">Técnico — foco em detalhes</option>
+      </select>
+
+      <button class="btn" id="finish-btn" onclick="completeOnboarding()">Começar →</button>
+      <button class="btn btn-ghost" onclick="goToStep(2)">← Voltar</button>
+    </div>
+
+    <!-- Step 4: Done -->
+    <div class="step" id="step-4">
+      <div class="success-icon">🎉</div>
+      <h2>Tudo pronto!</h2>
+      <p>Bem-vindo, <strong id="welcome-name"></strong>! Seu assistente <strong id="welcome-agent"></strong> está pronto para te ajudar.</p>
+      <button class="btn" onclick="window.location.href='/'">Entrar no Optimus →</button>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('optimus_token');
+    if (!token) window.location.href = '/login.html';
+
+    let currentStep = 1;
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('error').style.display = 'none';
+    }
+
+    function goToStep(step) {
+      hideError();
+
+      // Validate current step before advancing
+      if (step === 2) {
+        const name = document.getElementById('preferred_name').value.trim();
+        if (!name) { showError('Por favor, informe seu nome.'); return; }
+      }
+      if (step === 3) {
+        const agentName = document.getElementById('agent_name').value.trim();
+        if (!agentName) { showError('Por favor, dê um nome ao assistente.'); return; }
+      }
+
+      document.getElementById(`step-${currentStep}`).classList.remove('active');
+      document.getElementById(`dot-${currentStep}`).classList.remove('active');
+      document.getElementById(`dot-${currentStep}`).classList.add('done');
+
+      currentStep = step;
+      document.getElementById(`step-${step}`).classList.add('active');
+      if (step <= 3) {
+        document.getElementById(`dot-${step}`).classList.add('active');
+        document.getElementById(`dot-${step}`).classList.remove('done');
+      }
+    }
+
+    async function completeOnboarding() {
+      hideError();
+      const btn = document.getElementById('finish-btn');
+      btn.disabled = true;
+      btn.textContent = 'Salvando...';
+
+      const payload = {
+        preferred_name: document.getElementById('preferred_name').value.trim(),
+        agent_name: document.getElementById('agent_name').value.trim() || 'Optimus',
+        language: document.getElementById('language').value,
+        communication_style: document.getElementById('communication_style').value,
+      };
+
+      try {
+        const resp = await fetch('/api/v1/user/onboarding/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || 'Erro ao salvar preferências');
+        }
+
+        // Show success step
+        document.getElementById(`step-${currentStep}`).classList.remove('active');
+        document.getElementById('step-4').classList.add('active');
+        document.getElementById('welcome-name').textContent = payload.preferred_name;
+        document.getElementById('welcome-agent').textContent = payload.agent_name;
+
+        // Update stored token display name (if needed, just redirect)
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+        btn.textContent = 'Começar →';
+      }
+    }
+  </script>
+</body>
+</html>

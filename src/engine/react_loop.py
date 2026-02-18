@@ -390,12 +390,25 @@ def _build_user_content(message: str, context: dict | None) -> str:
     parts = []
 
     if context:
-        # Inject user identity so agent can personalize responses
+        # Inject user identity + preferences so agent can personalize responses
         user_name = context.get("user_name")
         user_email = context.get("user_email")
+        language = context.get("language")
+        comm_style = context.get("communication_style")
+        agent_name = context.get("agent_name")
+
+        identity_parts = []
         if user_name or user_email:
-            identity = user_name or user_email
-            parts.append(f"[Usuário: {identity}]")
+            identity_parts.append(f"Nome: {user_name or user_email}")
+        if language:
+            identity_parts.append(f"Idioma preferido: {language}")
+        if comm_style:
+            identity_parts.append(f"Estilo: {comm_style}")
+        if agent_name:
+            identity_parts.append(f"Chama o agente de: {agent_name}")
+
+        if identity_parts:
+            parts.append("[Contexto do Usuário: " + " | ".join(identity_parts) + "]")
 
         if context.get("task"):
             parts.append(f"## Task Atual\n{context['task']}")

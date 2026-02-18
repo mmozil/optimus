@@ -1431,6 +1431,64 @@ Session bootstrap injetar preferências no prompt
 
 ---
 
+### ✅ FASE 1 — Onboarding + Settings + User Preferences — CONCLUÍDO
+
+**Call Path:**
+```
+# Onboarding (novo usuário):
+User acessa /onboarding.html
+  → Preenche: preferred_name, agent_name, language, communication_style
+    → POST /api/v1/user/onboarding/complete {preferred_name, agent_name, ...}
+      → users.has_completed_onboarding = TRUE
+      → users.display_name = preferred_name
+      → INSERT INTO user_preferences (...)
+        → Redirect para /
+
+# Cada mensagem de chat:
+POST /api/v1/chat {message, ...}
+  → _load_user_context(user) [main.py]
+    → SELECT preferred_name, agent_name, language, communication_style
+      FROM user_preferences WHERE user_id = user.id
+    → Returns ctx = {user_name, agent_name, language, communication_style}
+  → gateway.route_message(context=ctx)
+    → react_loop._build_user_content(message, context)
+      → "[Contexto do Usuário: Nome: Marcelo | Idioma: pt-BR | Estilo: casual | Chama o agente de: Optimus]"
+      → Agent vê contexto no início de toda mensagem
+
+# Settings (/settings.html):
+User acessa ⚙ Config → /settings.html
+  → GET /api/v1/user/profile → exibe nome + email
+  → GET /api/v1/user/preferences → carrega preferências atuais
+  → PUT /api/v1/user/preferences → atualiza (aplicado na próxima mensagem)
+  → PUT /api/v1/user/profile → atualiza display_name
+```
+
+**Arquivos criados/modificados:**
+- `migrations/014_user_preferences.sql` (novo): tabela `user_preferences` + coluna `has_completed_onboarding` em `users`
+- `src/api/user_profile.py` (novo): 5 endpoints REST
+  - `GET /api/v1/user/profile` — perfil do usuário
+  - `PUT /api/v1/user/profile` — atualiza display_name
+  - `GET /api/v1/user/preferences` — preferências (preferred_name, agent_name, language, style)
+  - `PUT /api/v1/user/preferences` — atualiza preferências
+  - `POST /api/v1/user/onboarding/complete` — finaliza onboarding (salva tudo + marca flag)
+- `src/static/onboarding.html` (novo): 3 steps (nome → nome do agente → idioma/estilo)
+- `src/static/settings.html` (novo): perfil + preferências + API key
+- `src/static/index.html`: botão ⚙ Config no header → /settings.html
+- `src/core/auth_service.py`: `create_access_token()` inclui `display_name` no JWT
+- `src/infra/auth_middleware.py`: `CurrentUser` ganha campo `display_name`
+- `src/main.py`: `_load_user_context()` carrega prefs do DB; registra `user_profile_router`
+- `src/engine/react_loop.py`: `_build_user_content()` injeta idioma, estilo, agent_name no contexto
+
+**Impacto para o usuário:**
+- ✅ **Onboarding** — usuário novo configura nome + preferências na primeira visita
+- ✅ **Nome real** — agente usa `preferred_name` do DB, não prefixo de email
+- ✅ **Idioma** — agente adapta idioma (pt-BR, en, es)
+- ✅ **Estilo** — agente adapta tom (casual / formal / técnico)
+- ✅ **Nome do agente** — usuário pode chamar o assistente como quiser
+- ✅ **Settings** — página dedicada para editar tudo a qualquer momento
+
+---
+
 ## FASE 2 — Pesquisa Web Real + Research Search MCP Tool
 
 > **Semana 3-4 após FASE 1**
@@ -1820,8 +1878,8 @@ Optimus roda em sua máquina
 
 | Item | Status | Prova |
 |------|--------|-------|
-| **FASE 0** | 🔴 In Progress | 28/28 módulos com call path + test + prod |
-| **FASE 1** | ⬜ Pending | User novo: onboarding → preferences → prompt customizado |
+| **FASE 0** | ✅ Concluído | 28/28 módulos conectados (25 `[x]` + 3 channels opcionais) |
+| **FASE 1** | ✅ Concluído | onboarding.html → /api/v1/user/preferences → contexto injetado no agente |
 | **FASE 2** | ⬜ Pending | User: "pesquise X" → resultado real da Tavily |
 | **FASE 2B** | ⬜ Pending | User: "pesquise preços no ML" → Playwright navega + extrai dados |
 | **FASE 3** | ⬜ Pending | User cria agent → aparece em chat → responde |

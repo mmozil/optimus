@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurações — Optimus</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    .back-btn {
+      color: #666;
+      text-decoration: none;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .back-btn:hover { color: #aaa; }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 560px;
+      width: 100%;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+
+    .section {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 11px 13px;
+      font-size: 14px;
+      color: #e0e0e0;
+      margin-bottom: 18px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus { border-color: #555; }
+    select option { background: #1a1a1a; }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .btn {
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .alert {
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .alert-success { background: #0f2a1a; border: 1px solid #1a5a30; color: #5af098; }
+    .alert-error { background: #2a1010; border: 1px solid #5a2020; color: #f88; }
+
+    .profile-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #2a2a2a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .profile-info { flex: 1; }
+    .profile-name { font-size: 16px; font-weight: 600; color: #fff; }
+    .profile-email { font-size: 13px; color: #666; margin-top: 2px; }
+
+    .api-key-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .api-key-row input { flex: 1; margin-bottom: 0; font-family: monospace; font-size: 12px; }
+
+    .copy-btn {
+      background: #2a2a2a;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 11px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover { color: #fff; border-color: #555; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" class="back-btn">← Voltar</a>
+    <span class="header-title">Configurações</span>
+  </header>
+
+  <div class="container">
+    <div id="alert-success" class="alert alert-success"></div>
+    <div id="alert-error" class="alert alert-error"></div>
+
+    <!-- Profile -->
+    <div class="section">
+      <div class="section-title">Perfil</div>
+      <div class="profile-row">
+        <div class="avatar" id="avatar-letter">?</div>
+        <div class="profile-info">
+          <div class="profile-name" id="profile-name">Carregando...</div>
+          <div class="profile-email" id="profile-email"></div>
+        </div>
+      </div>
+
+      <label for="display_name">Nome de exibição</label>
+      <input type="text" id="display_name" placeholder="Como aparece no perfil">
+
+      <button class="btn" onclick="saveProfile()">Salvar perfil</button>
+    </div>
+
+    <!-- Preferences -->
+    <div class="section">
+      <div class="section-title">Preferências</div>
+
+      <label for="preferred_name">Como seu assistente deve te chamar</label>
+      <input type="text" id="preferred_name" placeholder="Ex: Marcelo">
+
+      <label for="agent_name">Como você chama seu assistente</label>
+      <input type="text" id="agent_name" placeholder="Ex: Optimus, Max, Aria">
+
+      <div class="field-row">
+        <div>
+          <label for="language">Idioma</label>
+          <select id="language">
+            <option value="pt-BR">Português (BR)</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+        </div>
+        <div>
+          <label for="communication_style">Estilo</label>
+          <select id="communication_style">
+            <option value="casual">Casual</option>
+            <option value="formal">Formal</option>
+            <option value="technical">Técnico</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn" onclick="savePreferences()">Salvar preferências</button>
+    </div>
+
+    <!-- API Key -->
+    <div class="section">
+      <div class="section-title">API Key</div>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Use esta chave para acessar a API do Optimus programaticamente via <code style="color:#aaa;">X-API-Key</code>.
+      </p>
+      <div class="api-key-row">
+        <input type="password" id="api-key-input" value="" readonly>
+        <button class="copy-btn" onclick="toggleApiKey()">Mostrar</button>
+        <button class="copy-btn" onclick="copyApiKey()">Copiar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('optimus_token');
+    if (!token) window.location.href = '/login.html';
+
+    let apiKeyVisible = false;
+    let profileData = {};
+    let prefsData = {};
+
+    function showSuccess(msg) {
+      const el = document.getElementById('alert-success');
+      const err = document.getElementById('alert-error');
+      err.style.display = 'none';
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('alert-error');
+      const ok = document.getElementById('alert-success');
+      ok.style.display = 'none';
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function loadProfile() {
+      try {
+        const resp = await fetch('/api/v1/user/profile', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) throw new Error('Failed to load profile');
+        profileData = await resp.json();
+
+        document.getElementById('display_name').value = profileData.display_name || '';
+        document.getElementById('profile-name').textContent = profileData.display_name || profileData.email;
+        document.getElementById('profile-email').textContent = profileData.email;
+        document.getElementById('avatar-letter').textContent = (profileData.display_name || profileData.email || '?')[0].toUpperCase();
+      } catch (e) {
+        showError('Erro ao carregar perfil: ' + e.message);
+      }
+    }
+
+    async function loadPreferences() {
+      try {
+        const resp = await fetch('/api/v1/user/preferences', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) throw new Error('Failed to load preferences');
+        prefsData = await resp.json();
+
+        document.getElementById('preferred_name').value = prefsData.preferred_name || '';
+        document.getElementById('agent_name').value = prefsData.agent_name || 'Optimus';
+        document.getElementById('language').value = prefsData.language || 'pt-BR';
+        document.getElementById('communication_style').value = prefsData.communication_style || 'casual';
+      } catch (e) {
+        console.warn('Could not load preferences:', e.message);
+      }
+    }
+
+    async function loadApiKey() {
+      try {
+        const resp = await fetch('/api/v1/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.api_key) {
+            document.getElementById('api-key-input').value = data.api_key;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load API key');
+      }
+    }
+
+    async function saveProfile() {
+      const display_name = document.getElementById('display_name').value.trim();
+      try {
+        const resp = await fetch('/api/v1/user/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ display_name }),
+        });
+        if (!resp.ok) throw new Error((await resp.json()).detail || 'Erro');
+        document.getElementById('profile-name').textContent = display_name || profileData.email;
+        document.getElementById('avatar-letter').textContent = (display_name || profileData.email || '?')[0].toUpperCase();
+        showSuccess('Perfil atualizado! Faça login novamente para refletir no token.');
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    async function savePreferences() {
+      const payload = {
+        preferred_name: document.getElementById('preferred_name').value.trim(),
+        agent_name: document.getElementById('agent_name').value.trim() || 'Optimus',
+        language: document.getElementById('language').value,
+        communication_style: document.getElementById('communication_style').value,
+        timezone: 'America/Sao_Paulo',
+      };
+      try {
+        const resp = await fetch('/api/v1/user/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) throw new Error((await resp.json()).detail || 'Erro');
+        showSuccess('Preferências salvas! Aplicadas na próxima mensagem.');
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    function toggleApiKey() {
+      const input = document.getElementById('api-key-input');
+      const btn = event.target;
+      apiKeyVisible = !apiKeyVisible;
+      input.type = apiKeyVisible ? 'text' : 'password';
+      btn.textContent = apiKeyVisible ? 'Ocultar' : 'Mostrar';
+    }
+
+    function copyApiKey() {
+      const val = document.getElementById('api-key-input').value;
+      if (!val) return;
+      navigator.clipboard.writeText(val).then(() => showSuccess('API key copiada!'));
+    }
+
+    // Load everything on page load
+    loadProfile();
+    loadPreferences();
+    loadApiKey();
+  </script>
+</body>
+</html>

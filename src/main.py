@@ -390,13 +390,42 @@ class ChatRequest(BaseModel):
     file_ids: list[str] | None = None
 
 
+async def _load_user_context(user: CurrentUser) -> dict:
+    """Load user identity + preferences from DB to inject into agent context."""
+    from src.infra.supabase_client import get_async_session
+    from sqlalchemy import text as sql_text
+
+    user_name = user.display_name or (user.email.split("@")[0] if user.email else "user")
+    ctx: dict = {"user_email": user.email, "user_name": user_name}
+
+    try:
+        async with get_async_session() as session:
+            result = await session.execute(
+                sql_text("""
+                    SELECT preferred_name, agent_name, language, communication_style
+                    FROM user_preferences WHERE user_id = :uid
+                """),
+                {"uid": user.id},
+            )
+            row = result.fetchone()
+        if row:
+            preferred_name, agent_name, language, comm_style = row
+            if preferred_name:
+                ctx["user_name"] = preferred_name  # Override with preference
+            ctx["agent_name"] = agent_name or "Optimus"
+            ctx["language"] = language or "pt-BR"
+            ctx["communication_style"] = comm_style or "casual"
+    except Exception:
+        pass  # Fallback to defaults if DB unavailable
+
+    return ctx
+
+
 @app.post("/api/v1/chat")
 async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """Send a message to an agent. user_id is extracted from the JWT."""
-    # Merge user identity into context so the agent knows who it's talking to
-    # Prefer display_name (set at registration) over email prefix
-    user_name = user.display_name or (user.email.split("@")[0] if user.email else "user")
-    context = {**(request.context or {}), "user_email": user.email, "user_name": user_name}
+    user_ctx = await _load_user_context(user)
+    context = {**user_ctx, **(request.context or {})}
     result = await gateway.route_message(
         message=request.message,
         user_id=user.id,
@@ -738,6 +767,10 @@ app.include_router(orchestrator_router)
 # FASE 0 #25: A2A Protocol API
 from src.api.a2a import router as a2a_router
 app.include_router(a2a_router)
+
+# FASE 1: User Profile & Preferences API
+from src.api.user_profile import router as user_profile_router
+app.include_router(user_profile_router)
 
 
 class SearchRequest(BaseModel):

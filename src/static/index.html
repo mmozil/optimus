@@ -95,6 +95,25 @@
             border-color: var(--red);
         }
 
+        .btn-settings {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: none;
+            border: 1px solid var(--border);
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .btn-settings:hover {
+            color: var(--text);
+            border-color: var(--text-muted);
+        }
+
         /* ── Chat area ───────────────────────────── */
         #chat-wrap {
             flex: 1;
@@ -448,6 +467,7 @@
                 <option value="loki">Loki · Escrita</option>
                 <option value="vision">Vision · Guardião</option>
             </select>
+            <a href="/settings.html" class="btn-settings">⚙ Config</a>
             <button class="btn-logout" id="logout-btn">Sair</button>
         </div>
     </header>
