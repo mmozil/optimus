@@ -1058,6 +1058,141 @@ class TestStandupGeneratorIntegration:
 
 
 # ============================================
+# FASE 0 #6 — ProactiveResearcher Integration
+# ============================================
+class TestProactiveResearcherIntegration:
+    """
+    REGRA DE OURO Checkpoint 2 — Tests that FAIL without #6:
+    - ProactiveResearcher is triggered by CronScheduler 3x/day (every 8h)
+    - CRON_TRIGGERED(job_name="proactive_research") → run_check_cycle()
+    - Briefing saved to workspace/research/findings/<date>.md
+    - research_handlers registered on EventBus
+    """
+
+    def test_proactive_researcher_exists(self):
+        """Verify singleton exists and is properly initialized."""
+        from src.engine.proactive_researcher import proactive_researcher
+
+        assert proactive_researcher is not None
+        assert hasattr(proactive_researcher, "run_check_cycle")
+        assert hasattr(proactive_researcher, "generate_briefing")
+
+    @pytest.mark.asyncio
+    async def test_research_handler_registered_on_eventbus(self):
+        """
+        Test that EventBus has research handler for CRON_TRIGGERED.
+        Validates that register_research_handlers() is called in main.py lifespan.
+        """
+        from src.engine.research_handlers import register_research_handlers
+        from src.core.events import event_bus, EventType
+
+        register_research_handlers()
+
+        handlers = event_bus._handlers.get(EventType.CRON_TRIGGERED.value, [])
+        assert len(handlers) > 0, \
+            "No handler for CRON_TRIGGERED! register_research_handlers() not called."
+
+    @pytest.mark.asyncio
+    async def test_research_cron_event_generates_briefing(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED(job_name="proactive_research") generates a briefing.
+
+        Call Path:
+          EventBus.emit(CRON_TRIGGERED, {job_name: "proactive_research"})
+            → on_research_cron_triggered(event)
+              → proactive_researcher.run_check_cycle()
+                → briefing saved to workspace/research/findings/<date>.md
+        """
+        import asyncio
+        from datetime import datetime, timezone
+        from src.engine.research_handlers import register_research_handlers
+        from src.engine.proactive_researcher import proactive_researcher, ResearchSource
+        from src.core.events import event_bus, EventType, Event
+
+        # Redirect research file writes to tmp_path
+        import src.engine.proactive_researcher as pr_module
+        monkeypatch.setattr(pr_module, "FINDINGS_DIR", tmp_path)
+
+        # Add a test source that is always due (last_checked="")
+        test_source = ResearchSource(
+            name="Test RSS Feed",
+            type="rss",
+            url="https://example.com/feed",
+            check_interval="1h",
+            last_checked="",  # Always due
+            enabled=True,
+        )
+        proactive_researcher.add_source(test_source)
+
+        register_research_handlers()
+
+        # Simulate CronScheduler firing the proactive_research job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "test_research_job",
+                "job_name": "proactive_research",
+                "payload": "Run proactive research cycle",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)  # Allow async handler to complete
+
+        # Briefing file must exist
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        briefing_file = tmp_path / f"optimus-{date_str}.md"
+
+        assert briefing_file.exists(), \
+            f"Briefing file not created at {briefing_file}! Handler did not save briefing."
+        content = briefing_file.read_text(encoding="utf-8")
+        assert "Research Briefing" in content or "No new findings" in content, \
+            f"Briefing content missing expected header. Got: {content[:200]}"
+
+    @pytest.mark.asyncio
+    async def test_research_cron_ignores_other_jobs(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED events for other jobs are ignored.
+        Only job_name='proactive_research' triggers research cycle.
+        """
+        import asyncio
+        from datetime import datetime, timezone
+        from src.engine.research_handlers import register_research_handlers
+        from src.core.events import event_bus, EventType, Event
+
+        import src.engine.research_handlers as rh_module
+        monkeypatch.setattr(rh_module, "FINDINGS_DIR", tmp_path)
+
+        register_research_handlers()
+
+        # Fire a different cron job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "other_job",
+                "job_name": "some_other_job",
+                "payload": "Do something else",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)
+
+        # No briefing file should be created
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        briefing_file = tmp_path / f"optimus-{date_str}.md"
+
+        assert not briefing_file.exists(), \
+            "Briefing created for a non-research job! Handler must filter by job_name."
+
+
+# ============================================
 # FASE 0 #8: WorkingMemory Integration
 # ============================================
 class TestWorkingMemoryIntegration:

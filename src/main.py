@@ -57,6 +57,30 @@ def _schedule_daily_standup(cron_scheduler) -> None:
     logger.info(f"FASE 0 #23: Daily standup scheduled — first run at {next_run.isoformat()}")
 
 
+def _schedule_proactive_research(cron_scheduler) -> None:
+    """
+    Schedule proactive research every 8 hours (3x/day).
+    Skips if a job named 'proactive_research' already exists (jobs persist across restarts).
+    """
+    from src.core.cron_scheduler import CronJob
+
+    existing = [j for j in cron_scheduler.list_jobs() if j.name == "proactive_research"]
+    if existing:
+        logger.info(f"FASE 0 #6: Proactive research already scheduled — next run: {existing[0].next_run}")
+        return
+
+    job = CronJob(
+        name="proactive_research",
+        schedule_type="every",
+        schedule_value="8h",
+        payload="Run proactive research cycle",
+        delete_after_run=False,
+    )
+    job_id = cron_scheduler.add(job)
+
+    logger.info(f"FASE 0 #6: Proactive research scheduled — runs every 8h (3x/day), first run at {cron_scheduler._jobs[job_id].next_run}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -91,6 +115,11 @@ async def lifespan(app: FastAPI):
     from src.collaboration.standup_handlers import register_standup_handlers
     register_standup_handlers()
 
+    # FASE 0 #6: Register proactive research cron handler on EventBus
+    # CronScheduler fires CRON_TRIGGERED(job_name="proactive_research") → runs research cycle
+    from src.engine.research_handlers import register_research_handlers
+    register_research_handlers()
+
     # FASE 0 #26: Start CronScheduler
     # Background loop checks for due jobs every 60s
     # Emits CRON_TRIGGERED events on EventBus
@@ -99,6 +128,10 @@ async def lifespan(app: FastAPI):
     # FASE 0 #23: Schedule daily standup at 12:00 UTC (09:00 BRT)
     # Only adds the job if it doesn't already exist (jobs persist across restarts)
     _schedule_daily_standup(cron_scheduler)
+
+    # FASE 0 #6: Schedule proactive research every 8h (3x/day)
+    # Only adds the job if it doesn't already exist (jobs persist across restarts)
+    _schedule_proactive_research(cron_scheduler)
 
     # FASE 0 #16: Start WebChatChannel
     # Enables REST API + SSE streaming for web-based chat
