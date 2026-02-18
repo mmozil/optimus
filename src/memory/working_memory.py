@@ -50,6 +50,12 @@ class WorkingMemory:
         if path.exists():
             content = path.read_text(encoding="utf-8")
             self._cache[agent_name] = content
+            # FASE 6: sync to DB on first load (cache miss = first read in this process)
+            # Ensures DB has current state even if save() is never called explicitly
+            try:
+                asyncio.create_task(self._save_to_db(agent_name, content))
+            except RuntimeError:
+                pass
             return content
 
         # FASE 6: fallback to DB (container restart recovery)
