@@ -1782,3 +1782,94 @@ class TestUncertaintyQuantifierIntegration:
         assert 0.0 <= result.calibrated_confidence <= 1.0, "Calibrated confidence should be 0.0-1.0"
         assert result.risk_level in ["low", "medium", "high"], "Risk level should be valid"
         assert len(result.recommendation) > 0, "Should provide recommendation"
+
+
+# ============================================
+# FASE 0 #5: AutonomousExecutor Integration
+# ============================================
+class TestAutonomousExecutorIntegration:
+    """
+    Tests for AutonomousExecutor integration via API endpoints.
+
+    REGRA DE OURO Checkpoint 3: These tests validate the API integration.
+    """
+
+    @pytest.mark.asyncio
+    async def test_autonomous_executor_exists(self):
+        """
+        Test that AutonomousExecutor singleton exists and has expected methods.
+
+        This verifies the module is ready for integration.
+        """
+        from src.engine.autonomous_executor import autonomous_executor
+
+        assert autonomous_executor is not None, "autonomous_executor singleton should exist"
+        assert hasattr(autonomous_executor, "should_auto_execute"), "Should have should_auto_execute() method"
+        assert hasattr(autonomous_executor, "execute"), "Should have execute() method"
+        assert hasattr(autonomous_executor, "classify_risk"), "Should have classify_risk() method"
+
+    @pytest.mark.asyncio
+    async def test_autonomous_executor_risk_classification(self):
+        """
+        Test that autonomous_executor correctly classifies task risks.
+
+        This validates the risk assessment logic.
+        """
+        from src.engine.autonomous_executor import autonomous_executor, TaskRisk
+
+        # LOW risk tasks
+        assert autonomous_executor.classify_risk("read the file") == TaskRisk.LOW
+        assert autonomous_executor.classify_risk("search for data") == TaskRisk.LOW
+
+        # MEDIUM risk tasks
+        assert autonomous_executor.classify_risk("edit the config") == TaskRisk.MEDIUM
+        assert autonomous_executor.classify_risk("modify settings") == TaskRisk.MEDIUM
+
+        # HIGH risk tasks
+        assert autonomous_executor.classify_risk("deploy to server") == TaskRisk.HIGH
+        assert autonomous_executor.classify_risk("send email") == TaskRisk.HIGH
+
+        # CRITICAL risk tasks
+        assert autonomous_executor.classify_risk("delete all files") == TaskRisk.CRITICAL
+        assert autonomous_executor.classify_risk("drop database") == TaskRisk.CRITICAL
+
+    @pytest.mark.asyncio
+    async def test_autonomous_executor_should_auto_execute_logic(self):
+        """
+        Test the decision logic for auto-execution.
+
+        Validates threshold, risk level, and budget checks.
+        """
+        from src.engine.autonomous_executor import autonomous_executor
+
+        # High confidence, low risk → should execute
+        assert autonomous_executor.should_auto_execute("read file", 0.95) is True
+
+        # Low confidence → should NOT execute
+        assert autonomous_executor.should_auto_execute("read file", 0.5) is False
+
+        # CRITICAL risk → NEVER execute (even high confidence)
+        assert autonomous_executor.should_auto_execute("delete all files", 0.99) is False
+
+    @pytest.mark.asyncio
+    async def test_autonomous_executor_execution_result(self):
+        """
+        Test the execute() method returns proper ExecutionResult.
+
+        This validates the full execution pipeline.
+        """
+        from src.engine.autonomous_executor import autonomous_executor, ExecutionStatus
+
+        # Execute a safe task with high confidence
+        result = await autonomous_executor.execute(
+            task="read system status",
+            confidence=0.95,
+            agent_name="test",
+        )
+
+        assert result is not None, "Should return ExecutionResult"
+        assert result.task == "read system status", "Task should be recorded"
+        assert result.confidence == 0.95, "Confidence should be recorded"
+        assert result.status in [ExecutionStatus.SUCCESS, ExecutionStatus.SKIPPED], \
+            "Status should be valid"
+        assert len(result.output) > 0, "Should provide output message"

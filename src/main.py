@@ -408,6 +408,83 @@ async def close_webchat_session(
 
 
 # ============================================
+# FASE 0 #5: Autonomous Executor (Jarvis Mode)
+# ============================================
+@app.get("/api/v1/autonomous/config")
+async def get_autonomous_config(user: CurrentUser = Depends(get_current_user)):
+    """Get autonomous executor configuration."""
+    from src.engine.autonomous_executor import autonomous_executor
+
+    return {
+        "status": "success",
+        "data": autonomous_executor.config.to_dict(),
+    }
+
+
+class AutonomousConfigUpdate(BaseModel):
+    auto_execute_threshold: float | None = None
+    max_risk_level: str | None = None
+    daily_budget: int | None = None
+    enabled: bool | None = None
+
+
+@app.patch("/api/v1/autonomous/config")
+async def update_autonomous_config(
+    request: AutonomousConfigUpdate,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update autonomous executor configuration."""
+    from src.engine.autonomous_executor import autonomous_executor
+
+    config = autonomous_executor.config
+
+    if request.auto_execute_threshold is not None:
+        config.auto_execute_threshold = max(0.0, min(1.0, request.auto_execute_threshold))
+    if request.max_risk_level is not None:
+        config.max_risk_level = request.max_risk_level
+    if request.daily_budget is not None:
+        config.daily_budget = max(1, request.daily_budget)
+    if request.enabled is not None:
+        config.enabled = request.enabled
+
+    autonomous_executor.save_config()
+
+    return {
+        "status": "success",
+        "data": config.to_dict(),
+        "message": "Configuration updated",
+    }
+
+
+@app.get("/api/v1/autonomous/audit")
+async def get_autonomous_audit(
+    limit: int = 50,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Get autonomous execution audit trail."""
+    from src.engine.autonomous_executor import autonomous_executor
+
+    trail = autonomous_executor.get_audit_trail(limit=limit)
+    return {
+        "status": "success",
+        "data": trail,
+        "count": len(trail),
+    }
+
+
+@app.get("/api/v1/autonomous/stats")
+async def get_autonomous_stats(user: CurrentUser = Depends(get_current_user)):
+    """Get autonomous executor statistics."""
+    from src.engine.autonomous_executor import autonomous_executor
+
+    stats = autonomous_executor.get_stats()
+    return {
+        "status": "success",
+        "data": stats,
+    }
+
+
+# ============================================
 # Admin-only endpoints
 # ============================================
 @app.get("/api/v1/admin/users", dependencies=[Depends(require_role("admin"))])
