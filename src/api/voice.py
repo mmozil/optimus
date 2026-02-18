@@ -189,6 +189,11 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
 
                 response = result.get("content", "")
 
+                # Strip uncertainty warning prefix if present (not suitable for TTS)
+                # Format: "🔴/⚠️/✅ ...\n\n---\n\nactual response"
+                if response and "\n---\n" in response:
+                    response = response.split("\n---\n", 1)[-1].strip()
+
                 # 4. Always synthesize response to audio (TTS)
                 if response:
                     response_audio = await voice_interface.speak(response)
