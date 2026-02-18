@@ -1865,15 +1865,22 @@ Agent pode ler arquivos, executar scripts
 3. [x] **API**: `GET /api/v1/oauth/google/connect` + `GET /api/v1/oauth/google/callback`
    - `src/api/oauth_google.py` — PUBLIC_ROUTES (sem Bearer)
 
-4. [x] **MCP Tool**: `gmail_list`, `gmail_search`, `calendar_list`, `calendar_search`, `drive_search`, `drive_read`
-   - `src/core/google_oauth_service.py` — métodos diretos chamados via ReAct
+4. [x] **MCP Tool**: `gmail_read`, `gmail_get`, `gmail_send`, `calendar_list`, `calendar_search`, `drive_search`, `drive_read`
+   - `src/core/google_oauth_service.py` — métodos diretos
+   - `src/skills/mcp_tools.py` — handlers registrados no ReAct
+   - `gmail_send`: `requires_approval=True`, descrição explica que DEVE pedir aprovação ao usuário
 
 5. [x] **Settings**: `settings.html` — "Conectar Google" + estado connected/disconnected
    - JS: `loadGoogleStatus()`, `connectGoogle()`, `disconnectGoogle()`
 
-6. [ ] **Agent E2E**: "Quantos emails não lidos tenho?" → gmail_search() → resposta real
-   - ⚠️ **Checkpoint #3 pendente** — APIs Gmail/Calendar habilitadas, aguardando propagação
-   - Quando propagar: testar em optimus.tier.finance via chat
+6. [x] **Calendar**: validado em produção ✅ (acessou eventos com sucesso)
+
+7. [ ] **Agent E2E completo**: "envie e-mail para X" → draft → aprovação → gmail_send()
+   - ⚠️ **Requer reconexão Google** — scope `gmail.send` adicionado ao OAuth
+   - Ação: settings.html → Desconectar Google → Conectar Google → autorizar novos escopos
+   - Após reconexão: testar envio via chat
+
+8. [ ] **Drive E2E**: aguardando propagação da API Google Drive
 
 ---
 
@@ -2015,7 +2022,7 @@ Optimus roda em sua máquina
 | **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
 | **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
-| **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | OAuth+MCP+Settings prontos; E2E aguardando propagação Google APIs |
+| **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | Calendar ✅; gmail_send impl; aguarda reconexão OAuth + Drive propagação |
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
 | **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |

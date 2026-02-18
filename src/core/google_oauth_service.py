@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",       # FASE 4A: enviar e-mails
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
     "openid",
@@ -335,6 +336,54 @@ class GoogleOAuthService:
         except Exception as e:
             logger.error(f"Gmail get error for user {user_id}: {e}")
             return f"❌ Erro ao ler email: {e}"
+
+    async def gmail_send(
+        self,
+        user_id: str,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str = "",
+    ) -> str:
+        """
+        Send an email via Gmail API.
+
+        IMPORTANT: Agent must always show draft and get explicit user approval
+        before calling this method.
+
+        Requires scope: gmail.send (user must reconnect Google after scope change).
+        """
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("gmail", "v1", credentials=creds)
+
+            # Build MIME message
+            mime_msg = MIMEText(body, "plain", "utf-8")
+            mime_msg["to"] = to
+            mime_msg["subject"] = subject
+            if cc:
+                mime_msg["cc"] = cc
+
+            # Encode to base64url
+            raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode("utf-8")
+
+            result = service.users().messages().send(
+                userId="me",
+                body={"raw": raw},
+            ).execute()
+
+            msg_id = result.get("id", "")
+            logger.info(f"Email sent for user {user_id} → {to} (id={msg_id})")
+            return f"✅ E-mail enviado com sucesso para **{to}**!\n📧 Assunto: {subject}"
+
+        except Exception as e:
+            logger.error(f"Gmail send error for user {user_id}: {e}")
+            return f"❌ Erro ao enviar e-mail: {e}"
 
     # ============================================
     # Google Calendar

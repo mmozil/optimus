@@ -438,6 +438,24 @@ class MCPToolRegistry:
             handler=self._tool_drive_read,
         ))
 
+        self.register(MCPTool(
+            name="gmail_send",
+            description=(
+                "Send an email via Gmail. "
+                "IMPORTANT: ALWAYS show the full email draft (to, subject, body) to the user and wait for explicit approval BEFORE calling this tool. "
+                "Never send without user confirmation."
+            ),
+            category="google",
+            parameters={
+                "to": {"type": "string", "required": True, "description": "Recipient email address"},
+                "subject": {"type": "string", "required": True, "description": "Email subject line"},
+                "body": {"type": "string", "required": True, "description": "Email body (plain text)"},
+                "cc": {"type": "string", "description": "CC email address (optional)"},
+            },
+            handler=self._tool_gmail_send,
+            requires_approval=True,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -922,6 +940,14 @@ class MCPToolRegistry:
         from src.core.google_oauth_service import google_oauth_service
         user_id = self._current_user_id()
         return await google_oauth_service.drive_read(user_id, file_id=file_id)
+
+    async def _tool_gmail_send(self, to: str, subject: str, body: str, cc: str = "") -> str:
+        """Send an email via Gmail (requires prior user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_send(
+            user_id, to=to, subject=subject, body=body, cc=cc
+        )
 
     def _current_user_id(self) -> str:
         """Get current user_id from execution context (set by ReAct loop)."""

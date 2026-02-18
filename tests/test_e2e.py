@@ -3953,6 +3953,47 @@ class TestGoogleOAuthIntegration:
         assert response.status_code != 500, \
             "GET /oauth/google/connect should not return 500"
 
+    def test_gmail_send_scope_configured(self):
+        """gmail.send scope must be present in SCOPES list."""
+        from src.core.google_oauth_service import SCOPES
+        assert any("gmail.send" in s for s in SCOPES), \
+            "gmail.send scope missing from SCOPES — user cannot send emails"
+
+    def test_gmail_send_service_method_exists(self):
+        """GoogleOAuthService must have gmail_send() method."""
+        from src.core.google_oauth_service import GoogleOAuthService
+        svc = GoogleOAuthService()
+        assert hasattr(svc, "gmail_send"), \
+            "GoogleOAuthService.gmail_send() not implemented"
+        import inspect
+        sig = inspect.signature(svc.gmail_send)
+        assert "to" in sig.parameters, "gmail_send() missing 'to' parameter"
+        assert "subject" in sig.parameters, "gmail_send() missing 'subject' parameter"
+        assert "body" in sig.parameters, "gmail_send() missing 'body' parameter"
+
+    def test_gmail_send_tool_registered(self):
+        """gmail_send MCP tool must be registered in mcp_tools registry."""
+        from src.skills.mcp_tools import mcp_tools
+        tool = mcp_tools.get_tool("gmail_send")
+        assert tool is not None, "gmail_send tool not registered in mcp_tools"
+        assert tool.requires_approval is True, \
+            "gmail_send must require approval (never auto-send)"
+        assert "approval" in tool.description.lower() or "ALWAYS" in tool.description, \
+            "gmail_send description must mention approval requirement"
+
+    @pytest.mark.asyncio
+    async def test_gmail_send_without_token_returns_not_connected(self):
+        """gmail_send() without Google connection must return _NOT_CONNECTED_MSG, not crash."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.gmail_send(
+            user_id="00000000-0000-0000-0000-000000000001",
+            to="test@example.com",
+            subject="Test",
+            body="Test body",
+        )
+        assert "conectado" in result.lower() or "❌" in result or "⚠️" in result, \
+            f"Expected not-connected message, got: {result}"
+
 
 # ============================================
 # FASE 0 #13-15: Channel Integration Tests (Telegram, WhatsApp, Slack)
