@@ -79,7 +79,7 @@
 | 5 | `autonomous_executor` | ReAct (high confidence tasks) | [ ] |
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [ ] |
 | 7 | `reflection_engine` | Cron job semanal | [ ] |
-| 8 | `working_memory` | Session bootstrap context | [ ] |
+| 8 | `working_memory` | Session bootstrap context | [x] |
 | 9 | `rag_pipeline` | Knowledge base retrieval | [ ] |
 | 10 | `collective_intelligence` | Agents após aprendizado (async) | [ ] |
 | 11 | `mcp_plugin_loader` | Dynamic MCP plugin loading | [ ] |
@@ -393,6 +393,71 @@ Injected into system prompt → Agent vê contexto rico
 **Pendente:**
 - [ ] Validar greetings contextuais em produção
 - [ ] Testar em diferentes fusos horários
+
+---
+
+### ✅ #8 WorkingMemory — CONCLUÍDO
+
+**Call Path:**
+```
+User sends message → POST /api/v1/chat/message
+    ↓
+gateway.route_message() [gateway.py:179]
+    ↓
+session_bootstrap.load_context(agent_name) [session_bootstrap.py:107]
+    ↓
+working_memory.load(agent_name) [working_memory.py:32]
+    ↓
+BootstrapContext.working = "# WORKING.md — optimus\n..."
+    ↓
+BootstrapContext.build_prompt() includes working memory section
+    ↓
+OptimusAgent.process(enriched_context) [optimus.py:33]
+    ↓
+Agent sees WORKING.md scratchpad in system prompt
+```
+
+**Arquivos modificados:**
+- `src/memory/session_bootstrap.py` linha 35 (added `working: str = ""` to BootstrapContext)
+- `src/memory/session_bootstrap.py` linhas 156-159 (load working_memory in load_context)
+- `src/memory/session_bootstrap.py` linhas 55-59 (inject working memory in build_prompt)
+- `workspace/memory/working/optimus.md` (novo — test content for production validation)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestWorkingMemoryIntegration`
+- Testa: working memory carregado no bootstrap, injetado no prompt, default criado se não existe
+- **3/3 testes passando** ✅
+- Teste FALHA se working_memory.load() NÃO for chamado (valida REGRA DE OURO checkpoint #2)
+
+**Funcionalidade injetada no prompt:**
+```
+## Working Memory (Scratchpad)
+# WORKING.md — optimus
+
+## Status Atual
+✅ FASE 0 #8 — WorkingMemory integration CONCLUÍDA
+
+## Tasks Ativas
+- [Lista de tasks ativas]
+
+## Contexto Recente
+- [Contexto do trabalho atual]
+
+## Notas Rápidas
+- [Notas timestamped]
+```
+
+**Impacto para o usuário:**
+- Agent agora tem acesso a scratchpad pessoal (WORKING.md) em toda conversa
+- Pode rastrear status atual, tasks ativas, contexto recente e notas rápidas
+- Persiste em `workspace/memory/working/{agent_name}.md`
+- Limite de 1500 chars (últimos) para evitar token bloat
+- Auto-carregado via session_bootstrap em toda requisição
+
+**Testado em produção:**
+- ✅ Validado em https://optimus.tier.finance/
+- ✅ Agent demonstrou awareness do conteúdo do WORKING.md
+- ✅ Logs confirmam: `working=XXXc` no bootstrap
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado
