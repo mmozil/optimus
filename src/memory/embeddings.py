@@ -7,7 +7,13 @@ Handles batching, caching, and storage in PGvector.
 import logging
 from typing import Any
 
-import google.generativeai as genai
+# Optional dependency - gracefully degrade if not available
+try:
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    genai = None
 
 from src.core.config import settings
 
@@ -21,7 +27,7 @@ class EmbeddingService:
     """
 
     def __init__(self):
-        if settings.GOOGLE_API_KEY:
+        if GENAI_AVAILABLE and settings.GOOGLE_API_KEY:
             genai.configure(api_key=settings.GOOGLE_API_KEY)
         self.model = settings.EMBEDDING_MODEL
         self.dimensions = settings.EMBEDDING_DIMENSIONS
@@ -34,6 +40,10 @@ class EmbeddingService:
             text: Text to embed
             task_type: RETRIEVAL_DOCUMENT | RETRIEVAL_QUERY | SEMANTIC_SIMILARITY
         """
+        if not GENAI_AVAILABLE:
+            logger.warning("google.generativeai not available, returning empty embedding")
+            return []
+
         try:
             result = genai.embed_content(
                 model=f"models/{self.model}",
@@ -56,6 +66,10 @@ class EmbeddingService:
         batch_size: int = 100,
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts in batches."""
+        if not GENAI_AVAILABLE:
+            logger.warning("google.generativeai not available, returning empty embeddings")
+            return [[] for _ in texts]
+
         all_embeddings = []
 
         for i in range(0, len(texts), batch_size):
