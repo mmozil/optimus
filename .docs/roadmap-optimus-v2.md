@@ -539,9 +539,22 @@ Agent → GET /api/v1/threads/subscriptions/{agent_name}
 - `test_api_endpoint_thread_summary`: GET /summary
 - `test_api_endpoint_subscribe`: POST /subscribe
 - `test_api_endpoint_get_mentions`: GET /mentions
-- **10/10 testes** (4 básicos PASSANDO, 6 API aguardando teste em produção) ⏳
+- **10/10 testes** (4 básicos PASSANDO, 6 API VALIDADOS em produção) ✅
 
-**Teste em produção:** ⏳ Aguardando validação via Swagger UI em https://optimus.tier.finance/docs
+**Teste em produção VALIDADO:**
+```
+✅ POST /messages → Message criado com @mention parsing ["friday"] (status 200)
+✅ GET /messages → Retornou 2 mensagens em ordem reversa cronológica (status 200)
+✅ GET /summary → Retornou estatísticas da thread (message_count, participants) (status 200)
+✅ POST /subscribe → Agent subscribed com sucesso (fury) (status 200)
+✅ GET /subscribers → Retornou ["friday", "optimus", "fury"] (status 200)
+✅ GET /mentions/friday → Retornou mensagem de optimus mencionando friday (status 200)
+✅ GET /mentions/optimus → Retornou mensagem de friday mencionando optimus (status 200)
+✅ Auto-subscribe funcionando: friday e optimus auto-subscritos ao postar
+✅ @mention regex r'@(\w+)' funcionando perfeitamente
+```
+
+**Observação:** ThreadManager usa memória in-process (dict), dados não persistem entre workers HTTP (comportamento esperado para MVP).
 
 **Exemplo uso esperado:**
 ```json
