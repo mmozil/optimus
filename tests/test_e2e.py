@@ -3137,3 +3137,212 @@ class TestVoiceInterfaceIntegration:
         assert "stt_provider" in data, "Should include STT provider"
         assert "tts_provider" in data, "Should include TTS provider"
         assert "wake_words" in data, "Should include wake words list"
+
+
+# ============================================
+# FASE 0 #19: Thread Manager Integration Tests
+# ============================================
+class TestThreadManagerIntegration:
+    """
+    E2E tests for Thread Manager REST API integration.
+
+    FASE 0 #19: These tests FAIL before integration (404s),
+    PASS after REST API endpoints are added.
+    """
+
+    @pytest.mark.asyncio
+    async def test_thread_manager_exists(self):
+        """Verify ThreadManager module is importable."""
+        from src.collaboration.thread_manager import ThreadManager, thread_manager
+        assert thread_manager is not None
+        assert isinstance(thread_manager, ThreadManager)
+
+    @pytest.mark.asyncio
+    async def test_post_and_get_messages(self):
+        """Test posting and retrieving messages."""
+        from src.collaboration.thread_manager import ThreadManager
+        from uuid import uuid4
+
+        tm = ThreadManager()
+        task_id = uuid4()
+
+        # Post message
+        msg1 = await tm.post_message(task_id, "optimus", "Hello @friday, how are you?")
+        assert msg1.from_agent == "optimus"
+        assert "friday" in msg1.mentions
+
+        # Get messages
+        messages = await tm.get_messages(task_id)
+        assert len(messages) == 1
+        assert messages[0].content == "Hello @friday, how are you?"
+
+    @pytest.mark.asyncio
+    async def test_thread_subscriptions(self):
+        """Test thread subscription functionality."""
+        from src.collaboration.thread_manager import ThreadManager
+        from uuid import uuid4
+
+        tm = ThreadManager()
+        task_id = uuid4()
+
+        # Subscribe agent
+        await tm.subscribe("optimus", task_id)
+        subscribers = await tm.get_subscribers(task_id)
+        assert "optimus" in subscribers
+
+        # Auto-subscribe via message
+        await tm.post_message(task_id, "friday", "Working on this")
+        subscribers = await tm.get_subscribers(task_id)
+        assert "friday" in subscribers
+
+    @pytest.mark.asyncio
+    async def test_mentions_parsing(self):
+        """Test @mention parsing and tracking."""
+        from src.collaboration.thread_manager import ThreadManager
+        from uuid import uuid4
+
+        tm = ThreadManager()
+        task_id = uuid4()
+
+        # Post with mentions
+        msg = await tm.post_message(
+            task_id, "optimus", "Hey @friday and @fury, check this out!"
+        )
+        assert "friday" in msg.mentions
+        assert "fury" in msg.mentions
+
+        # Get unread mentions
+        mentions = await tm.get_unread_mentions("friday")
+        assert len(mentions) > 0
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_post_message(self):
+        """Test POST /api/v1/threads/{task_id}/messages endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        from uuid import uuid4
+        task_id = str(uuid4())
+
+        # Post message
+        response = client.post(f"/api/v1/threads/{task_id}/messages", json={
+            "from_agent": "optimus",
+            "content": "Hello @friday, let's collaborate!"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /threads/{task_id}/messages should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "id" in data, "Should return message ID"
+        assert data["from_agent"] == "optimus"
+        assert "friday" in data["mentions"]
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_get_messages(self):
+        """Test GET /api/v1/threads/{task_id}/messages endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        from uuid import uuid4
+        task_id = str(uuid4())
+
+        # Get messages (should work even if empty)
+        response = client.get(f"/api/v1/threads/{task_id}/messages?limit=20")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /threads/{task_id}/messages should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of messages"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_thread_summary(self):
+        """Test GET /api/v1/threads/{task_id}/summary endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        from uuid import uuid4
+        task_id = str(uuid4())
+
+        # Get summary
+        response = client.get(f"/api/v1/threads/{task_id}/summary")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /threads/{task_id}/summary should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "task_id" in data
+        assert "message_count" in data
+        assert "participants" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_subscribe(self):
+        """Test POST /api/v1/threads/{task_id}/subscribe endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        from uuid import uuid4
+        task_id = str(uuid4())
+
+        # Subscribe agent
+        response = client.post(f"/api/v1/threads/{task_id}/subscribe", json={
+            "agent_name": "optimus"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /threads/{task_id}/subscribe should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "success" in data or "subscribed" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_get_mentions(self):
+        """Test GET /api/v1/threads/mentions/{agent_name} endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Get mentions for agent
+        response = client.get("/api/v1/threads/mentions/optimus")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /threads/mentions/{agent_name} should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of messages with mentions"

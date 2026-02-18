@@ -723,6 +723,10 @@ app.include_router(skills_router)
 from src.api.voice import router as voice_router
 app.include_router(voice_router)
 
+# FASE 0 #19: Thread Manager API
+from src.api.threads import router as threads_router
+app.include_router(threads_router)
+
 
 class SearchRequest(BaseModel):
     query: str
