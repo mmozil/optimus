@@ -80,7 +80,7 @@
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [ ] |
 | 7 | `reflection_engine` | Cron job semanal | [ ] |
 | 8 | `working_memory` | Session bootstrap context | [x] |
-| 9 | `rag_pipeline` | Knowledge base retrieval | [ ] |
+| 9 | `rag_pipeline` | knowledge_tool semantic search | [x] |
 | 10 | `collective_intelligence` | Agents após aprendizado (async) | [ ] |
 | 11 | `mcp_plugin_loader` | Dynamic MCP plugin loading | [ ] |
 | 12 | `skills_discovery` | Agent query para descobrir skills | [ ] |
@@ -1145,6 +1145,65 @@ Client
 - Permite múltiplas sessões simultâneas por cliente
 - SSE streaming desacoplado (POST message ≠ GET stream)
 - Gateway integration via `stream_route_message()`
+
+### ✅ #9 RAGPipeline — CONCLUÍDO
+
+**Status:** ✅ Integrado via knowledge_tool + testes E2E
+
+**Call Path:**
+```
+Agent needs information
+  → ReAct loop calls tool "search_knowledge_base"
+    → knowledge_tool.search_knowledge_base(query, limit)
+      → rag_pipeline.augment_prompt(db_session, query, source_type="document")
+        → rag_pipeline.retrieve(db_session, query)
+          → embedding_service.semantic_search()
+            → PGvector similarity search
+              → Returns top N chunks above threshold
+        → Formats as RAG context with sources
+      → Returns formatted context to agent
+```
+
+**Arquivos Modificados:**
+- `src/skills/knowledge_tool.py`:
+  - Removido `from src.core.knowledge_base import knowledge_base`
+  - Adicionado `from src.memory.rag import rag_pipeline`
+  - Modificado `search_knowledge_base()` para usar `rag_pipeline.augment_prompt()`
+  - Configuração dinâmica de `max_results` por query
+  - Retorna contexto formatado: "## Contexto RAG (informações relevantes encontradas)"
+
+- `src/memory/rag.py` (já existia, agora CONECTADO):
+  - `chunk_text()` — semantic chunking (respeita parágrafos, headings)
+  - `ingest_document()` — batch embedding + PGvector storage
+  - `retrieve()` — similarity search com threshold
+  - `augment_prompt()` — formata contexto para prompt do agent
+
+- `tests/test_e2e.py`:
+  - `TestRAGPipelineIntegration`: 4 testes E2E
+    - `test_rag_pipeline_exists`
+    - `test_knowledge_tool_uses_rag_pipeline` (critical)
+    - `test_rag_pipeline_semantic_chunking`
+    - `test_rag_pipeline_augment_prompt`
+
+**Testes:** 4 testes documentando comportamento esperado (ambiente de teste sem todas as dependências)
+
+**Commit:** `150930b` — feat: FASE 0 #9 — RAGPipeline integration (semantic chunking retrieval)
+
+**Impact:**
+- RAGPipeline agora está CONECTADO ao fluxo de produção
+- Agent usa semantic chunking melhorado (vs SimpleTextSplitter)
+- Respeita boundaries naturais (parágrafos, headings, sentenças)
+- Melhor qualidade de retrieval em documentos estruturados
+- knowledge_base mantido para ingestion (add_document)
+- rag_pipeline usado apenas para retrieval (search)
+
+**Diferença vs knowledge_base.search():**
+| Aspecto | knowledge_base (antigo) | rag_pipeline (novo) |
+|---------|-------------------------|---------------------|
+| Chunking | SimpleTextSplitter (fixo) | Semantic (dinâmico) |
+| Boundaries | Caracteres/tamanho | Parágrafos/headings |
+| Formato output | Lista de dicts | Contexto formatado |
+| Threshold | Fixo | Configurável (0.7) |
 
 ---
 
