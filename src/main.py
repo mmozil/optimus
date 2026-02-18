@@ -715,6 +715,10 @@ app.include_router(debug.router, prefix="/api/v1/debug", tags=["Debug"])
 from src.api.knowledge import router as knowledge_router
 app.include_router(knowledge_router)
 
+# FASE 0 #12: Skills Discovery API
+from src.api.skills import router as skills_router
+app.include_router(skills_router)
+
 
 class SearchRequest(BaseModel):
     query: str

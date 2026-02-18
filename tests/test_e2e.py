@@ -2800,3 +2800,172 @@ class TestCollectiveIntelligenceIntegration:
         assert "total_shared" in data, "Should include total_shared"
         assert "unique_agents" in data, "Should include unique_agents"
         assert "unique_topics" in data, "Should include unique_topics"
+
+
+# ============================================
+# FASE 0 #12: Skills Discovery Integration Tests
+# ============================================
+class TestSkillsDiscoveryIntegration:
+    """
+    E2E tests for Skills Discovery REST API integration.
+
+    FASE 0 #12: These tests FAIL before integration (404s),
+    PASS after REST API endpoints are added.
+    """
+
+    @pytest.mark.asyncio
+    async def test_skills_discovery_exists(self):
+        """Verify SkillsDiscovery module is importable."""
+        from src.skills.skills_discovery import SkillsDiscovery
+        discovery = SkillsDiscovery()
+        assert discovery is not None
+
+    @pytest.mark.asyncio
+    async def test_skills_search_keyword(self):
+        """Test basic keyword search functionality."""
+        from src.skills.skills_discovery import SkillsDiscovery
+
+        discovery = SkillsDiscovery()
+
+        # Index some test skills
+        discovery.index_skill(
+            name="docker_deploy",
+            description="Deploy applications using Docker containers",
+            category="devops",
+            keywords=["docker", "container", "deploy", "devops"]
+        )
+        discovery.index_skill(
+            name="python_analysis",
+            description="Analyze Python code for quality and security",
+            category="development",
+            keywords=["python", "code", "analysis", "security"]
+        )
+
+        # Search for docker-related skills
+        results = discovery.search("docker deployment")
+        assert len(results) > 0, "Should find docker-related skills"
+        assert results[0]["name"] == "docker_deploy"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_search_skills(self):
+        """Test POST /api/v1/skills/search endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Search via API
+        response = client.post("/api/v1/skills/search", json={
+            "query": "python",
+            "limit": 5
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /skills/search should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of skills"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_search_semantic(self):
+        """Test POST /api/v1/skills/search/semantic endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Semantic search via API
+        response = client.post("/api/v1/skills/search/semantic", json={
+            "query": "containerization and orchestration",
+            "limit": 5
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /skills/search/semantic should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of skills"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_suggest_skills(self):
+        """Test GET /api/v1/skills/suggest endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Get suggestions via API
+        response = client.get("/api/v1/skills/suggest?query=deploy+application")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /skills/suggest should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of suggested skills"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_detect_gaps(self):
+        """Test GET /api/v1/skills/gaps endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Detect capability gaps via API
+        response = client.get("/api/v1/skills/gaps?available=python,docker")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /skills/gaps should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "missing_skills" in data or "suggestions" in data, \
+            "Should return capability gap analysis"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_skills_stats(self):
+        """Test GET /api/v1/skills/stats endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Get stats via API
+        response = client.get("/api/v1/skills/stats")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /skills/stats should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "indexed_skills" in data, "Should include indexed_skills count"
+        assert "total_terms" in data, "Should include total_terms count"
+        assert "categories" in data, "Should include categories"
