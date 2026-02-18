@@ -1,41 +1,49 @@
 """
-Agent Optimus — Knowledge Base Tool (Phase 17).
-Allows agents to search the long-term memory / knowledge base.
+Agent Optimus — Knowledge Base Tool (Phase 17 + FASE 0 #9).
+Allows agents to search the long-term memory / knowledge base using RAGPipeline.
 """
 
-from src.core.knowledge_base import knowledge_base
+from src.memory.rag import rag_pipeline
+from src.infra.supabase_client import get_async_session
 
 async def search_knowledge_base(query: str, limit: int = 5) -> str:
     """
-    Search the Agent Optimus Knowledge Base for information.
-    Use this tool when you need to answer questions based on uploaded documents, 
+    Search the Agent Optimus Knowledge Base for information using RAGPipeline.
+    Use this tool when you need to answer questions based on uploaded documents,
     technical manuals, or company policies.
-    
+
+    FASE 0 #9: Now uses rag_pipeline for semantic chunking + retrieval.
+
     Args:
         query: The search question or topic.
         limit: Max number of results (default 5).
-    
+
     Returns:
         A string containing relevant excerpts found in the knowledge base.
     """
     try:
-        results = await knowledge_base.search(query, limit=limit)
-        
-        if not results:
-            return "No relevant information found in the Knowledge Base."
-            
-        output = [f"Found {len(results)} relevant chunks:\n"]
-        
-        for i, res in enumerate(results, 1):
-            source = res.get('metadata', {}).get('filename', 'Unknown Source')
-            score = res.get('score', 0)
-            content = res.get('content', '').replace('\n', ' ')
-            
-            output.append(f"--- Result {i} (Source: {source}, Relevance: {score:.2f}) ---")
-            output.append(content)
-            output.append("")
-            
-        return "\n".join(output)
+        # FASE 0 #9: Use RAGPipeline for retrieval with semantic chunking
+        async with get_async_session() as db_session:
+            # Update rag_pipeline config for this search
+            original_max = rag_pipeline.max_results
+            rag_pipeline.max_results = limit
+
+            try:
+                # Get RAG-augmented context (formatted for agent)
+                context = await rag_pipeline.augment_prompt(
+                    db_session=db_session,
+                    query=query,
+                    source_type="document",  # Only search documents
+                )
+
+                if not context:
+                    return "No relevant information found in the Knowledge Base."
+
+                return context
+
+            finally:
+                # Restore original config
+                rag_pipeline.max_results = original_max
 
     except Exception as e:
         return f"Error searching knowledge base: {str(e)}"

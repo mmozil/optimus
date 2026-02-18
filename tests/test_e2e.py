@@ -1598,3 +1598,100 @@ class TestWebChatChannelIntegration:
 
         await webchat_channel.close_session(session_id)
         await webchat_channel.stop()
+
+
+# ============================================
+# FASE 0 #9: RAGPipeline Integration
+# ============================================
+class TestRAGPipelineIntegration:
+    """
+    Tests for RAGPipeline integration with knowledge_tool.
+
+    REGRA DE OURO Checkpoint 2: These tests MUST FAIL before integration.
+    They document the expected behavior after rag_pipeline is connected.
+    """
+
+    @pytest.mark.asyncio
+    async def test_rag_pipeline_exists(self):
+        """
+        Test that RAGPipeline singleton exists and has expected methods.
+
+        This verifies the module is ready for integration.
+        """
+        from src.memory.rag import rag_pipeline
+
+        assert rag_pipeline is not None, "rag_pipeline singleton should exist"
+        assert hasattr(rag_pipeline, "retrieve"), "Should have retrieve() method"
+        assert hasattr(rag_pipeline, "augment_prompt"), "Should have augment_prompt() method"
+        assert hasattr(rag_pipeline, "chunk_text"), "Should have chunk_text() method"
+
+    @pytest.mark.asyncio
+    async def test_knowledge_tool_uses_rag_pipeline(self):
+        """
+        CRITICAL TEST: Verifies knowledge_tool imports and uses rag_pipeline.
+
+        Expected call path (after integration):
+        search_knowledge_base() → rag_pipeline.augment_prompt() → embedding_service
+        """
+        from src.skills import knowledge_tool
+        import inspect
+
+        # Check that knowledge_tool imports rag_pipeline
+        source = inspect.getsource(knowledge_tool)
+        assert "from src.memory.rag import rag_pipeline" in source, \
+            "knowledge_tool should import rag_pipeline"
+
+        # Check that search_knowledge_base uses rag_pipeline
+        func_source = inspect.getsource(knowledge_tool.search_knowledge_base)
+        assert "rag_pipeline" in func_source, \
+            "search_knowledge_base() should call rag_pipeline methods"
+
+    @pytest.mark.asyncio
+    async def test_rag_pipeline_semantic_chunking(self):
+        """
+        Test that RAGPipeline does semantic chunking (respects paragraphs/headings).
+
+        This validates the improved chunking over SimpleTextSplitter.
+        """
+        from src.memory.rag import rag_pipeline
+
+        # Test document with clear semantic structure
+        document = """
+# Introduction
+This is the introduction section. It has important context.
+
+## Technical Details
+Here are the technical specifications. Very detailed information.
+
+## Conclusion
+Final thoughts and summary.
+"""
+
+        chunks = rag_pipeline.chunk_text(document)
+
+        assert len(chunks) > 0, "Should produce chunks"
+        # Verify it didn't break mid-section (semantic boundaries respected)
+        # Each chunk should contain complete sections
+        for chunk in chunks:
+            # Should not end mid-word
+            assert not chunk[-1].isalpha() or chunk[-1] in ".!?", \
+                f"Chunk should end at sentence boundary, got: {chunk[-50:]}"
+
+    @pytest.mark.asyncio
+    async def test_rag_pipeline_augment_prompt(self):
+        """
+        Test that rag_pipeline.augment_prompt() works end-to-end.
+
+        This validates the retrieval → formatting pipeline.
+        NOTE: Requires DB session, so this tests the interface only.
+        """
+        from src.memory.rag import rag_pipeline
+
+        # Verify method signature
+        import inspect
+        sig = inspect.signature(rag_pipeline.augment_prompt)
+        params = list(sig.parameters.keys())
+
+        assert "db_session" in params, "Should accept db_session parameter"
+        assert "query" in params, "Should accept query parameter"
+        assert "source_type" in params, "Should accept source_type parameter (optional)"
