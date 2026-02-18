@@ -3588,3 +3588,162 @@ class TestOrchestratorIntegration:
         # After integration, this should succeed (200 or 404 if not found)
         assert response.status_code in [200, 404], \
             "DELETE /orchestrator/pipelines/{name} should exist (FAILS before integration)"
+
+
+# ============================================
+# FASE 0 #25: A2AProtocol Integration
+# ============================================
+class TestA2AProtocolIntegration:
+    """
+    E2E tests for A2A Protocol REST API integration.
+
+    FASE 0 #25: These tests FAIL before integration (404s),
+    PASS after REST API endpoints are added.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a2a_protocol_exists(self):
+        """Verify A2AProtocol module is importable."""
+        from src.core.a2a_protocol import A2AProtocol, a2a_protocol
+        assert a2a_protocol is not None
+        assert isinstance(a2a_protocol, A2AProtocol)
+
+    @pytest.mark.asyncio
+    async def test_agent_register_and_discover(self):
+        """Test agent registration and discovery."""
+        from src.core.a2a_protocol import A2AProtocol, AgentCard
+        proto = A2AProtocol()
+
+        card = AgentCard(
+            name="test-agent",
+            role="researcher",
+            level="specialist",
+            capabilities=["search", "analysis"],
+        )
+        proto.register_agent(card)
+
+        results = proto.discover(capability="search")
+        assert len(results) == 1
+        assert results[0].name == "test-agent"
+
+        # Not found capability
+        results = proto.discover(capability="nonexistent")
+        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_agent_delegation(self):
+        """Test task delegation between agents."""
+        from src.core.a2a_protocol import A2AProtocol, AgentCard, DelegationRequest
+        proto = A2AProtocol()
+
+        # Register both agents
+        for name in ["agent-a", "agent-b"]:
+            proto.register_agent(AgentCard(name=name, role="worker", level="specialist"))
+
+        # Delegate task
+        req = DelegationRequest(
+            from_agent="agent-a",
+            to_agent="agent-b",
+            task_description="Analyze this dataset",
+        )
+        msg = await proto.delegate(req)
+        assert msg.from_agent == "agent-a"
+        assert msg.to_agent == "agent-b"
+        assert msg.message_type == "delegation"
+
+        # Load should be incremented
+        assert proto.get_card("agent-b").current_load == 1
+
+        # Complete delegation
+        await proto.complete_delegation(msg.id, "Analysis complete: 42 rows")
+        assert proto.get_card("agent-b").current_load == 0
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_register_agent(self):
+        """Test POST /api/v1/a2a/agents/register (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        response = client.post("/api/v1/a2a/agents/register", json={
+            "name": "e2e-test-agent",
+            "role": "tester",
+            "level": "specialist",
+            "capabilities": ["testing", "validation"],
+        })
+        assert response.status_code == 201, \
+            "POST /a2a/agents/register should exist (FAILS before integration)"
+        data = response.json()
+        assert data["name"] == "e2e-test-agent"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_discover_agents(self):
+        """Test GET /api/v1/a2a/agents (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        response = client.get("/api/v1/a2a/agents?available_only=false")
+        assert response.status_code == 200, \
+            "GET /a2a/agents should exist (FAILS before integration)"
+        assert isinstance(response.json(), list)
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_send_message(self):
+        """Test POST /api/v1/a2a/messages (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Register sender and receiver first
+        for name, role in [("sender-agent", "sender"), ("receiver-agent", "receiver")]:
+            client.post("/api/v1/a2a/agents/register", json={
+                "name": name, "role": role, "level": "specialist"
+            })
+
+        # Send message
+        response = client.post("/api/v1/a2a/messages", json={
+            "from_agent": "sender-agent",
+            "to_agent": "receiver-agent",
+            "content": "Hello from sender",
+        })
+        assert response.status_code == 200, \
+            "POST /a2a/messages should exist (FAILS before integration)"
+        data = response.json()
+        assert "id" in data
+        assert data["from_agent"] == "sender-agent"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_stats(self):
+        """Test GET /api/v1/a2a/stats (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+        response = client.get("/api/v1/a2a/stats")
+        assert response.status_code == 200, \
+            "GET /a2a/stats should exist (FAILS before integration)"
+        data = response.json()
+        assert "registered_agents" in data
+        assert "total_messages" in data

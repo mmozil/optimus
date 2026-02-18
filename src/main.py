@@ -731,6 +731,10 @@ app.include_router(threads_router)
 from src.api.orchestrator_api import router as orchestrator_router
 app.include_router(orchestrator_router)
 
+# FASE 0 #25: A2A Protocol API
+from src.api.a2a import router as a2a_router
+app.include_router(a2a_router)
+
 
 class SearchRequest(BaseModel):
     query: str
