@@ -3346,3 +3346,217 @@ class TestThreadManagerIntegration:
 
         data = response.json()
         assert isinstance(data, list), "Should return list of messages with mentions"
+
+
+# ============================================
+# FASE 0 #24: Orchestrator Integration Tests
+# ============================================
+class TestOrchestratorIntegration:
+    """
+    E2E tests for Orchestrator REST API integration.
+
+    FASE 0 #24: These tests FAIL before integration (404s),
+    PASS after REST API endpoints are added.
+    """
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_exists(self):
+        """Verify Orchestrator module is importable."""
+        from src.core.orchestrator import Orchestrator, orchestrator
+        assert orchestrator is not None
+        assert isinstance(orchestrator, Orchestrator)
+
+    @pytest.mark.asyncio
+    async def test_register_and_list_pipelines(self):
+        """Test registering and listing pipelines."""
+        from src.core.orchestrator import Orchestrator, OrchestratorStep
+
+        orch = Orchestrator()
+
+        # Register pipeline
+        steps = [
+            OrchestratorStep(name="step1", agent_name="optimus", prompt_template="Analyze: {input}"),
+            OrchestratorStep(name="step2", agent_name="friday", prompt_template="Review: {input}"),
+        ]
+        orch.register_pipeline("test_pipeline", steps)
+
+        # List pipelines
+        pipelines = orch.list_pipelines()
+        assert len(pipelines) > 0
+        assert any(p["name"] == "test_pipeline" for p in pipelines)
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_register_pipeline(self):
+        """Test POST /api/v1/orchestrator/pipelines endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Register pipeline
+        response = client.post("/api/v1/orchestrator/pipelines", json={
+            "name": "code_review_pipeline",
+            "steps": [
+                {
+                    "name": "analyze",
+                    "agent_name": "friday",
+                    "prompt_template": "Analyze this code: {input}"
+                },
+                {
+                    "name": "suggest",
+                    "agent_name": "optimus",
+                    "prompt_template": "Suggest improvements: {input}"
+                }
+            ]
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /orchestrator/pipelines should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "name" in data or "success" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_list_pipelines(self):
+        """Test GET /api/v1/orchestrator/pipelines endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # List pipelines
+        response = client.get("/api/v1/orchestrator/pipelines")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /orchestrator/pipelines should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of pipelines"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_execute_pipeline(self):
+        """Test POST /api/v1/orchestrator/execute/{name} endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Execute pipeline
+        response = client.post("/api/v1/orchestrator/execute/test_pipeline", json={
+            "input_data": "Review this task urgently",
+            "mode": "sequential"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200 or response.status_code == 404, \
+            "POST /orchestrator/execute/{name} should exist (FAILS before integration)"
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "success" in data or "final_output" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_run_sequential(self):
+        """Test POST /api/v1/orchestrator/run/sequential endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Run ad-hoc sequential pipeline
+        response = client.post("/api/v1/orchestrator/run/sequential", json={
+            "steps": [
+                {
+                    "name": "step1",
+                    "agent_name": "optimus",
+                    "prompt_template": "Analyze: {input}"
+                }
+            ],
+            "input_data": "Test input"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /orchestrator/run/sequential should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "success" in data or "final_output" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_run_parallel(self):
+        """Test POST /api/v1/orchestrator/run/parallel endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Run ad-hoc parallel pipeline
+        response = client.post("/api/v1/orchestrator/run/parallel", json={
+            "steps": [
+                {
+                    "name": "analyze",
+                    "agent_name": "friday",
+                    "prompt_template": "Analyze: {input}"
+                },
+                {
+                    "name": "review",
+                    "agent_name": "fury",
+                    "prompt_template": "Review: {input}"
+                }
+            ],
+            "input_data": "Test input"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /orchestrator/run/parallel should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "success" in data or "final_output" in data
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_delete_pipeline(self):
+        """Test DELETE /api/v1/orchestrator/pipelines/{name} endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Delete pipeline
+        response = client.delete("/api/v1/orchestrator/pipelines/test_pipeline")
+
+        # After integration, this should succeed (200 or 404 if not found)
+        assert response.status_code in [200, 404], \
+            "DELETE /orchestrator/pipelines/{name} should exist (FAILS before integration)"

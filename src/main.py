@@ -727,6 +727,10 @@ app.include_router(voice_router)
 from src.api.threads import router as threads_router
 app.include_router(threads_router)
 
+# FASE 0 #24: Orchestrator API
+from src.api.orchestrator_api import router as orchestrator_router
+app.include_router(orchestrator_router)
+
 
 class SearchRequest(BaseModel):
     query: str
