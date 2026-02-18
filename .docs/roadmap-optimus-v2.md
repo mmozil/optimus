@@ -84,9 +84,9 @@
 | 10 | `collective_intelligence` | Agents após aprendizado (async) | [x] |
 | 11 | `mcp_plugin_loader` | Dynamic MCP plugin loading | [x] |
 | 12 | `skills_discovery` | Agent query para descobrir skills | [x] |
-| 13 | `TelegramChannel` | main.py lifespan (se TELEGRAM_TOKEN) | [ ] |
-| 14 | `WhatsAppChannel` | main.py lifespan (se WHATSAPP_TOKEN) | [ ] |
-| 15 | `SlackChannel` | main.py lifespan (se SLACK_TOKEN) | [ ] |
+| 13 | `TelegramChannel` | main.py lifespan (se TELEGRAM_TOKEN) | [x] |
+| 14 | `WhatsAppChannel` | main.py lifespan (se WHATSAPP_TOKEN) | [x] |
+| 15 | `SlackChannel` | main.py lifespan (se SLACK_TOKEN) | [x] |
 | 16 | `WebChatChannel` | main.py lifespan + SSE endpoints | [x] |
 | 17 | `ChatCommands` | Gateway.route_message (se msg[0]=='/') | [x] |
 | 18 | `VoiceInterface` | Web UI wake word listener | [x] |
@@ -1945,7 +1945,7 @@ Optimus roda em sua máquina
 
 | Item | Status | Prova |
 |------|--------|-------|
-| **FASE 0** | ✅ Concluído | 28/28 módulos conectados (25 `[x]` + 3 channels opcionais) |
+| **FASE 0** | ✅ Concluído | 28/28 módulos conectados (`[x]` todos — channels opcionais startam se TOKEN configurado) |
 | **FASE 1** | ✅ Concluído | onboarding.html → /api/v1/user/preferences → contexto injetado no agente |
 | **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
@@ -1954,6 +1954,68 @@ Optimus roda em sua máquina
 | **FASE 5** | ✅ Validar | Voice recording + transcription + response |
 | **FASE 6** | ⬜ Pending | Documento comparativo + gaps fechados |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |
+
+### ✅ #13-15 Telegram + WhatsApp + Slack Channels — CONCLUÍDO
+
+**Status:** ✅ Integrado via main.py lifespan (conditional start se TOKEN configurado)
+
+**Call Path:**
+```
+main.py lifespan startup:
+  → settings.TELEGRAM_BOT_TOKEN ? → TelegramChannel.start() (polling)
+  → settings.EVOLUTION_API_URL+KEY ? → WhatsAppChannel.start() (webhook)
+  → settings.SLACK_BOT_TOKEN+APP_TOKEN ? → SlackChannel.start() (Socket Mode)
+
+Incoming message (Telegram/Slack):
+  → channel._on_text() / _on_message()
+    → handle_incoming(IncomingMessage)
+      → _channel_handler(message)
+        → gateway.route_message(message.text, user_id, context)
+          → agent responds
+            → OutgoingMessage(text=content, chat_id=...)
+              → channel.send_message()
+
+Incoming message (WhatsApp — webhook):
+  POST /api/v1/whatsapp/webhook (PUBLIC_ROUTE)
+    → whatsapp_channel.process_webhook(payload)
+      → handle_incoming(IncomingMessage)
+        → _channel_handler → gateway.route_message()
+          → agent responds → whatsapp_channel.send_message()
+```
+
+**Arquivos modificados:**
+- `src/core/config.py`: `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_SIGNING_SECRET`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME`
+- `src/main.py`: lifespan — `_channel_handler()`, start/stop condicional por token; endpoint `POST /api/v1/whatsapp/webhook`
+- `src/infra/auth_middleware.py`: `PUBLIC_ROUTES` — adiciona `/api/v1/whatsapp/webhook`
+- `tests/test_e2e.py`: `TestChannelIntegration` (8 testes)
+
+**Padrão graceful:**
+- Sem token configurado → `logger.warning` + skip (app não quebra)
+- `is_running` → `False` quando token ausente
+
+**Testes E2E:**
+- `test_telegram_channel_imports`: importa TelegramChannel sem erro
+- `test_whatsapp_channel_imports`: importa WhatsAppChannel sem erro
+- `test_slack_channel_imports`: importa SlackChannel sem erro
+- `test_telegram_start_without_token`: start() sem token → não levanta exception
+- `test_whatsapp_start_without_config`: start() sem API → graceful failure
+- `test_slack_start_without_token`: start() sem token → não levanta exception
+- `test_config_has_channel_vars`: vars presentes no Settings
+- `test_whatsapp_webhook_endpoint_exists`: POST /whatsapp/webhook existe
+- `test_auth_middleware_whatsapp_public_route`: webhook em PUBLIC_ROUTES
+
+**Coolify — Variáveis opcionais:**
+```
+TELEGRAM_BOT_TOKEN=<bot token do @BotFather>
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+SLACK_SIGNING_SECRET=<signing secret>
+EVOLUTION_API_URL=https://evolution.tier.finance
+EVOLUTION_API_KEY=<api key>
+EVOLUTION_INSTANCE_NAME=optimus
+```
+
+---
 
 ### ✅ #16 WebChatChannel — CONCLUÍDO
 

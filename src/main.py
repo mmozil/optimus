@@ -215,11 +215,87 @@ async def lifespan(app: FastAPI):
     from src.channels.webchat import webchat_channel
     await webchat_channel.start()
 
+    # FASE 0 #13-15: Start optional external channels (Telegram, WhatsApp, Slack)
+    # Each channel starts only if the required token/key is configured.
+    # Graceful: missing token → log warning, skip silently (no crash).
+    _optional_channels = []
+
+    async def _channel_handler(message):
+        """Shared gateway handler for all external channels."""
+        from src.channels.base_channel import OutgoingMessage
+        result = await gateway.route_message(
+            message=message.text,
+            user_id=message.user_id,
+            context={
+                "user_id": message.user_id,
+                "channel": message.channel.value,
+                "chat_id": message.chat_id,
+                "user_name": message.user_name,
+            },
+        )
+        content = result.get("content", "") if isinstance(result, dict) else str(result)
+        if content:
+            return OutgoingMessage(
+                text=content,
+                chat_id=message.chat_id,
+                reply_to_id=message.reply_to_id,
+            )
+        return None
+
+    # #13 Telegram
+    if settings.TELEGRAM_BOT_TOKEN:
+        from src.channels.telegram import TelegramChannel
+        _telegram = TelegramChannel(config={"bot_token": settings.TELEGRAM_BOT_TOKEN})
+        _telegram.set_message_handler(_channel_handler)
+        await _telegram.start()
+        _optional_channels.append(_telegram)
+        app.state.telegram_channel = _telegram
+        print("✅ FASE 0 #13: TelegramChannel started")
+    else:
+        print("ℹ️  FASE 0 #13: TELEGRAM_BOT_TOKEN not set — TelegramChannel skipped")
+
+    # #14 WhatsApp (Evolution API — webhook-based)
+    if settings.EVOLUTION_API_URL and settings.EVOLUTION_API_KEY:
+        from src.channels.whatsapp import WhatsAppChannel
+        _whatsapp = WhatsAppChannel(config={
+            "api_url": settings.EVOLUTION_API_URL,
+            "api_key": settings.EVOLUTION_API_KEY,
+            "instance_name": settings.EVOLUTION_INSTANCE_NAME,
+        })
+        _whatsapp.set_message_handler(_channel_handler)
+        await _whatsapp.start()
+        _optional_channels.append(_whatsapp)
+        app.state.whatsapp_channel = _whatsapp
+        print("✅ FASE 0 #14: WhatsAppChannel started")
+    else:
+        print("ℹ️  FASE 0 #14: EVOLUTION_API_URL/KEY not set — WhatsAppChannel skipped")
+
+    # #15 Slack (Socket Mode)
+    if settings.SLACK_BOT_TOKEN and settings.SLACK_APP_TOKEN:
+        from src.channels.slack import SlackChannel
+        _slack = SlackChannel(config={
+            "bot_token": settings.SLACK_BOT_TOKEN,
+            "app_token": settings.SLACK_APP_TOKEN,
+            "signing_secret": settings.SLACK_SIGNING_SECRET,
+        })
+        _slack.set_message_handler(_channel_handler)
+        await _slack.start()
+        _optional_channels.append(_slack)
+        app.state.slack_channel = _slack
+        print("✅ FASE 0 #15: SlackChannel started")
+    else:
+        print("ℹ️  FASE 0 #15: SLACK_BOT_TOKEN/APP_TOKEN not set — SlackChannel skipped")
+
     yield
 
-    # Shutdown: stop cron scheduler and webchat channel
+    # Shutdown: stop cron scheduler, webchat, and any optional channels
     await cron_scheduler.stop()
     await webchat_channel.stop()
+    for ch in _optional_channels:
+        try:
+            await ch.stop()
+        except Exception as e:
+            logger.warning(f"Channel stop error: {e}")
 
 
 app = FastAPI(
@@ -563,6 +639,40 @@ async def close_webchat_session(
 
     await webchat_channel.close_session(session_id)
     return {"status": "success"}
+
+
+# ============================================
+# FASE 0 #14: WhatsApp Webhook (Evolution API)
+# ============================================
+
+@app.post("/api/v1/whatsapp/webhook")
+async def whatsapp_webhook(request: Request):
+    """
+    Receive incoming WhatsApp messages via Evolution API webhook.
+    No auth required — Evolution API sends raw webhook payloads.
+
+    Call path:
+    Evolution API → POST /api/v1/whatsapp/webhook
+      → whatsapp_channel.process_webhook(payload)
+        → gateway.route_message()
+          → agent responds
+            → whatsapp_channel.send_message()
+    """
+    whatsapp = getattr(app.state, "whatsapp_channel", None)
+    if not whatsapp:
+        return {"status": "ok", "note": "WhatsApp channel not configured"}
+
+    try:
+        payload = await request.json()
+        response = await whatsapp.process_webhook(payload)
+        if response:
+            # process_webhook returns OutgoingMessage | None
+            # For WhatsApp, the handler already includes routing via gateway
+            await whatsapp.send_message(response)
+    except Exception as e:
+        logger.error(f"[WhatsApp] Webhook error: {e}")
+
+    return {"status": "ok"}
 
 
 # ============================================

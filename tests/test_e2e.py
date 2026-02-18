@@ -3952,3 +3952,101 @@ class TestGoogleOAuthIntegration:
         # Should not be 500 (internal error)
         assert response.status_code != 500, \
             "GET /oauth/google/connect should not return 500"
+
+
+# ============================================
+# FASE 0 #13-15: Channel Integration Tests (Telegram, WhatsApp, Slack)
+# ============================================
+class TestChannelIntegration:
+    """
+    E2E tests for FASE 0 #13-15: Telegram, WhatsApp, Slack channels.
+    Channels are optional — no tokens → graceful skip (no crash).
+    """
+
+    def test_telegram_channel_imports(self):
+        """TelegramChannel should import without error."""
+        from src.channels.telegram import TelegramChannel
+        ch = TelegramChannel(config={"bot_token": ""})
+        assert ch is not None
+        assert ch.channel_type.value == "telegram"
+
+    def test_whatsapp_channel_imports(self):
+        """WhatsAppChannel should import without error."""
+        from src.channels.whatsapp import WhatsAppChannel
+        ch = WhatsAppChannel(config={
+            "api_url": "http://localhost:8080",
+            "api_key": "",
+            "instance_name": "optimus",
+        })
+        assert ch is not None
+        assert ch.channel_type.value == "whatsapp"
+
+    def test_slack_channel_imports(self):
+        """SlackChannel should import without error."""
+        from src.channels.slack import SlackChannel
+        ch = SlackChannel(config={"bot_token": "", "app_token": "", "signing_secret": ""})
+        assert ch is not None
+        assert ch.channel_type.value == "slack"
+
+    @pytest.mark.asyncio
+    async def test_telegram_start_without_token(self):
+        """TelegramChannel.start() without token should log error but not raise."""
+        from src.channels.telegram import TelegramChannel
+        ch = TelegramChannel(config={"bot_token": ""})
+        # Must not raise — graceful failure
+        await ch.start()
+        assert not ch.is_running  # token missing → not started
+
+    @pytest.mark.asyncio
+    async def test_whatsapp_start_without_config(self):
+        """WhatsAppChannel.start() with unreachable API should handle exception gracefully."""
+        from src.channels.whatsapp import WhatsAppChannel
+        ch = WhatsAppChannel(config={
+            "api_url": "http://localhost:19999",  # unreachable
+            "api_key": "test",
+            "instance_name": "test",
+        })
+        # Must not raise — graceful failure
+        await ch.start()
+        assert not ch.is_running  # connection failed → not started
+
+    @pytest.mark.asyncio
+    async def test_slack_start_without_token(self):
+        """SlackChannel.start() without tokens should log error but not raise."""
+        from src.channels.slack import SlackChannel
+        ch = SlackChannel(config={"bot_token": "", "app_token": "", "signing_secret": ""})
+        # Must not raise — graceful failure
+        await ch.start()
+        assert not ch.is_running  # tokens missing → not started
+
+    def test_config_has_channel_vars(self):
+        """Config should have Telegram/WhatsApp/Slack env vars defined."""
+        from src.core.config import settings
+        assert hasattr(settings, "TELEGRAM_BOT_TOKEN"), "Missing TELEGRAM_BOT_TOKEN"
+        assert hasattr(settings, "SLACK_BOT_TOKEN"), "Missing SLACK_BOT_TOKEN"
+        assert hasattr(settings, "SLACK_APP_TOKEN"), "Missing SLACK_APP_TOKEN"
+        assert hasattr(settings, "EVOLUTION_API_URL"), "Missing EVOLUTION_API_URL"
+        assert hasattr(settings, "EVOLUTION_API_KEY"), "Missing EVOLUTION_API_KEY"
+
+    def test_whatsapp_webhook_endpoint_exists(self):
+        """POST /api/v1/whatsapp/webhook endpoint should exist in the app."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app, follow_redirects=False)
+        # Send empty webhook — channel not configured → returns {"status": "ok"}
+        response = client.post("/api/v1/whatsapp/webhook", json={})
+        # Should not be 404 (endpoint exists) or 500 (no crash)
+        assert response.status_code not in (404, 500), \
+            f"POST /api/v1/whatsapp/webhook unexpected status: {response.status_code}"
+
+    def test_auth_middleware_whatsapp_public_route(self):
+        """WhatsApp webhook should be in PUBLIC_ROUTES (no auth required)."""
+        from src.infra.auth_middleware import PUBLIC_ROUTES
+        assert "/api/v1/whatsapp/webhook" in PUBLIC_ROUTES, \
+            "WhatsApp webhook must be public (Evolution API sends raw payloads)"

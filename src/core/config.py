@@ -67,6 +67,19 @@ class Settings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_SECRET: str = ""
     GOOGLE_OAUTH_REDIRECT_URI: str = "https://optimus.tier.finance/api/v1/oauth/google/callback"
 
+    # === Telegram Channel (FASE 0 #13) ===
+    TELEGRAM_BOT_TOKEN: str = ""
+
+    # === Slack Channel (FASE 0 #15) ===
+    SLACK_BOT_TOKEN: str = ""
+    SLACK_APP_TOKEN: str = ""
+    SLACK_SIGNING_SECRET: str = ""
+
+    # === WhatsApp Channel via Evolution API (FASE 0 #14) ===
+    EVOLUTION_API_URL: str = ""
+    EVOLUTION_API_KEY: str = ""
+    EVOLUTION_INSTANCE_NAME: str = "optimus"
+
     # === Sentry ===
     SENTRY_DSN: str = ""
 

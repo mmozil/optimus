@@ -28,6 +28,8 @@ PUBLIC_ROUTES = {
     # FASE 4: Google OAuth (redirect flows — no Bearer token)
     "/api/v1/oauth/google/connect",
     "/api/v1/oauth/google/callback",
+    # FASE 0 #14: WhatsApp webhook (Evolution API sends raw payloads, no JWT)
+    "/api/v1/whatsapp/webhook",
 }
 
 
