@@ -96,7 +96,7 @@
 | 22 | `ActivityFeed` | Event bus subscribers | [x] |
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [x] |
 | 24 | `Orchestrator` | Complex multi-agent flows | [x] |
-| 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
+| 25 | `A2AProtocol` | Agent-to-agent delegation | [x] |
 | 26 | `CronScheduler` | main.py lifespan | [x] |
 | 27 | `ContextAwareness` | Session bootstrap + greeting | [x] |
 | 28 | `ConfirmationService` | ReAct human-in-the-loop | [x] |
@@ -2139,3 +2139,83 @@ should_auto_execute(task, confidence):
 **Timeline:** 3-4 semanas se 8h/dia.
 
 **Você está ready? Começamos FASE 0?**
+
+---
+
+### ✅ #25 A2AProtocol — CONCLUÍDO
+
+**Call Path:**
+```
+# Registro de agente:
+POST /api/v1/a2a/agents/register {name, role, level, capabilities, tools}
+  → a2a_protocol.register_agent(AgentCard) [a2a_protocol.py:69]
+    → Armazena em _agents dict
+
+# Descoberta:
+GET /api/v1/a2a/agents?capability=planning&level=lead
+  → a2a_protocol.discover(capability, level, available_only) [a2a_protocol.py:78]
+    → Filtra por capability, level, status
+
+# Mensagem direta:
+POST /api/v1/a2a/messages {from_agent, to_agent, content, priority}
+  → a2a_protocol.send(A2AMessage) [a2a_protocol.py:125]
+    → Valida destino, adiciona ao _message_log
+
+# Broadcast:
+POST /api/v1/a2a/broadcast {from_agent, content}
+  → a2a_protocol.broadcast(from_agent, content) [a2a_protocol.py:140]
+    → Envia para todos exceto remetente
+
+# Delegação:
+POST /api/v1/a2a/delegate {from_agent, to_agent, task_description}
+  → a2a_protocol.delegate(DelegationRequest) [a2a_protocol.py:174]
+    → update_load(to_agent, +1)
+    → A2AMessage(type="delegation")
+    → Armazena em _pending_delegations
+
+POST /api/v1/a2a/delegate/{id}/complete {result}
+  → a2a_protocol.complete_delegation(id, result) [a2a_protocol.py:197]
+    → update_load(to_agent, -1)
+    → Envia A2AMessage(type="response") de volta
+
+# Stats:
+GET /api/v1/a2a/stats
+  → a2a_protocol.get_stats() [a2a_protocol.py:225]
+```
+
+**Arquivos criados/modificados:**
+- `src/api/a2a.py` (novo): 10 endpoints REST para A2A
+- `src/main.py` linha 735: registra a2a_router
+- `tests/test_e2e.py` classe `TestA2AProtocolIntegration` (7 testes)
+
+**Endpoints API:**
+1. **POST /api/v1/a2a/agents/register** - registra agente com capabilities
+2. **GET /api/v1/a2a/agents** - descobre agentes (filtro por capability/level)
+3. **GET /api/v1/a2a/agents/{name}** - card de um agente específico
+4. **PUT /api/v1/a2a/agents/{name}/status** - atualiza status (available/busy/offline)
+5. **POST /api/v1/a2a/messages** - envia mensagem direta entre agentes
+6. **GET /api/v1/a2a/messages/{name}** - lista mensagens recebidas por agente
+7. **POST /api/v1/a2a/broadcast** - broadcast para todos os agentes registrados
+8. **POST /api/v1/a2a/delegate** - delega tarefa (incrementa load)
+9. **POST /api/v1/a2a/delegate/{id}/complete** - conclui delegação (decrementa load)
+10. **GET /api/v1/a2a/stats** - estatísticas do protocolo
+
+**Teste em produção VALIDADO:**
+```
+✅ POST /agents/register → AgentCard criado (status 201)
+✅ GET /agents → 4 agentes listados com capabilities
+✅ GET /agents?capability=planning → filtra por capability corretamente
+✅ POST /messages → mensagem entregue com UUID e timestamp
+✅ GET /messages/{name} → histório de mensagens do agente
+✅ POST /delegate → delegation_id gerado, load=1 no target
+✅ POST /delegate/{id}/complete → load volta a 0, resposta enviada
+✅ POST /broadcast → broadcast para 3 recipients
+✅ GET /stats → {registered_agents:4, total_messages:3, pending_delegations:0}
+```
+
+**Notas:**
+- ⚠️ In-memory: estado não persiste entre worker processes (2 workers no Coolify)
+  - Para uso consistente entre requests, usar Redis ou PostgreSQL como backend
+  - Para MVP, funciona dentro do mesmo worker process
+- ✅ Load balancing automático: `find_best_agent()` escolhe agente com menor carga
+- ✅ Prioridades de mensagem: low | normal | high | urgent
