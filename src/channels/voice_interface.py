@@ -24,6 +24,7 @@ class VoiceProviderType(str, Enum):
 
     GOOGLE = "google"
     WHISPER = "whisper"
+    GROQ_WHISPER = "groq_whisper"  # Groq Whisper (free, fast)
     ELEVENLABS = "elevenlabs"
     EDGE = "edge"  # Microsoft Edge TTS (free)
     STUB = "stub"  # For testing
@@ -33,8 +34,8 @@ class VoiceProviderType(str, Enum):
 class VoiceConfig:
     """Configuration for voice interface."""
 
-    stt_provider: VoiceProviderType = VoiceProviderType.STUB
-    tts_provider: VoiceProviderType = VoiceProviderType.STUB
+    stt_provider: VoiceProviderType = VoiceProviderType.GROQ_WHISPER
+    tts_provider: VoiceProviderType = VoiceProviderType.EDGE
     language: str = "pt-BR"
     voice_name: str = "optimus"
     speed: float = 1.0
@@ -120,6 +121,47 @@ class WhisperProvider(VoiceProvider):
 
     async def synthesize(self, text: str) -> bytes:
         # Whisper is STT only — use stub for TTS
+        return f"[no-tts: {text[:50]}]".encode("utf-8")
+
+
+class GroqWhisperProvider(VoiceProvider):
+    """
+    Groq Whisper for STT — free and fast.
+
+    Uses the Groq API (POST /openai/v1/audio/transcriptions).
+    Requires GROQ_API_KEY environment variable.
+    Falls back to stub if API key is not configured.
+    Model: whisper-large-v3
+    """
+
+    GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+    async def transcribe(self, audio_bytes: bytes) -> str:
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key:
+            logger.debug("Groq Whisper STT: GROQ_API_KEY not set, using stub fallback")
+            return f"[groq-whisper-stub: {len(audio_bytes)} bytes]"
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.GROQ_API_URL,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files={"file": ("audio.webm", audio_bytes, "audio/webm")},
+                    data={"model": "whisper-large-v3", "language": "pt"},
+                )
+                response.raise_for_status()
+                result = response.json()
+                text = result.get("text", "")
+                logger.info(f"Groq Whisper STT: transcribed {len(audio_bytes)} bytes → '{text[:80]}'")
+                return text
+
+        except httpx.HTTPError as e:
+            logger.error(f"Groq Whisper STT error: {e}")
+            return f"[groq-whisper-error: {e}]"
+
+    async def synthesize(self, text: str) -> bytes:
+        # Groq Whisper is STT only — use stub for TTS
         return f"[no-tts: {text[:50]}]".encode("utf-8")
 
 
@@ -230,6 +272,7 @@ PROVIDERS: dict[VoiceProviderType, type[VoiceProvider]] = {
     VoiceProviderType.STUB: StubVoiceProvider,
     VoiceProviderType.GOOGLE: GoogleVoiceProvider,
     VoiceProviderType.WHISPER: WhisperProvider,
+    VoiceProviderType.GROQ_WHISPER: GroqWhisperProvider,
     VoiceProviderType.ELEVENLABS: ElevenLabsProvider,
     VoiceProviderType.EDGE: EdgeTTSProvider,
 }
