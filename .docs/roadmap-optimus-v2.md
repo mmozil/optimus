@@ -76,7 +76,7 @@
 | 2 | `uncertainty_quantifier` | ReAct final answer confidence | [x] |
 | 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
 | 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
-| 5 | `autonomous_executor` | ReAct (high confidence tasks) | [ ] |
+| 5 | `autonomous_executor` | API endpoints (Jarvis Mode) | [x] |
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [ ] |
 | 7 | `reflection_engine` | Cron job semanal | [ ] |
 | 8 | `working_memory` | Session bootstrap context | [x] |
@@ -1290,6 +1290,97 @@ ReAct loop generates final response (no more tool_calls)
 
 [Agent's original response here...]
 ```
+
+### ✅ #5 AutonomousExecutor — CONCLUÍDO
+
+**Status:** ✅ Integrado via API endpoints + testes E2E passando
+
+**Integration Strategy:**
+Instead of auto-integrating into ReAct loop (would be invasive + product decision), exposed via REST API for controlled enablement. This keeps the module connected but allows opt-in usage.
+
+**API Endpoints:**
+```
+GET /api/v1/autonomous/config
+  → Returns current configuration
+    - auto_execute_threshold: 0.9
+    - max_risk_level: "medium"
+    - daily_budget: 50
+    - enabled: false (safe default)
+
+PATCH /api/v1/autonomous/config
+  → Update configuration
+    - Body: {enabled: true, auto_execute_threshold: 0.95}
+    - Persists to workspace/autonomous/config.json
+
+GET /api/v1/autonomous/audit?limit=50
+  → Returns execution audit trail (JSONL)
+    - Full history of auto-executions
+    - Status: SUCCESS | FAILED | SKIPPED | NEEDS_APPROVAL
+
+GET /api/v1/autonomous/stats
+  → Returns executor statistics
+    - total_executions, today_count, by_status breakdown
+```
+
+**Risk Classification System:**
+| Risk Level | Keywords | Auto-Execute? |
+|------------|----------|---------------|
+| LOW | read, search, query, list, get, check | ✅ Yes (if confidence >= 0.9) |
+| MEDIUM | edit, modify, create, update, config | ✅ Yes (if enabled) |
+| HIGH | deploy, migrate, external api, send email | ⚠️ Configurable |
+| CRITICAL | delete, drop, destroy, production, rm -rf | ❌ NEVER |
+
+**Decision Logic:**
+```python
+should_auto_execute(task, confidence):
+    if not config.enabled: return False
+    if confidence < config.auto_execute_threshold: return False
+
+    risk = classify_risk(task)
+    if risk == CRITICAL: return False  # NEVER auto-execute
+    if risk > config.max_risk_level: return False
+    if today_count >= config.daily_budget: return False
+
+    return True  # ✅ Safe to auto-execute
+```
+
+**Arquivos Modificados:**
+- `src/main.py`:
+  - Adicionado 4 endpoints REST (config, audit, stats)
+  - Todas operações autenticadas (require CurrentUser)
+
+- `src/engine/autonomous_executor.py` (já existia, agora CONECTADO via API):
+  - `should_auto_execute()` — decision logic
+  - `execute()` — performs execution + audit logging
+  - `classify_risk()` — keyword-based risk assessment
+  - `get_audit_trail()` — JSONL audit history
+  - `get_stats()` — aggregated statistics
+
+- `tests/test_e2e.py`:
+  - `TestAutonomousExecutorIntegration`: 4 testes E2E
+    - `test_autonomous_executor_exists`
+    - `test_autonomous_executor_risk_classification`
+    - `test_autonomous_executor_should_auto_execute_logic`
+    - `test_autonomous_executor_execution_result`
+
+**Testes:** ✅ 4/4 passing
+
+**Commit:** `a317d1f` — feat: FASE 0 #5 — AutonomousExecutor API integration (Jarvis Mode)
+
+**Impact:**
+- **Jarvis Mode foundation:** Infrastructure ready for autonomous task execution
+- **Safety first:** Disabled by default, high threshold (0.9), budget limits (50/day)
+- **Full transparency:** JSONL audit trail for compliance
+- **Risk management:** CRITICAL tasks NEVER auto-execute
+- **User control:** API allows fine-tuning threshold, risk level, budget
+- **No code dead:** Exposed via API instead of orphaned
+
+**Future Enhancements:**
+- Integrate with #2 UncertaintyQuantifier for confidence scores
+- UI toggle for enabling Jarvis Mode
+- Per-user configuration (instead of global)
+- Rollback mechanism for failed executions
+- Notification system for auto-executed tasks
 
 ## Próximo Passo
 
