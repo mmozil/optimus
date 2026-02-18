@@ -87,7 +87,7 @@
 | 13 | `TelegramChannel` | main.py lifespan (se TELEGRAM_TOKEN) | [ ] |
 | 14 | `WhatsAppChannel` | main.py lifespan (se WHATSAPP_TOKEN) | [ ] |
 | 15 | `SlackChannel` | main.py lifespan (se SLACK_TOKEN) | [ ] |
-| 16 | `WebChatChannel` | main.py WebSocket handler | [ ] |
+| 16 | `WebChatChannel` | main.py lifespan + SSE endpoints | [x] |
 | 17 | `ChatCommands` | Gateway.route_message (se msg[0]=='/') | [x] |
 | 18 | `VoiceInterface` | Web UI wake word listener | [ ] |
 | 19 | `ThreadManager` | Task/message comment system | [ ] |
@@ -1083,6 +1083,68 @@ Optimus roda em sua máquina
 | **FASE 5** | ✅ Validar | Voice recording + transcription + response |
 | **FASE 6** | ⬜ Pending | Documento comparativo + gaps fechados |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |
+
+### ✅ #16 WebChatChannel — CONCLUÍDO
+
+**Status:** ✅ Integrado via main.py + testes E2E passando
+
+**Call Path:**
+```
+Client
+  → POST /api/v1/webchat/session
+    → webchat_channel.create_session(user_id, user_name)
+      → Retorna session_id
+
+Client
+  → POST /api/v1/webchat/message
+    → webchat_channel.receive_message(session_id, message, context)
+      → asyncio.create_task(_stream_to_queue())
+        → gateway.stream_route_message()
+          → Chunks queued to _response_queues[session_id]
+
+Client
+  → GET /api/v1/webchat/stream/{session_id} (SSE)
+    → webchat_channel.stream_responses(session_id)
+      → Yields chunks from queue
+      → {"type": "token", "content": "..."} format
+
+Client
+  → DELETE /api/v1/webchat/session/{session_id}
+    → webchat_channel.close_session(session_id)
+```
+
+**Arquivos Modificados:**
+- `src/channels/webchat.py`:
+  - Adicionado `is_running` property
+  - Modificado `receive_message()` para integrar com gateway streaming
+  - Adicionado `_stream_to_queue()` background task
+  - Modificado `stream_responses()` para yield dict chunks (não SSE strings)
+  - Adicionado singleton `webchat_channel`
+
+- `src/main.py`:
+  - Lifespan: `await webchat_channel.start()` / `stop()`
+  - Endpoints:
+    - `POST /api/v1/webchat/session` → create_session()
+    - `POST /api/v1/webchat/message` → receive_message()
+    - `GET /api/v1/webchat/stream/{id}` → stream_responses() (SSE)
+    - `DELETE /api/v1/webchat/session/{id}` → close_session()
+
+- `tests/test_e2e.py`:
+  - `TestWebChatChannelIntegration`: 4 testes E2E
+    - `test_webchat_channel_can_start`
+    - `test_webchat_session_lifecycle`
+    - `test_webchat_message_processing`
+    - `test_webchat_stream_responses`
+
+**Testes:** ✅ 4/4 passing
+
+**Commit:** `ac4a48d` — feat: FASE 0 #16 — WebChatChannel integration (SSE streaming)
+
+**Impact:**
+- WebChatChannel agora está CONECTADO ao fluxo de produção
+- Permite múltiplas sessões simultâneas por cliente
+- SSE streaming desacoplado (POST message ≠ GET stream)
+- Gateway integration via `stream_route_message()`
 
 ---
 
