@@ -25,6 +25,9 @@ PUBLIC_ROUTES = {
     "/api/v1/auth/login",
     "/api/v1/auth/register",
     "/api/v1/auth/refresh",
+    # FASE 4: Google OAuth (redirect flows — no Bearer token)
+    "/api/v1/oauth/google/connect",
+    "/api/v1/oauth/google/callback",
 }
 
 

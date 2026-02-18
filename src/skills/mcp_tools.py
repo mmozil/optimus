@@ -375,6 +375,69 @@ class MCPToolRegistry:
             agent_levels=["lead", "specialist"],
         ))
 
+        # --- Google Workspace Tools (FASE 4) ---
+        self.register(MCPTool(
+            name="gmail_read",
+            description="Search and list Gmail emails. Use Gmail query syntax (e.g. 'is:unread', 'from:boss@company.com', 'newer_than:3d'). Returns subject, sender, date and snippet.",
+            category="google",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Gmail search query (e.g. 'is:unread', 'subject:meeting', 'newer_than:1d')"},
+                "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
+            },
+            handler=self._tool_gmail_read,
+        ))
+
+        self.register(MCPTool(
+            name="gmail_get",
+            description="Read the full content of a specific Gmail email by its message ID. Returns subject, sender, date and full body text.",
+            category="google",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "Gmail message ID (from gmail_read results)"},
+            },
+            handler=self._tool_gmail_get,
+        ))
+
+        self.register(MCPTool(
+            name="calendar_list",
+            description="List upcoming Google Calendar events for the next N days. Returns event title, start time and location.",
+            category="google",
+            parameters={
+                "days_ahead": {"type": "integer", "description": "Number of days ahead to check (default: 7)"},
+            },
+            handler=self._tool_calendar_list,
+        ))
+
+        self.register(MCPTool(
+            name="calendar_search",
+            description="Search Google Calendar events by keyword. Returns matching events with title and start time.",
+            category="google",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Search text to find in event titles and descriptions"},
+            },
+            handler=self._tool_calendar_search,
+        ))
+
+        self.register(MCPTool(
+            name="drive_search",
+            description="Search for files and documents in Google Drive by name or content. Returns file names, types and links.",
+            category="google",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Search text to find in file names or content"},
+                "max_results": {"type": "integer", "description": "Max files to return (default: 10)"},
+            },
+            handler=self._tool_drive_search,
+        ))
+
+        self.register(MCPTool(
+            name="drive_read",
+            description="Read the text content of a Google Drive file (Google Docs, Sheets, or other files). Returns up to 4000 chars of content.",
+            category="google",
+            parameters={
+                "file_id": {"type": "string", "required": True, "description": "Google Drive file ID (from drive_search results)"},
+            },
+            handler=self._tool_drive_read,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -819,6 +882,50 @@ class MCPToolRegistry:
             return f"❌ {e}"
         except Exception as e:
             return f"❌ Erro ao gerar PDF de {url}: {e}"
+
+    # ============================================
+    # Google Workspace Handlers (FASE 4)
+    # ============================================
+
+    async def _tool_gmail_read(self, query: str, max_results: int = 10) -> str:
+        """List Gmail emails matching query."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_list(user_id, query=query, max_results=max_results)
+
+    async def _tool_gmail_get(self, message_id: str) -> str:
+        """Get full content of a Gmail message."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_get(user_id, message_id=message_id)
+
+    async def _tool_calendar_list(self, days_ahead: int = 7) -> str:
+        """List upcoming Google Calendar events."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.calendar_list(user_id, days_ahead=days_ahead)
+
+    async def _tool_calendar_search(self, query: str) -> str:
+        """Search Google Calendar events by keyword."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.calendar_search(user_id, query=query)
+
+    async def _tool_drive_search(self, query: str, max_results: int = 10) -> str:
+        """Search Google Drive files."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.drive_search(user_id, query=query, max_results=max_results)
+
+    async def _tool_drive_read(self, file_id: str) -> str:
+        """Read content of a Google Drive file."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.drive_read(user_id, file_id=file_id)
+
+    def _current_user_id(self) -> str:
+        """Get current user_id from execution context (set by ReAct loop)."""
+        return getattr(self, "_user_id", "00000000-0000-0000-0000-000000000001")
 
 
 # Singleton

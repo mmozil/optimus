@@ -3747,3 +3747,208 @@ class TestA2AProtocolIntegration:
         data = response.json()
         assert "registered_agents" in data
         assert "total_messages" in data
+
+
+# ============================================
+# FASE 4: Google OAuth Integration Tests
+# ============================================
+class TestGoogleOAuthIntegration:
+    """
+    E2E tests for Google OAuth (Gmail + Calendar + Drive).
+
+    REGRA DE OURO Checkpoint 2: These tests validate the integration.
+    They pass with graceful fallback when no Google credentials are configured.
+    """
+
+    @pytest.mark.asyncio
+    async def test_google_oauth_service_exists(self):
+        """
+        Verify GoogleOAuthService singleton is importable and initialized.
+
+        Call path:
+        from src.core.google_oauth_service import google_oauth_service
+        """
+        from src.core.google_oauth_service import google_oauth_service, GoogleOAuthService
+
+        assert google_oauth_service is not None, "google_oauth_service singleton should exist"
+        assert isinstance(google_oauth_service, GoogleOAuthService)
+        assert hasattr(google_oauth_service, "get_auth_url"), "Should have get_auth_url() method"
+        assert hasattr(google_oauth_service, "exchange_code"), "Should have exchange_code() method"
+        assert hasattr(google_oauth_service, "get_credentials"), "Should have get_credentials() method"
+        assert hasattr(google_oauth_service, "revoke"), "Should have revoke() method"
+        assert hasattr(google_oauth_service, "get_connection_status"), "Should have get_connection_status() method"
+        assert hasattr(google_oauth_service, "gmail_list"), "Should have gmail_list() method"
+        assert hasattr(google_oauth_service, "calendar_list"), "Should have calendar_list() method"
+        assert hasattr(google_oauth_service, "drive_search"), "Should have drive_search() method"
+
+    @pytest.mark.asyncio
+    async def test_get_auth_url_requires_config(self):
+        """
+        Test that get_auth_url() returns clear error when CLIENT_ID is not configured.
+
+        Expected behavior: returns error string (not raises exception) when
+        GOOGLE_OAUTH_CLIENT_ID is empty.
+        """
+        from src.core.google_oauth_service import GoogleOAuthService
+        from src.core.config import settings
+
+        # Temporarily clear the client_id to simulate missing config
+        original_id = settings.GOOGLE_OAUTH_CLIENT_ID
+        settings.GOOGLE_OAUTH_CLIENT_ID = ""
+
+        try:
+            svc = GoogleOAuthService()
+            result = svc.get_auth_url("test-user-id")
+
+            # Should return error message, not raise
+            assert isinstance(result, str), "Should return string (not raise)"
+            assert "CLIENT_ID" in result or "configurado" in result.lower() or "configured" in result.lower(), \
+                f"Error message should mention missing config, got: {result}"
+        finally:
+            settings.GOOGLE_OAUTH_CLIENT_ID = original_id
+
+    @pytest.mark.asyncio
+    async def test_gmail_read_without_tokens(self):
+        """
+        Test that gmail_list() returns helpful message when user has no OAuth tokens.
+
+        Expected behavior: graceful fallback with instructions to connect Google.
+        NOT a 500 error.
+        """
+        from src.core.google_oauth_service import google_oauth_service
+
+        result = await google_oauth_service.gmail_list(
+            user_id="00000000-0000-0000-0000-000000000099",  # Non-existent user
+            query="is:unread",
+            max_results=5,
+        )
+
+        assert isinstance(result, str), "Should return string fallback message"
+        assert len(result) > 0, "Should not return empty string"
+        # Should guide the user to connect
+        assert "settings" in result.lower() or "connect" in result.lower() or "conectado" in result.lower() or "⚠️" in result, \
+            f"Should provide helpful message, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_calendar_list_without_tokens(self):
+        """
+        Test that calendar_list() returns helpful message when user has no OAuth tokens.
+
+        Expected behavior: graceful fallback with instructions to connect Google.
+        NOT a 500 error.
+        """
+        from src.core.google_oauth_service import google_oauth_service
+
+        result = await google_oauth_service.calendar_list(
+            user_id="00000000-0000-0000-0000-000000000099",
+            days_ahead=7,
+        )
+
+        assert isinstance(result, str), "Should return string fallback message"
+        assert len(result) > 0, "Should not return empty string"
+        assert "settings" in result.lower() or "connect" in result.lower() or "conectado" in result.lower() or "⚠️" in result, \
+            f"Should provide helpful message, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_drive_search_without_tokens(self):
+        """
+        Test that drive_search() returns helpful message when user has no OAuth tokens.
+
+        Expected behavior: graceful fallback with instructions to connect Google.
+        NOT a 500 error.
+        """
+        from src.core.google_oauth_service import google_oauth_service
+
+        result = await google_oauth_service.drive_search(
+            user_id="00000000-0000-0000-0000-000000000099",
+            query="quarterly report",
+            max_results=5,
+        )
+
+        assert isinstance(result, str), "Should return string fallback message"
+        assert len(result) > 0, "Should not return empty string"
+        assert "settings" in result.lower() or "connect" in result.lower() or "conectado" in result.lower() or "⚠️" in result, \
+            f"Should provide helpful message, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_mcp_tools_registered(self):
+        """
+        Test that all 6 Google Workspace MCP tools are registered.
+
+        Expected tools: gmail_read, gmail_get, calendar_list,
+                        calendar_search, drive_search, drive_read
+        """
+        try:
+            from src.skills.mcp_tools import mcp_tools
+        except ModuleNotFoundError as e:
+            if "sqlalchemy" in str(e):
+                pytest.skip("sqlalchemy not installed in test environment")
+            raise
+
+        expected_tools = [
+            "gmail_read",
+            "gmail_get",
+            "calendar_list",
+            "calendar_search",
+            "drive_search",
+            "drive_read",
+        ]
+
+        registered = mcp_tools.list_tools()
+        registered_names = [t["name"] for t in registered]
+
+        for tool_name in expected_tools:
+            assert tool_name in registered_names, \
+                f"MCP tool '{tool_name}' should be registered (FASE 4 Google integration)"
+
+    @pytest.mark.asyncio
+    async def test_oauth_api_endpoints_exist(self):
+        """
+        Test that Google OAuth API endpoints exist and are accessible.
+
+        Endpoints:
+        - GET /api/v1/oauth/google/status (requires auth → 401 without token)
+        - DELETE /api/v1/oauth/google/revoke (requires auth → 401 without token)
+        """
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Status endpoint: 401 without token (endpoint exists)
+        response = client.get("/api/v1/oauth/google/status")
+        assert response.status_code in [200, 401, 403], \
+            f"GET /oauth/google/status should exist, got {response.status_code}"
+
+        # Revoke endpoint: 401 without token (endpoint exists)
+        response = client.delete("/api/v1/oauth/google/revoke")
+        assert response.status_code in [200, 401, 403], \
+            f"DELETE /oauth/google/revoke should exist, got {response.status_code}"
+
+    @pytest.mark.asyncio
+    async def test_oauth_connect_redirect_without_config(self):
+        """
+        Test that /oauth/google/connect redirects or returns error without config.
+
+        When GOOGLE_OAUTH_CLIENT_ID is empty, should handle gracefully.
+        """
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app, follow_redirects=False)
+
+        # Without token → error (400 or redirect to error)
+        response = client.get("/api/v1/oauth/google/connect")
+        # Should not be 500 (internal error)
+        assert response.status_code != 500, \
+            "GET /oauth/google/connect should not return 500"

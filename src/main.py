@@ -791,6 +791,10 @@ app.include_router(user_profile_router)
 from src.api.agents_api import router as agents_router
 app.include_router(agents_router)
 
+# FASE 4: Google OAuth (Gmail, Calendar, Drive)
+from src.api.oauth_google import router as oauth_google_router
+app.include_router(oauth_google_router)
+
 
 class SearchRequest(BaseModel):
     query: str

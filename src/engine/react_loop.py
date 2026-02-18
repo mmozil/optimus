@@ -315,6 +315,9 @@ async def react_loop(
                     category=_get_tool_category(mcp_tools, tool_name),
                 ).inc()
 
+                # FASE 4: inject user_id so Google tools can fetch OAuth tokens
+                mcp_tools._user_id = user_id
+
                 tool_result = await mcp_tools.execute(tool_name, tool_args, agent_name=agent_name)
 
                 step.duration_ms = (time.monotonic() - step_start) * 1000

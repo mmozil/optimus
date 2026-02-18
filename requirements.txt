@@ -41,6 +41,11 @@ edge-tts>=6.1.0
 # === Browser Automation (FASE 2B) ===
 playwright>=1.49.0
 
+# === Google OAuth (FASE 4) ===
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
 # === Utilities ===
 tenacity>=9.0.0
 python-dotenv>=1.0.0

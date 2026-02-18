@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""  # https://tavily.com — legacy, prefer Brave
     BRAVE_SEARCH_API_KEY: str = ""  # https://api.search.brave.com — 1000 free/month
 
+    # === Google OAuth (FASE 4) ===
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = "https://optimus.tier.finance/api/v1/oauth/google/callback"
+
     # === Sentry ===
     SENTRY_DSN: str = ""
 

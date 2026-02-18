@@ -227,6 +227,32 @@
       <button class="btn" onclick="savePreferences()">Salvar preferências</button>
     </div>
 
+    <!-- Integrações Google -->
+    <div class="section">
+      <div class="section-title">Integrações Google</div>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Conecte sua conta Google para que o agente possa ler emails, eventos do Calendar e arquivos do Drive.
+      </p>
+      <div id="google-disconnected" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:13px;color:#888;">Gmail · Calendar · Drive — não conectado</span>
+          <button class="btn" onclick="connectGoogle()" style="background:#4285F4;">
+            🔗 Conectar Google
+          </button>
+        </div>
+      </div>
+      <div id="google-connected" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="font-size:13px;color:#4ade80;">✅ Conectado como <strong id="google-email"></strong></span>
+          <span style="font-size:12px;color:#555;" id="google-scopes"></span>
+          <button class="btn" onclick="disconnectGoogle()" style="background:#333;color:#e0e0e0;font-size:12px;padding:8px 14px;">
+            Desconectar
+          </button>
+        </div>
+      </div>
+      <div id="google-loading" style="font-size:13px;color:#555;">Verificando conexão...</div>
+    </div>
+
     <!-- API Key -->
     <div class="section">
       <div class="section-title">API Key</div>
@@ -368,10 +394,76 @@
       navigator.clipboard.writeText(val).then(() => showSuccess('API key copiada!'));
     }
 
+    // ============================================
+    // Google OAuth Integration (FASE 4)
+    // ============================================
+
+    async function loadGoogleStatus() {
+      try {
+        const resp = await fetch('/api/v1/oauth/google/status', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        document.getElementById('google-loading').style.display = 'none';
+        if (!resp.ok) {
+          document.getElementById('google-disconnected').style.display = 'block';
+          return;
+        }
+        const data = await resp.json();
+        if (data.connected) {
+          document.getElementById('google-email').textContent = data.google_email;
+          const scopeLabels = data.scopes
+            .filter(s => s.includes('googleapis'))
+            .map(s => s.split('/').pop())
+            .join(' · ');
+          document.getElementById('google-scopes').textContent = scopeLabels ? `(${scopeLabels})` : '';
+          document.getElementById('google-connected').style.display = 'flex';
+        } else {
+          document.getElementById('google-disconnected').style.display = 'block';
+        }
+      } catch (e) {
+        document.getElementById('google-loading').style.display = 'none';
+        document.getElementById('google-disconnected').style.display = 'block';
+      }
+    }
+
+    function connectGoogle() {
+      window.location.href = `/api/v1/oauth/google/connect?token=${token}`;
+    }
+
+    async function disconnectGoogle() {
+      if (!confirm('Desconectar o Google? O agente não poderá mais ler emails, calendar e drive.')) return;
+      try {
+        const resp = await fetch('/api/v1/oauth/google/revoke', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          showSuccess('Google desconectado.');
+          document.getElementById('google-connected').style.display = 'none';
+          document.getElementById('google-disconnected').style.display = 'block';
+        } else {
+          showError('Erro ao desconectar Google.');
+        }
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    // Handle redirect back from Google OAuth
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('google_connected')) {
+      showSuccess(`✅ Google conectado com sucesso (${urlParams.get('email') || ''})!`);
+      window.history.replaceState({}, '', '/settings.html');
+    } else if (urlParams.get('google_error')) {
+      showError(`Erro ao conectar Google: ${urlParams.get('google_error')}`);
+      window.history.replaceState({}, '', '/settings.html');
+    }
+
     // Load everything on page load
     loadProfile();
     loadPreferences();
     loadApiKey();
+    loadGoogleStatus();
   </script>
 </body>
 </html>
