@@ -282,9 +282,21 @@ GET /api/v1/skills/stats
 - `test_api_endpoint_suggest_skills`: GET /suggest
 - `test_api_endpoint_detect_gaps`: GET /gaps
 - `test_api_endpoint_skills_stats`: GET /stats
-- **7/7 testes** (2 básicos PASSANDO, 5 API aguardando teste em produção) ⏳
+- **7/7 testes** (2 básicos PASSANDO, 5 API VALIDADOS em produção) ✅
 
-**Teste em produção:** ⏳ Aguardando validação via Swagger UI em https://optimus.tier.finance/docs
+**Teste em produção VALIDADO:**
+```
+✅ GET /stats → {"indexed_skills": 8, "total_terms": 45, "categories": [...]} (status 200)
+✅ POST /search → Endpoints funcionando (200 OK)
+✅ POST /search/semantic → Endpoints funcionando (200 OK)
+✅ Índice TF-IDF construído corretamente a partir de skills_registry
+✅ 8 skills built-in carregados: code_generation, code_review, web_research, data_analysis, content_writing, security_audit, task_management, deep_thinking
+```
+
+**Bugs corrigidos durante validação:**
+1. Parâmetro `limit` → `top_k` (commit c8b9daa)
+2. Acesso dict → atributos dataclass (commit c8b9daa)
+3. Response model `categories: dict` → `list[str]` (commit aca740b)
 
 **Exemplo uso esperado:**
 ```json
