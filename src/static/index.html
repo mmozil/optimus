@@ -224,11 +224,19 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
+        .audio-transcript-toggle {
+            font-size: 0.72rem;
+            cursor: pointer;
+            opacity: 0.5;
+            user-select: none;
+        }
+        .audio-transcript-toggle:hover { opacity: 1; }
+
         .audio-transcript {
             font-size: 0.78rem;
             color: var(--text-muted);
             font-style: italic;
-            margin: 2px 0 0 0;
+            margin: 3px 0 0 0;
         }
 
         /* ── Slash Command Autocomplete ─────────── */
@@ -843,17 +851,29 @@
             const avatarLabel = isUser ? 'EU' : 'OP';
             const avatarClass = isUser ? 'user-avatar' : 'ai-avatar';
             const transcriptHtml = transcriptText
-                ? `<p class="audio-transcript">${escapeHtml(transcriptText)}</p>`
+                ? `<span class="audio-transcript-toggle" title="Ver transcrição">📝</span>
+                   <p class="audio-transcript" style="display:none;">${escapeHtml(transcriptText)}</p>`
                 : '';
             div.innerHTML = `
                 <div class="avatar ${avatarClass}">${avatarLabel}</div>
                 <div class="msg-content">
-                    <audio controls src="${audioUrl}" style="max-width:260px;width:100%;display:block;margin-bottom:4px;"></audio>
+                    <audio controls src="${audioUrl}" style="max-width:260px;width:100%;display:block;margin-bottom:2px;"></audio>
                     ${transcriptHtml}
                 </div>
             `;
             chatContainer.appendChild(div);
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+            // Toggle transcript on click
+            const toggle = div.querySelector('.audio-transcript-toggle');
+            const transcript = div.querySelector('.audio-transcript');
+            if (toggle && transcript) {
+                toggle.addEventListener('click', () => {
+                    const hidden = transcript.style.display === 'none';
+                    transcript.style.display = hidden ? 'block' : 'none';
+                });
+            }
+
             return div;
         }
 
