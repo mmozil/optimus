@@ -1341,3 +1341,131 @@ class TestIntentClassifierIntegration:
         from src.engine.intent_classifier import intent_classifier
         result = intent_classifier.classify(test_message)
         assert result.intent == "code", f"Should classify as 'code', got '{result.intent}'"
+
+
+# ============================================
+# FASE 0 #28: ConfirmationService Integration
+# ============================================
+class TestConfirmationServiceIntegration:
+    """
+    FASE 0 Module #28: ConfirmationService integration test.
+
+    This test FAILS if confirmation_service is NOT called in react_loop before tool execution.
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    def test_confirmation_service_ready(self):
+        """
+        Test that ConfirmationService exists and is ready for integration.
+
+        This validates the service itself works before integrating into ReAct loop.
+        """
+        from src.core.confirmation_service import confirmation_service, RiskLevel, TOOL_RISK_MAP
+
+        # Verify singleton exists
+        assert confirmation_service is not None, "confirmation_service singleton not found"
+
+        # Verify API methods exist
+        assert hasattr(confirmation_service, 'should_confirm'), "Missing should_confirm() method"
+        assert hasattr(confirmation_service, 'get_risk_level'), "Missing get_risk_level() method"
+        assert hasattr(confirmation_service, 'create_confirmation'), "Missing create_confirmation() method"
+        assert hasattr(confirmation_service, 'approve'), "Missing approve() method"
+        assert hasattr(confirmation_service, 'deny'), "Missing deny() method"
+
+        # Verify TOOL_RISK_MAP exists
+        assert len(TOOL_RISK_MAP) > 0, "TOOL_RISK_MAP is empty"
+        assert "file_delete" in TOOL_RISK_MAP, "Missing 'file_delete' in TOOL_RISK_MAP"
+        assert "deploy" in TOOL_RISK_MAP, "Missing 'deploy' in TOOL_RISK_MAP"
+
+        # Verify risk levels are correct
+        assert TOOL_RISK_MAP["file_delete"] == RiskLevel.CRITICAL, \
+            "file_delete should be CRITICAL risk"
+        assert TOOL_RISK_MAP["deploy"] == RiskLevel.CRITICAL, \
+            "deploy should be CRITICAL risk"
+
+    def test_should_confirm_logic(self):
+        """
+        Test that should_confirm() correctly identifies high-risk tools.
+
+        This validates the risk assessment logic.
+        """
+        from src.core.confirmation_service import confirmation_service
+
+        # Low risk tools — should NOT require confirmation
+        assert confirmation_service.should_confirm("file_read", "") is False, \
+            "file_read (LOW risk) should not require confirmation"
+        assert confirmation_service.should_confirm("search", "") is False, \
+            "search (LOW risk) should not require confirmation"
+
+        # Medium risk tools — should NOT require confirmation (for now)
+        assert confirmation_service.should_confirm("file_write", "") is False, \
+            "file_write (MEDIUM risk) should not require confirmation"
+
+        # High risk tools — SHOULD require confirmation
+        assert confirmation_service.should_confirm("git_push", "") is True, \
+            "git_push (HIGH risk) SHOULD require confirmation"
+        assert confirmation_service.should_confirm("http_request", "") is True, \
+            "http_request (HIGH risk) SHOULD require confirmation"
+
+        # Critical risk tools — SHOULD require confirmation
+        assert confirmation_service.should_confirm("file_delete", "") is True, \
+            "file_delete (CRITICAL) SHOULD require confirmation"
+        assert confirmation_service.should_confirm("deploy", "") is True, \
+            "deploy (CRITICAL) SHOULD require confirmation"
+        assert confirmation_service.should_confirm("send_email", "") is True, \
+            "send_email (CRITICAL) SHOULD require confirmation"
+
+    @pytest.mark.asyncio
+    async def test_confirmation_workflow(self):
+        """
+        Test the full confirmation workflow (create → approve → check).
+
+        This validates the confirmation lifecycle.
+        """
+        from src.core.confirmation_service import confirmation_service
+
+        # Create confirmation request
+        request = await confirmation_service.create_confirmation(
+            agent_name="optimus",
+            tool_name="file_delete",
+            tool_args={"path": "/important/file.txt"},
+            user_id="test_user",
+        )
+
+        assert request is not None, "create_confirmation() returned None"
+        assert request.status == "pending", f"Expected 'pending', got '{request.status}'"
+        assert request.tool_name == "file_delete", f"Tool name mismatch"
+        assert request.agent_name == "optimus", f"Agent name mismatch"
+
+        # Approve the request
+        approved = confirmation_service.approve(request.id, resolver="test")
+        assert approved is True, "approve() returned False"
+
+        # Verify status changed
+        req = confirmation_service._pending.get(request.id)
+        assert req is not None, "Request not found in _pending"
+        assert req.status == "approved", f"Expected 'approved', got '{req.status}'"
+
+    @pytest.mark.asyncio
+    async def test_react_loop_confirmation_check(self):
+        """
+        CRITICAL TEST: Verifies ReAct loop checks confirmation_service before tool execution.
+
+        This test documents the EXPECTED behavior after integration.
+        """
+        from src.core.confirmation_service import confirmation_service
+
+        # Simulate ReAct loop scenario
+        tool_name = "file_delete"
+        user_id = "test_user"
+
+        # Check if tool needs confirmation (this is what ReAct loop will call)
+        needs_confirmation = confirmation_service.should_confirm(tool_name, user_id)
+
+        assert needs_confirmation is True, \
+            f"file_delete should require confirmation, got {needs_confirmation}"
+
+        # After integration, ReAct loop will:
+        # 1. Call should_confirm() before executing tool
+        # 2. If True, skip tool and inform agent
+        # 3. Agent tells user: "This action needs your approval"

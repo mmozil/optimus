@@ -239,6 +239,45 @@ async def react_loop(
                 })
                 continue
 
+            # FASE 0 #28: Check if tool needs user confirmation (Human-in-the-Loop)
+            from src.core.confirmation_service import confirmation_service
+
+            user_id = context.get("user_id", "") if context else ""
+            if confirmation_service.should_confirm(tool_name, user_id):
+                step.success = False
+                step.error = f"Tool '{tool_name}' requires user confirmation (HIGH/CRITICAL risk)"
+                step.duration_ms = (time.monotonic() - step_start) * 1000
+                steps.append(step)
+
+                # Inform agent that confirmation is needed
+                confirmation_msg = (
+                    f"⚠️ AÇÃO BLOQUEADA: A ferramenta '{tool_name}' requer confirmação do usuário antes de ser executada.\n\n"
+                    f"**Motivo:** Esta é uma ação de alto risco ou irreversível "
+                    f"(risco: {confirmation_service.get_risk_level(tool_name).value}).\n\n"
+                    f"**Próximos passos:**\n"
+                    f"1. Informe o usuário sobre a ação que você pretende executar\n"
+                    f"2. Explique claramente o que '{tool_name}' fará e quais os impactos\n"
+                    f"3. Aguarde aprovação explícita do usuário antes de tentar novamente\n\n"
+                    f"**Argumentos que você tentou usar:** {json.dumps(tool_args, ensure_ascii=False)}\n\n"
+                    f"Não tente executar esta ação sem confirmação. Explique ao usuário e peça aprovação."
+                )
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": confirmation_msg,
+                })
+
+                logger.info(
+                    f"Tool execution blocked: {tool_name} requires confirmation",
+                    extra={"props": {
+                        "agent": agent_name,
+                        "tool": tool_name,
+                        "risk": confirmation_service.get_risk_level(tool_name).value
+                    }}
+                )
+                continue
+
             # Execute tool
             try:
                 MCP_TOOL_CALLS.labels(
