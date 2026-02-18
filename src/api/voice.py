@@ -7,7 +7,7 @@ import base64
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from src.channels.voice_interface import VoiceProviderType, voice_interface
@@ -144,7 +144,7 @@ async def voice_speak(request: VoiceSpeakRequest) -> VoiceSpeakResponse:
 
 
 @router.post("/command", response_model=VoiceCommandResponse)
-async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
+async def voice_command(request: VoiceCommandRequest, http_request: Request) -> VoiceCommandResponse:
     """
     Process voice command with wake word detection.
 
@@ -155,6 +155,15 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
     4. Return agent response + TTS audio
     """
     try:
+        # Resolve real user_id from JWT Bearer token (preferred over body field)
+        real_user_id = request.user_id
+        auth_header = http_request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            from src.core.auth_service import auth_service
+            payload = auth_service.decode_token(auth_header[7:])
+            if payload and payload.get("sub"):
+                real_user_id = payload["sub"]
+
         # 1. Transcribe audio
         audio_bytes = base64.b64decode(request.audio_base64)
         text = await voice_interface.listen(audio_bytes)
@@ -180,9 +189,10 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
 
                 result = await gateway.route_message(
                     message=voice_context_message,
+                    user_id=real_user_id,
                     context={
-                        "user_id": request.user_id,
-                        "session_id": request.session_id or request.user_id,
+                        "user_id": real_user_id,
+                        "session_id": request.session_id or real_user_id,
                         "channel": "voice",
                     },
                 )
