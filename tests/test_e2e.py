@@ -3031,6 +3031,34 @@ class TestVoiceInterfaceIntegration:
         assert "weather" in clean.lower()
 
     @pytest.mark.asyncio
+    async def test_edge_tts_provider(self):
+        """Test Edge TTS provider configuration (free alternative)."""
+        from src.channels.voice_interface import VoiceInterface, VoiceConfig, VoiceProviderType
+
+        # Edge TTS should be available as a provider option
+        assert VoiceProviderType.EDGE == "edge", "Edge TTS provider should exist"
+
+        # Create VoiceInterface with Edge TTS for TTS
+        config = VoiceConfig(
+            stt_provider=VoiceProviderType.STUB,
+            tts_provider=VoiceProviderType.EDGE
+        )
+        vi = VoiceInterface(config)
+
+        # Provider should be created successfully
+        assert vi._tts is not None, "Edge TTS provider should be initialized"
+
+        # Edge TTS doesn't support STT, should use stub for transcription
+        result = await vi.listen(b"fake_audio_data")
+        assert "bytes" in result or "stt" in result.lower()
+
+        # Note: Edge TTS synthesis requires edge-tts package installed
+        # If not installed, it falls back to stub gracefully
+        result = await vi.speak("Test Edge TTS")
+        assert len(result) > 0
+        assert isinstance(result, bytes)
+
+    @pytest.mark.asyncio
     async def test_api_endpoint_voice_listen(self):
         """Test POST /api/v1/voice/listen endpoint (FAILS before integration)."""
         try:

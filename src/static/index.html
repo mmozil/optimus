@@ -849,31 +849,54 @@
             showMicToast('Transcrevendo...', true);
 
             const blob = new Blob(audioChunks, { type: recordingMime });
-            const formData = new FormData();
-            const ext = recordingMime.includes('webm') ? 'webm' : 'ogg';
-            formData.append('file', blob, `audio.${ext}`);
+
+            // Convert blob to base64
+            const reader = new FileReader();
+            const base64Promise = new Promise((resolve) => {
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1]; // Remove data:audio/webm;base64,
+                    resolve(base64);
+                };
+                reader.readAsDataURL(blob);
+            });
 
             let transcript = '';
             try {
-                const resp = await fetch(`${API_URL}/api/v1/audio/stt`, {
+                const audio_base64 = await base64Promise;
+
+                // Use new /voice/command endpoint for full voice pipeline
+                const resp = await fetch(`${API_URL}/api/v1/voice/command`, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${TOKEN}` },
-                    body: formData
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        audio_base64: audio_base64,
+                        user_id: 'web-user',
+                        session_id: 'web-session'
+                    })
                 });
+
                 if (resp.ok) {
                     const data = await resp.json();
-                    transcript = (data.text || '').trim();
+                    transcript = (data.transcribed_text || '').trim();
+
+                    // Log if wake word was detected
+                    if (data.wake_word_detected) {
+                        console.log('Wake word detected! Command:', data.command);
+                    }
                 } else {
                     const err = await resp.text();
-                    console.error('STT response error:', resp.status, err);
+                    console.error('Voice command error:', resp.status, err);
                     showMicToast('Erro na transcrição (' + resp.status + ')', true);
                     setTimeout(() => showMicToast('', false), 3000);
                     sendBtn.disabled = chatInput.value.trim().length === 0;
                     return;
                 }
             } catch (e) {
-                console.error('STT fetch error:', e);
-                showMicToast('Erro de conexão com STT', true);
+                console.error('Voice command fetch error:', e);
+                showMicToast('Erro de conexão com voz', true);
                 setTimeout(() => showMicToast('', false), 3000);
                 sendBtn.disabled = chatInput.value.trim().length === 0;
                 return;

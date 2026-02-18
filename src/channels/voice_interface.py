@@ -25,6 +25,7 @@ class VoiceProviderType(str, Enum):
     GOOGLE = "google"
     WHISPER = "whisper"
     ELEVENLABS = "elevenlabs"
+    EDGE = "edge"  # Microsoft Edge TTS (free)
     STUB = "stub"  # For testing
 
 
@@ -173,12 +174,64 @@ class ElevenLabsProvider(VoiceProvider):
             return f"[elevenlabs-error: {e}]".encode("utf-8")
 
 
+class EdgeTTSProvider(VoiceProvider):
+    """
+    Microsoft Edge TTS — free, high-quality neural voices.
+
+    Requires edge-tts package: pip install edge-tts
+    No API key needed, completely free.
+    Supports 400+ voices in 100+ languages.
+    """
+
+    async def transcribe(self, audio_bytes: bytes) -> str:
+        # Edge TTS doesn't support STT — use stub
+        return f"[edge-no-stt: {len(audio_bytes)} bytes]"
+
+    async def synthesize(self, text: str) -> bytes:
+        try:
+            import edge_tts
+        except ImportError:
+            logger.warning("edge-tts not installed, using stub fallback. Install: pip install edge-tts")
+            return f"[edge-stub: {text[:50]}]".encode("utf-8")
+
+        # Default to Brazilian Portuguese voice
+        voice = os.environ.get("EDGE_TTS_VOICE", "pt-BR-AntonioNeural")
+
+        try:
+            # Create a temporary file to store the audio
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            # Generate speech
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(tmp_path)
+
+            # Read the audio bytes
+            with open(tmp_path, "rb") as f:
+                audio_bytes = f.read()
+
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+            logger.info(f"Edge TTS: synthesized '{text[:50]}' → {len(audio_bytes)} bytes (voice={voice})")
+            return audio_bytes
+
+        except Exception as e:
+            logger.error(f"Edge TTS error: {e}")
+            return f"[edge-error: {e}]".encode("utf-8")
+
+
 # Provider registry
 PROVIDERS: dict[VoiceProviderType, type[VoiceProvider]] = {
     VoiceProviderType.STUB: StubVoiceProvider,
     VoiceProviderType.GOOGLE: GoogleVoiceProvider,
     VoiceProviderType.WHISPER: WhisperProvider,
     VoiceProviderType.ELEVENLABS: ElevenLabsProvider,
+    VoiceProviderType.EDGE: EdgeTTSProvider,
 }
 
 
