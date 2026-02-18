@@ -95,6 +95,11 @@ class GoogleOAuthService:
             state=user_id,
         )
         flow.redirect_uri = settings.GOOGLE_OAUTH_REDIRECT_URI
+
+        # Allow Google to return equivalent scopes (e.g. "email" → "userinfo.email")
+        import os
+        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+
         flow.fetch_token(code=code)
 
         creds = flow.credentials
