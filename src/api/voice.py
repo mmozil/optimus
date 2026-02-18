@@ -159,18 +159,17 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
         audio_bytes = base64.b64decode(request.audio_base64)
         text = await voice_interface.listen(audio_bytes)
 
-        # 2. Detect wake word
+        # 2. Detect wake word (informational only — always process)
         wake_word_detected = voice_interface.detect_wake_word(text)
 
-        command = None
+        # Strip wake word from command if present, otherwise use full text
+        command = voice_interface.strip_wake_word(text) if wake_word_detected else text
+
         response = None
         response_audio_base64 = None
 
-        # 3. Process command if wake word detected
-        if wake_word_detected:
-            command = voice_interface.strip_wake_word(text)
-
-            # Route to gateway for agent processing
+        # 3. Always route to agent (voice messages are always commands)
+        if command:
             try:
                 from src.core.gateway import gateway
 
@@ -185,7 +184,7 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
 
                 response = result.get("content", "")
 
-                # 4. Synthesize response to audio
+                # 4. Always synthesize response to audio (TTS)
                 if response:
                     response_audio = await voice_interface.speak(response)
                     response_audio_base64 = base64.b64encode(response_audio).decode()

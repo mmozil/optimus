@@ -224,6 +224,13 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
+        .audio-transcript {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-style: italic;
+            margin: 2px 0 0 0;
+        }
+
         /* ── Slash Command Autocomplete ─────────── */
         .input-area {
             position: relative;
@@ -826,6 +833,30 @@
             }
         }
 
+        function addAudioMessage(audioUrl, transcriptText, isUser) {
+            if (!hasMessages) {
+                hasMessages = true;
+                showWelcome(false);
+            }
+            const div = document.createElement('div');
+            div.className = 'message';
+            const avatarLabel = isUser ? 'EU' : 'OP';
+            const avatarClass = isUser ? 'user-avatar' : 'ai-avatar';
+            const transcriptHtml = transcriptText
+                ? `<p class="audio-transcript">${escapeHtml(transcriptText)}</p>`
+                : '';
+            div.innerHTML = `
+                <div class="avatar ${avatarClass}">${avatarLabel}</div>
+                <div class="msg-content">
+                    <audio controls src="${audioUrl}" style="max-width:260px;width:100%;display:block;margin-bottom:4px;"></audio>
+                    ${transcriptHtml}
+                </div>
+            `;
+            chatContainer.appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            return div;
+        }
+
         async function handleRecordingStop() {
             // Clean up recording state
             if (recordingStream) {
@@ -836,7 +867,6 @@
             inputBox.classList.remove('recording');
             isRecording = false;
 
-            const shouldSend = pendingSend;
             pendingSend = false;
 
             if (audioChunks.length === 0) {
@@ -846,25 +876,21 @@
                 return;
             }
 
-            showMicToast('Transcrevendo...', true);
+            showMicToast('Processando áudio...', true);
 
             const blob = new Blob(audioChunks, { type: recordingMime });
+            const userAudioUrl = URL.createObjectURL(blob);
 
             // Convert blob to base64
             const reader = new FileReader();
             const base64Promise = new Promise((resolve) => {
-                reader.onloadend = () => {
-                    const base64 = reader.result.split(',')[1]; // Remove data:audio/webm;base64,
-                    resolve(base64);
-                };
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
                 reader.readAsDataURL(blob);
             });
 
-            let transcript = '';
             try {
                 const audio_base64 = await base64Promise;
 
-                // Use new /voice/command endpoint for full voice pipeline
                 const resp = await fetch(`${API_URL}/api/v1/voice/command`, {
                     method: 'POST',
                     headers: {
@@ -878,50 +904,40 @@
                     })
                 });
 
-                if (resp.ok) {
-                    const data = await resp.json();
-                    transcript = (data.transcribed_text || '').trim();
+                showMicToast('', false);
 
-                    // Log if wake word was detected
-                    if (data.wake_word_detected) {
-                        console.log('Wake word detected! Command:', data.command);
-                    }
-                } else {
+                if (!resp.ok) {
                     const err = await resp.text();
                     console.error('Voice command error:', resp.status, err);
-                    showMicToast('Erro na transcrição (' + resp.status + ')', true);
+                    showMicToast('Erro no processamento de voz (' + resp.status + ')', true);
                     setTimeout(() => showMicToast('', false), 3000);
-                    sendBtn.disabled = chatInput.value.trim().length === 0;
                     return;
                 }
+
+                const data = await resp.json();
+                const transcript = (data.transcribed_text || '').trim();
+
+                // Show user audio message with transcript below
+                addAudioMessage(userAudioUrl, transcript, true);
+
+                // Show agent response as audio (+ text fallback)
+                if (data.response_audio_base64) {
+                    const agentAudioUrl = 'data:audio/mp3;base64,' + data.response_audio_base64;
+                    addAudioMessage(agentAudioUrl, data.response || '', false);
+                    // Auto-play agent response
+                    if (currentAudio) { currentAudio.pause(); }
+                    currentAudio = new Audio(agentAudioUrl);
+                    currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
+                } else if (data.response) {
+                    // Fallback: text response if TTS not available
+                    addMessage(data.response, false);
+                }
+
             } catch (e) {
+                showMicToast('', false);
                 console.error('Voice command fetch error:', e);
                 showMicToast('Erro de conexão com voz', true);
                 setTimeout(() => showMicToast('', false), 3000);
-                sendBtn.disabled = chatInput.value.trim().length === 0;
-                return;
-            }
-
-            showMicToast('', false);
-
-            if (!transcript) {
-                showMicToast('Não consegui entender o áudio', true);
-                setTimeout(() => showMicToast('', false), 2500);
-                sendBtn.disabled = chatInput.value.trim().length === 0;
-                return;
-            }
-
-            // Always put text in input so user sees what was transcribed
-            chatInput.value = transcript;
-            chatInput.style.height = 'auto';
-            chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
-            sendBtn.disabled = false;
-
-            if (shouldSend) {
-                // Auto-send after a brief moment so user sees the text
-                setTimeout(() => sendMessage(chatInput.value.trim()), 150);
-            } else {
-                chatInput.focus();
             }
         }
 
