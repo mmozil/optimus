@@ -1,8 +1,15 @@
 """
 Agent Optimus — Long-Term Memory.
-Curated knowledge persisted to Supabase, queryable via semantic search.
+Curated knowledge persisted to file system AND synced to PostgreSQL (FASE 6).
+
+DB sync: enables cross-agent queries, semantic search, and container-restart recovery.
+Call path:
+  add_learning() → file append + DB INSERT (background, non-blocking)
+  search_local() → file keyword search + DB full-text search (fallback)
+  load()         → file → DB fallback (cold start)
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +23,8 @@ class LongTermMemory:
     """
     Manages MEMORY.md — curated long-term knowledge per agent.
     Stores learnings, patterns, preferences extracted from interactions.
-    Optionally synced to Supabase for cross-agent access.
+
+    Persisted to file (fast) AND synced to PostgreSQL (reliable + queryable).
     """
 
     def __init__(self, memory_dir: Path | None = None):
@@ -27,15 +35,30 @@ class LongTermMemory:
         return self.memory_dir / f"{agent_name}.md"
 
     async def load(self, agent_name: str) -> str:
-        """Load long-term memory for an agent."""
+        """Load long-term memory for an agent.
+
+        Priority: file → DB fallback (container-restart recovery).
+        """
         path = self._file_path(agent_name)
         if path.exists():
             return path.read_text(encoding="utf-8")
+
+        # FASE 6: fallback — reconstruct file from DB entries
+        db_content = await self._rebuild_from_db(agent_name)
+        if db_content:
+            header = f"# MEMORY.md — {agent_name}\n_Memória de longo prazo curada._\n\n"
+            full_content = header + db_content
+            path.write_text(full_content, encoding="utf-8")
+            logger.info(f"[LongTermMemory] Rebuilt {agent_name} from DB")
+            return full_content
+
         return ""
 
     async def add_learning(self, agent_name: str, category: str, learning: str, source: str = ""):
         """
         Add a curated learning to long-term memory.
+
+        Appends to file (sync) and inserts to DB (background).
 
         Args:
             agent_name: Agent name
@@ -51,7 +74,7 @@ class LongTermMemory:
             header = f"# MEMORY.md — {agent_name}\n_Memória de longo prazo curada._\n\n"
             path.write_text(header, encoding="utf-8")
 
-        # Append learning
+        # Append learning to file
         entry = f"\n### [{timestamp}] {category}\n{learning}\n"
         if source:
             entry += f"_Fonte: {source}_\n"
@@ -61,20 +84,35 @@ class LongTermMemory:
 
         logger.info(f"Learning added for {agent_name}: {category}")
 
+        # FASE 6: sync to DB in background (non-blocking)
+        try:
+            asyncio.get_event_loop().create_task(
+                self._insert_to_db(agent_name, category, learning, source)
+            )
+        except RuntimeError:
+            # No event loop (e.g., test environment) — skip background task
+            pass
+
     async def search_local(self, agent_name: str, query: str) -> list[str]:
-        """Simple keyword search in local memory (fallback for no DB)."""
+        """Keyword search in memory — file first, DB fallback."""
         content = await self.load(agent_name)
-        if not content:
-            return []
 
-        query_lower = query.lower()
         results = []
+        if content:
+            query_lower = query.lower()
+            entries = content.split("\n### ")
+            for entry in entries:
+                if query_lower in entry.lower():
+                    results.append(entry.strip()[:500])
 
-        # Split by entries and search
-        entries = content.split("\n### ")
-        for entry in entries:
-            if query_lower in entry.lower():
-                results.append(entry.strip()[:500])
+        # FASE 6: also search DB for entries not yet in file (multi-worker scenario)
+        if len(results) < 5:
+            db_results = await self._search_db(agent_name, query)
+            seen = set(results)
+            for r in db_results:
+                if r not in seen:
+                    results.append(r)
+                    seen.add(r)
 
         return results[:10]
 
@@ -93,6 +131,88 @@ class LongTermMemory:
                     categories.add(parts[1].strip())
 
         return sorted(categories)
+
+    # ============================================
+    # FASE 6: DB sync helpers
+    # ============================================
+
+    async def _insert_to_db(self, agent_name: str, category: str, learning: str, source: str):
+        """Insert a learning entry into DB (background task)."""
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text
+            async with get_async_session() as session:
+                await session.execute(
+                    text("""
+                        INSERT INTO agent_long_term_memory
+                            (agent_name, category, learning, source, created_at)
+                        VALUES (:agent, :category, :learning, :source, NOW())
+                    """),
+                    {
+                        "agent": agent_name,
+                        "category": category,
+                        "learning": learning,
+                        "source": source,
+                    },
+                )
+                await session.commit()
+                logger.debug(f"[LongTermMemory] DB insert for {agent_name}: {category}")
+        except Exception as e:
+            logger.debug(f"[LongTermMemory] DB insert skipped for {agent_name}: {e}")
+
+    async def _rebuild_from_db(self, agent_name: str) -> str:
+        """Rebuild MEMORY.md content from DB entries (cold start recovery)."""
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text
+            async with get_async_session() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT category, learning, source,
+                               TO_CHAR(created_at, 'YYYY-MM-DD') AS date
+                        FROM agent_long_term_memory
+                        WHERE agent_name = :agent
+                        ORDER BY created_at ASC
+                    """),
+                    {"agent": agent_name},
+                )
+                rows = result.fetchall()
+                if not rows:
+                    return ""
+
+                lines = []
+                for row in rows:
+                    entry = f"\n### [{row.date}] {row.category}\n{row.learning}\n"
+                    if row.source:
+                        entry += f"_Fonte: {row.source}_\n"
+                    lines.append(entry)
+                return "".join(lines)
+        except Exception as e:
+            logger.debug(f"[LongTermMemory] DB rebuild skipped for {agent_name}: {e}")
+            return ""
+
+    async def _search_db(self, agent_name: str, query: str) -> list[str]:
+        """Keyword search in DB entries."""
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text
+            async with get_async_session() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT category, learning
+                        FROM agent_long_term_memory
+                        WHERE agent_name = :agent
+                          AND (LOWER(learning) LIKE :q OR LOWER(category) LIKE :q)
+                        ORDER BY created_at DESC
+                        LIMIT 5
+                    """),
+                    {"agent": agent_name, "q": f"%{query.lower()}%"},
+                )
+                rows = result.fetchall()
+                return [f"{row.category}\n{row.learning}" for row in rows]
+        except Exception as e:
+            logger.debug(f"[LongTermMemory] DB search skipped for {agent_name}: {e}")
+            return []
 
 
 # Singleton

@@ -4050,3 +4050,100 @@ class TestChannelIntegration:
         from src.infra.auth_middleware import PUBLIC_ROUTES
         assert "/api/v1/whatsapp/webhook" in PUBLIC_ROUTES, \
             "WhatsApp webhook must be public (Evolution API sends raw payloads)"
+
+
+# ============================================
+# FASE 6: Memory DB Sync Tests
+# ============================================
+class TestMemoryDBSync:
+    """
+    E2E tests for FASE 6: Memory sync to PostgreSQL.
+    Tests fail without the DB sync implementation.
+
+    Call path:
+      working_memory.save() → file + DB upsert (background)
+      working_memory.load() → cache → file → DB fallback
+      long_term_memory.add_learning() → file append + DB INSERT
+      long_term_memory.search_local() → file + DB search
+    """
+
+    def test_working_memory_has_db_methods(self):
+        """WorkingMemory must have _load_from_db and _save_to_db methods (FASE 6)."""
+        from src.memory.working_memory import WorkingMemory
+        wm = WorkingMemory()
+        assert hasattr(wm, "_load_from_db"), \
+            "WorkingMemory._load_from_db() missing — FASE 6 not implemented"
+        assert hasattr(wm, "_save_to_db"), \
+            "WorkingMemory._save_to_db() missing — FASE 6 not implemented"
+
+    def test_long_term_memory_has_db_methods(self):
+        """LongTermMemory must have _insert_to_db, _rebuild_from_db, _search_db (FASE 6)."""
+        from src.memory.long_term import LongTermMemory
+        ltm = LongTermMemory()
+        assert hasattr(ltm, "_insert_to_db"), \
+            "LongTermMemory._insert_to_db() missing — FASE 6 not implemented"
+        assert hasattr(ltm, "_rebuild_from_db"), \
+            "LongTermMemory._rebuild_from_db() missing — FASE 6 not implemented"
+        assert hasattr(ltm, "_search_db"), \
+            "LongTermMemory._search_db() missing — FASE 6 not implemented"
+
+    @pytest.mark.asyncio
+    async def test_working_memory_save_load_file(self, tmp_path):
+        """WorkingMemory save/load via file still works (no regression)."""
+        from src.memory.working_memory import WorkingMemory
+        wm = WorkingMemory(workspace_dir=tmp_path)
+        await wm.save("test_agent", "# WORKING.md\nTest content")
+        loaded = await wm.load("test_agent")
+        assert "Test content" in loaded
+
+    @pytest.mark.asyncio
+    async def test_working_memory_db_load_fallback(self, tmp_path):
+        """If file missing, load() calls _load_from_db() and handles None gracefully."""
+        from src.memory.working_memory import WorkingMemory
+        wm = WorkingMemory(workspace_dir=tmp_path)
+        # No file exists — should call DB, get None, then create default
+        content = await wm.load("new_agent")
+        # Default content must be created (not empty, not crash)
+        assert content, "load() returned empty — default not created"
+        assert "WORKING.md" in content or "Status" in content
+
+    @pytest.mark.asyncio
+    async def test_working_memory_db_save_graceful(self, tmp_path):
+        """_save_to_db() with no DB available must not raise (graceful fallback)."""
+        from src.memory.working_memory import WorkingMemory
+        wm = WorkingMemory(workspace_dir=tmp_path)
+        # Must not raise even if DB is unavailable
+        await wm._save_to_db("test_agent", "# Test content")
+
+    @pytest.mark.asyncio
+    async def test_long_term_memory_add_and_search(self, tmp_path):
+        """add_learning() + search_local() via file still works (no regression)."""
+        from src.memory.long_term import LongTermMemory
+        ltm = LongTermMemory(memory_dir=tmp_path)
+        await ltm.add_learning("test_agent", "técnico", "FastAPI é rápido", "test")
+        results = await ltm.search_local("test_agent", "FastAPI")
+        assert len(results) > 0, "search_local() did not find the learning"
+        assert "FastAPI" in results[0]
+
+    @pytest.mark.asyncio
+    async def test_long_term_memory_db_methods_graceful(self, tmp_path):
+        """DB methods must not raise when DB is unavailable (graceful fallback)."""
+        from src.memory.long_term import LongTermMemory
+        ltm = LongTermMemory(memory_dir=tmp_path)
+        # Must not raise
+        await ltm._insert_to_db("test_agent", "técnico", "Test learning", "test")
+        result = await ltm._rebuild_from_db("test_agent")
+        assert result == "" or isinstance(result, str)
+        results = await ltm._search_db("test_agent", "test")
+        assert isinstance(results, list)
+
+    def test_migration_file_exists(self):
+        """Migration 017_agent_memory.sql must exist (both tables)."""
+        from pathlib import Path
+        migration = Path(__file__).parent.parent / "migrations" / "017_agent_memory.sql"
+        assert migration.exists(), "migrations/017_agent_memory.sql not found"
+        content = migration.read_text()
+        assert "agent_working_memory" in content, \
+            "agent_working_memory table missing from migration"
+        assert "agent_long_term_memory" in content, \
+            "agent_long_term_memory table missing from migration"

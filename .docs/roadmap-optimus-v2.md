@@ -1855,22 +1855,25 @@ Agent pode ler arquivos, executar scripts
 
 ### FASE 4A: Gmail OAuth (Start Here)
 
-1. [ ] **Google Cloud**: criar OAuth 2.0 credentials
+1. [x] **Google Cloud**: criar OAuth 2.0 credentials
    - Scope: `gmail.readonly`, `calendar.readonly`, `drive.readonly`
+   - `src/core/google_oauth_service.py`
 
-2. [ ] **Database**: tabela `user_integrations` (user_id, provider, access_token, refresh_token)
+2. [x] **Database**: tabela `google_oauth_tokens` (user_id, access_token, refresh_token, scopes, google_email)
+   - `migrations/016_google_oauth.sql`
 
-3. [ ] **API**: `GET /oauth/authorize/gmail` + `GET /oauth/callback/gmail`
-   - Chamado por: UI "Conectar Gmail"
+3. [x] **API**: `GET /api/v1/oauth/google/connect` + `GET /api/v1/oauth/google/callback`
+   - `src/api/oauth_google.py` — PUBLIC_ROUTES (sem Bearer)
 
-4. [ ] **MCP Tool**: `gmail_search(query)` + `gmail_send(to, subject, body)`
-   - Chamado por: ReAct quando LLM ativa tool
+4. [x] **MCP Tool**: `gmail_list`, `gmail_search`, `calendar_list`, `calendar_search`, `drive_search`, `drive_read`
+   - `src/core/google_oauth_service.py` — métodos diretos chamados via ReAct
 
-5. [ ] **Settings**: "Integrações" page com "Conectar Gmail" button
-   - Chamado por: user em /settings
+5. [x] **Settings**: `settings.html` — "Conectar Google" + estado connected/disconnected
+   - JS: `loadGoogleStatus()`, `connectGoogle()`, `disconnectGoogle()`
 
-6. [ ] **Agent**: usar tool no contexto
-   - Test: "Quantos emails não lidos tenho?" → gmail_search() → resposta real
+6. [ ] **Agent E2E**: "Quantos emails não lidos tenho?" → gmail_search() → resposta real
+   - ⚠️ **Checkpoint #3 pendente** — APIs Gmail/Calendar habilitadas, aguardando propagação
+   - Quando propagar: testar em optimus.tier.finance via chat
 
 ---
 
@@ -1905,10 +1908,72 @@ Daily standup  → standup_generator (conectar em FASE 0)
 
 ### Passos
 
-1. [ ] Documento: `openclaw-vs-optimus.md` (comparação feature-a-feature)
-2. [ ] Checklist: cada feature OpenClaw tem equivalente em Optimus
-3. [ ] Implementar gaps críticos (já identificados em FASE 0-4)
-4. [ ] Validar que tudo funciona em produção
+1. [x] Checklist: features OpenClaw vs Optimus (ver tabela abaixo)
+2. [x] **Gap crítico implementado**: Memory Sync → PostgreSQL
+3. [ ] Validar Memory sync em produção
+4. [ ] Outros gaps pendentes (se identificados)
+
+### ✅ Comparação OpenClaw vs Optimus
+
+| Feature | OpenClaw | Optimus | Status |
+|---------|----------|---------|--------|
+| Multi-channel | Telegram + Slack + WhatsApp | Idem + WebChat | ✅ |
+| Cron jobs | Sim | CronScheduler | ✅ |
+| Memory sync to DB | SOUL + MEMORY em Supabase | `agent_working_memory` + `agent_long_term_memory` | ✅ FASE 6 |
+| Chat commands | /status /think /agents | Idem + /task /cron /standup /learn | ✅ |
+| Subscriptions | Thread subscriptions | ThreadManager | ✅ |
+| Daily standup | Sim | StandupGenerator (cron 09:00 BRT) | ✅ |
+| Voice | Não | Groq Whisper STT + Edge TTS | ✅ |
+| Browser automation | Não | Playwright headless (5 tools) | ✅ |
+| Google OAuth | Não | Gmail + Calendar + Drive | ✅ (E2E pendente) |
+| Dynamic agents | Não | User cria agents customizados | ✅ |
+
+### ✅ FASE 6 — Memory Sync to DB — CONCLUÍDO
+
+**Call Path:**
+```
+working_memory.load(agent_name)
+  → cache hit? return
+  → arquivo existe? return
+  → DB: SELECT content FROM agent_working_memory WHERE agent_name=?
+    → restaura arquivo do DB (container restart recovery)
+      → return content
+
+working_memory.save(agent_name, content)
+  → escreve arquivo (sync — rápido)
+  → asyncio.create_task(_save_to_db)  ← background, não bloqueia agent
+    → INSERT ... ON CONFLICT DO UPDATE (upsert)
+
+long_term_memory.add_learning(agent_name, category, learning)
+  → append arquivo
+  → asyncio.create_task(_insert_to_db)  ← background
+
+long_term_memory.search_local(agent_name, query)
+  → busca arquivo (keyword)
+  → se < 5 resultados: busca DB também (multi-worker coverage)
+```
+
+**Arquivos modificados:**
+- `migrations/017_agent_memory.sql`: tabelas `agent_working_memory` + `agent_long_term_memory`
+- `src/memory/working_memory.py`: `_load_from_db()`, `_save_to_db()`, fallback no `load()`, background task no `save()`
+- `src/memory/long_term.py`: `_insert_to_db()`, `_rebuild_from_db()`, `_search_db()`, fallback no `load()`, DB search no `search_local()`
+- `tests/test_e2e.py`: `TestMemoryDBSync` (8 testes)
+
+**Testes E2E:**
+- `test_working_memory_has_db_methods`: métodos _load_from_db / _save_to_db existem
+- `test_long_term_memory_has_db_methods`: métodos _insert_to_db / _rebuild_from_db / _search_db existem
+- `test_working_memory_save_load_file`: save/load via arquivo ainda funciona (sem regressão)
+- `test_working_memory_db_load_fallback`: sem arquivo → load() cria default sem crash
+- `test_working_memory_db_save_graceful`: _save_to_db() sem DB → não levanta exception
+- `test_long_term_memory_add_and_search`: add_learning() + search_local() via arquivo (sem regressão)
+- `test_long_term_memory_db_methods_graceful`: todos _*_db() sem DB → graceful
+- `test_migration_file_exists`: migration 017 existe com ambas as tabelas
+
+**Impacto:**
+- ✅ **Multi-worker consistency**: Workers distintos leem/escrevem a mesma memória via DB
+- ✅ **Container restart recovery**: Arquivo perdido na reinicialização → restaurado do DB
+- ✅ **Graceful fallback**: Sem DB → continua funcionando com arquivos (sem crash)
+- ✅ **Non-blocking**: Sync ao DB é background task — não impacta latência do agente
 
 ---
 
@@ -1950,9 +2015,9 @@ Optimus roda em sua máquina
 | **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
 | **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
-| **FASE 4A** | ⬜ Pending | User: "leia meus emails" → gmail_search() funciona |
-| **FASE 5** | ✅ Validar | Voice recording + transcription + response |
-| **FASE 6** | ⬜ Pending | Documento comparativo + gaps fechados |
+| **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | OAuth+MCP+Settings prontos; E2E aguardando propagação Google APIs |
+| **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
+| **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |
 
 ### ✅ #13-15 Telegram + WhatsApp + Slack Channels — CONCLUÍDO

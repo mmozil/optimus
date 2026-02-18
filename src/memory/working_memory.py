@@ -1,8 +1,14 @@
 """
 Agent Optimus — Working Memory Manager.
-Manages WORKING.md per agent — persisted in Supabase, synced with file system.
+Manages WORKING.md per agent — persisted in file system AND synced to PostgreSQL.
+
+DB sync (FASE 6): enables multi-worker consistency and container-restart recovery.
+Call path:
+  load()  → cache → file → DB (fallback cold start)
+  save()  → file  → DB upsert (background task, non-blocking)
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +23,10 @@ class WorkingMemory:
     """
     Manages WORKING.md — the agent's scratchpad.
     Current state, active tasks, recent decisions, temporary notes.
-    Persisted to file system and optionally synced with Supabase.
+
+    Persisted to file system (fast) AND synced to PostgreSQL (reliable).
+    Priority on load: memory cache → file → DB.
+    Priority on save: file (sync) → DB upsert (background).
     """
 
     _cache: dict[str, str] = {}
@@ -30,7 +39,10 @@ class WorkingMemory:
         return self.workspace_dir / f"{agent_name}.md"
 
     async def load(self, agent_name: str) -> str:
-        """Load working memory for an agent."""
+        """Load working memory for an agent.
+
+        Priority: in-memory cache → file → DB → create default.
+        """
         if agent_name in self._cache:
             return self._cache[agent_name]
 
@@ -40,18 +52,33 @@ class WorkingMemory:
             self._cache[agent_name] = content
             return content
 
+        # FASE 6: fallback to DB (container restart recovery)
+        db_content = await self._load_from_db(agent_name)
+        if db_content:
+            # Restore file from DB
+            path.write_text(db_content, encoding="utf-8")
+            self._cache[agent_name] = db_content
+            logger.info(f"[WorkingMemory] Restored {agent_name} from DB ({len(db_content)} chars)")
+            return db_content
+
         # Create default working memory
         default = self._default_content(agent_name)
         await self.save(agent_name, default)
         return default
 
     async def save(self, agent_name: str, content: str):
-        """Save working memory to file."""
+        """Save working memory — file (sync) + DB upsert (background)."""
         path = self._file_path(agent_name)
         path.write_text(content, encoding="utf-8")
         self._cache[agent_name] = content
-
         logger.debug(f"Working memory saved for {agent_name} ({len(content)} chars)")
+
+        # FASE 6: sync to DB in background (non-blocking — does not slow down agent)
+        try:
+            asyncio.get_event_loop().create_task(self._save_to_db(agent_name, content))
+        except RuntimeError:
+            # No event loop (e.g., test environment) — skip background task
+            pass
 
     async def update(self, agent_name: str, section: str, content: str):
         """Update a specific section of working memory."""
@@ -100,6 +127,46 @@ class WorkingMemory:
         """Reset working memory to default."""
         default = self._default_content(agent_name)
         await self.save(agent_name, default)
+
+    # ============================================
+    # FASE 6: DB sync helpers
+    # ============================================
+
+    async def _load_from_db(self, agent_name: str) -> str | None:
+        """Load working memory from DB (cold start / file missing)."""
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text
+            async with get_async_session() as session:
+                result = await session.execute(
+                    text("SELECT content FROM agent_working_memory WHERE agent_name = :name"),
+                    {"name": agent_name},
+                )
+                row = result.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.debug(f"[WorkingMemory] DB load skipped for {agent_name}: {e}")
+            return None
+
+    async def _save_to_db(self, agent_name: str, content: str):
+        """Upsert working memory to DB (background — called via create_task)."""
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text
+            async with get_async_session() as session:
+                await session.execute(
+                    text("""
+                        INSERT INTO agent_working_memory (agent_name, content, updated_at)
+                        VALUES (:name, :content, NOW())
+                        ON CONFLICT (agent_name) DO UPDATE
+                        SET content = EXCLUDED.content, updated_at = NOW()
+                    """),
+                    {"name": agent_name, "content": content},
+                )
+                await session.commit()
+                logger.debug(f"[WorkingMemory] DB synced for {agent_name}")
+        except Exception as e:
+            logger.debug(f"[WorkingMemory] DB sync skipped for {agent_name}: {e}")
 
     def _default_content(self, agent_name: str) -> str:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
