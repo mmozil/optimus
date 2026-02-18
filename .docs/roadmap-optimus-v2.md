@@ -78,7 +78,7 @@
 | 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
 | 5 | `autonomous_executor` | API endpoints (Jarvis Mode) | [x] |
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [x] |
-| 7 | `reflection_engine` | Cron job semanal | [ ] |
+| 7 | `reflection_engine` | Cron job semanal | [x] |
 | 8 | `working_memory` | Session bootstrap context | [x] |
 | 9 | `rag_pipeline` | knowledge_tool semantic search | [x] |
 | 10 | `collective_intelligence` | Agents após aprendizado (async) | [ ] |
@@ -179,6 +179,49 @@ CronScheduler._scheduler_loop() [cron_scheduler.py:241]
 - Monitora fontes configuradas (RSS, GitHub, URLs) e gera briefings com novidades relevantes
 - Briefing salvo em `workspace/research/findings/optimus-<date>.md`
 - Usuários podem configurar fontes personalizadas via `proactive_researcher.add_source()`
+
+---
+
+### ✅ #7 ReflectionEngine — CONCLUÍDO
+
+**Call Path:**
+```
+CronScheduler._scheduler_loop() [cron_scheduler.py:241]
+    → _execute_job(job{name="weekly_reflection"}) [cron_scheduler.py:189]
+        → EventBus.emit(CRON_TRIGGERED) [cron_scheduler.py:198]
+            → reflection_handlers.on_reflection_cron_triggered(event) [reflection_handlers.py:28]
+                → reflection_engine.analyze_recent(agent_name="optimus", days=7) [reflection_engine.py:111]
+                    → daily_notes.get_date() → coleta últimos 7 dias de atividades
+                    → _analyze_topics() → conta menções de tópicos (python, docker, ai, etc)
+                    → _detect_gaps() → detecta gaps via failure indicators
+                    → _generate_suggestions() → gera sugestões baseadas em patterns
+                → report.to_markdown() [reflection_engine.py:52]
+                → reflection_engine.save_report(report) [reflection_engine.py:218]
+                    → workspace/memory/reflections/optimus/<year-W<week>>.md
+```
+
+**Agendamento:**
+- `main.py: _schedule_weekly_reflection()` registra job "weekly_reflection" com `schedule_type="every"` / `168h` (7 dias)
+- Executa 1x/semana (a cada 168 horas)
+- Job persiste em JSON (`workspace/cron/jobs.json`) — sobrevive a restarts
+
+**Arquivos criados/modificados:**
+- `src/engine/reflection_handlers.py` (novo — handler + register_reflection_handlers)
+- `src/main.py` — `_schedule_weekly_reflection()` + `register_reflection_handlers()` no lifespan
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestReflectionEngineIntegration`
+- Testa: singleton existe, handler registrado, CRON_TRIGGERED gera report, job errado ignorado
+- **4/4 testes passando** ✅
+
+**Impacto:**
+- ReflectionEngine agora é acionado automaticamente toda semana (a cada 168h)
+- Analisa últimos 7 dias de daily_notes para identificar:
+  - **Top Topics** — tópicos mais discutidos (python, docker, deploy, etc)
+  - **Knowledge Gaps** — áreas com múltiplas falhas detectadas via failure indicators
+  - **Suggestions** — recomendações acionáveis baseadas em patterns e gaps
+- Report salvo em `workspace/memory/reflections/optimus/<ano-W<semana>>.md`
+- **Zero LLM cost** — análise baseada em keyword matching e contagem estatística
 
 ---
 
