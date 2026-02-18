@@ -263,12 +263,14 @@ class Gateway:
                         "agent": "gateway",
                         "model": "none",
                     }
-                result = await agent.process(message, context)
+                # FASE 0 #1: Use think() instead of process() to enable ToT for complex queries
+                result = await agent.think(message, context)
             else:
                 optimus = AgentFactory.get("optimus")
                 if not optimus:
                     return {"content": "❌ Optimus não inicializado.", "agent": "gateway", "model": "none"}
-                result = await optimus.process(message, context)
+                # FASE 0 #1: Use think() instead of process() to enable ToT for complex queries
+                result = await optimus.think(message, context)
 
             # 8. Save Interaction to History
             await session_manager.add_message(conv["id"], "user", message)
