@@ -305,6 +305,72 @@ class MCPToolRegistry:
             handler=self._tool_task_update,
         ))
 
+        # --- Browser Tools (FASE 2B) ---
+        self.register(MCPTool(
+            name="browser_navigate",
+            description=(
+                "Navigate to a URL and return the page title, status, and a text preview. "
+                "Use this to open any website, check if it loads, and get initial content."
+            ),
+            category="browser",
+            parameters={
+                "url": {"type": "string", "required": True, "description": "Full URL (must start with http:// or https://)"},
+            },
+            handler=self._tool_browser_navigate,
+        ))
+
+        self.register(MCPTool(
+            name="browser_extract",
+            description=(
+                "Navigate to a URL and extract text from a CSS selector. "
+                "Use this to scrape articles, prices, lists, tables from any page. "
+                "If unsure about selector, use 'body' to get all page text."
+            ),
+            category="browser",
+            parameters={
+                "url": {"type": "string", "required": True, "description": "Full URL to navigate"},
+                "selector": {"type": "string", "description": "CSS selector to extract (default: 'body')"},
+            },
+            handler=self._tool_browser_extract,
+        ))
+
+        self.register(MCPTool(
+            name="browser_search",
+            description=(
+                "Navigate to a website and perform a search (fills search box + presses Enter). "
+                "Ideal for e-commerce (Mercado Livre, Amazon), news sites, or any site with a search bar. "
+                "Returns extracted search results text."
+            ),
+            category="browser",
+            parameters={
+                "url": {"type": "string", "required": True, "description": "Website URL (e.g. https://www.mercadolivre.com.br)"},
+                "query": {"type": "string", "required": True, "description": "Search query text"},
+            },
+            handler=self._tool_browser_search,
+        ))
+
+        self.register(MCPTool(
+            name="browser_screenshot",
+            description="Take a screenshot of any webpage. Returns base64-encoded PNG.",
+            category="browser",
+            parameters={
+                "url": {"type": "string", "required": True, "description": "Full URL to screenshot"},
+            },
+            handler=self._tool_browser_screenshot,
+            agent_levels=["lead", "specialist"],
+        ))
+
+        self.register(MCPTool(
+            name="browser_pdf",
+            description="Generate a PDF of any webpage. Returns base64-encoded PDF.",
+            category="browser",
+            parameters={
+                "url": {"type": "string", "required": True, "description": "Full URL to convert to PDF"},
+            },
+            handler=self._tool_browser_pdf,
+            agent_levels=["lead", "specialist"],
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -639,6 +705,68 @@ class MCPToolRegistry:
         from src.memory.long_term import long_term_memory
         await long_term_memory.add_learning(agent_name, category, learning)
         return f"Learning adicionado para {agent_name}: {category}"
+
+    # ── Browser Tool Handlers (FASE 2B) ──────────────────────────────────────
+
+    async def _tool_browser_navigate(self, url: str) -> str:
+        """Navigate to URL, return title + content preview."""
+        from src.core.browser_service import browser_service
+        try:
+            result = await browser_service.navigate(url)
+            return (
+                f"**URL:** {result['url']}\n"
+                f"**Título:** {result['title']}\n"
+                f"**Status HTTP:** {result['status']}\n\n"
+                f"**Conteúdo (preview):**\n{result['content_preview']}"
+            )
+        except ValueError as e:
+            return f"❌ {e}"
+        except Exception as e:
+            return f"❌ Erro ao navegar para {url}: {e}"
+
+    async def _tool_browser_extract(self, url: str, selector: str = "body") -> str:
+        """Extract text from CSS selector on a page."""
+        from src.core.browser_service import browser_service
+        try:
+            text = await browser_service.extract(url, selector)
+            return text or f"Nenhum conteúdo encontrado com seletor '{selector}' em {url}"
+        except ValueError as e:
+            return f"❌ {e}"
+        except Exception as e:
+            return f"❌ Erro ao extrair de {url}: {e}"
+
+    async def _tool_browser_search(self, url: str, query: str) -> str:
+        """Search within a website and extract results."""
+        from src.core.browser_service import browser_service
+        try:
+            text = await browser_service.search_and_extract(url, query)
+            return f"**Resultados da busca por '{query}' em {url}:**\n\n{text}"
+        except ValueError as e:
+            return f"❌ {e}"
+        except Exception as e:
+            return f"❌ Erro ao buscar '{query}' em {url}: {e}"
+
+    async def _tool_browser_screenshot(self, url: str) -> str:
+        """Take a screenshot, returns base64 PNG."""
+        from src.core.browser_service import browser_service
+        try:
+            b64 = await browser_service.screenshot(url)
+            return f"screenshot:{b64}"
+        except ValueError as e:
+            return f"❌ {e}"
+        except Exception as e:
+            return f"❌ Erro ao capturar screenshot de {url}: {e}"
+
+    async def _tool_browser_pdf(self, url: str) -> str:
+        """Generate a PDF of a page, returns base64."""
+        from src.core.browser_service import browser_service
+        try:
+            b64 = await browser_service.pdf(url)
+            return f"pdf:{b64}"
+        except ValueError as e:
+            return f"❌ {e}"
+        except Exception as e:
+            return f"❌ Erro ao gerar PDF de {url}: {e}"
 
 
 # Singleton

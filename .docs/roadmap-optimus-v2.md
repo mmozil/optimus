@@ -1689,6 +1689,53 @@ User pode clicar na tela → backend executa click
 
 ---
 
+### ✅ FASE 2 — Pesquisa Web Real — CONCLUÍDO
+
+**Situação:** `research_search` já existia em `mcp_tools.py` com suporte a Tavily.
+- Com `TAVILY_API_KEY` configurado no Coolify → pesquisa web completa
+- Sem chave → fallback para DuckDuckGo Instant Answer
+- Ferramenta já está no pool do ReAct loop — agente usa automaticamente quando precisa pesquisar
+
+---
+
+### ✅ FASE 2B — Playwright Headless Browser — CONCLUÍDO
+
+**Call Path:**
+```
+User: "Pesquise preços de iPhone no Mercado Livre"
+  → ReAct loop: LLM escolhe tool=browser_search
+    → browser_search(url="https://www.mercadolivre.com.br", query="iPhone 15")
+      → browser_service.search_and_extract()
+        → Playwright abre Chrome headless
+        → Navega para mercadolivre.com.br
+        → Preenche campo de busca com "iPhone 15"
+        → Pressiona Enter, aguarda carregamento
+        → Extrai texto dos resultados (h2, h3, [class*="item"])
+        → Retorna até 15k chars de resultados
+    → Agent sintetiza: "Encontrei 10 resultados: iPhone 15 por R$4.299..."
+```
+
+**Arquivos criados/modificados:**
+- `src/core/browser_service.py` (novo): serviço singleton Playwright
+  - `navigate(url)` → título + status + content preview
+  - `extract(url, selector)` → extrai texto de CSS selector
+  - `search_and_extract(url, query)` → preenche busca + extrai resultados
+  - `screenshot(url)` → PNG base64
+  - `pdf(url)` → PDF base64
+  - Segurança: blacklist de IPs internos, timeout 30s, context isolation
+- `src/skills/mcp_tools.py`: 5 novos tools registrados
+  - `browser_navigate`, `browser_extract`, `browser_search`, `browser_screenshot`, `browser_pdf`
+- `requirements.txt`: `playwright>=1.49.0`
+- `Dockerfile`: `playwright install --with-deps chromium` no build + libs runtime
+
+**Segurança implementada:**
+- Blacklist: localhost, 127.x, 10.x, 192.168.x, metadata AWS/GCP
+- Timeout 30s por ação
+- Context isolation: novo browser context por chamada (sem cookies compartilhados)
+- Non-root user no Docker
+
+---
+
 ## FASE 3 — Agentes Dinâmicos (User Creates Agents On-Demand)
 
 > **Semana 5-6 após FASE 2**
@@ -1880,8 +1927,8 @@ Optimus roda em sua máquina
 |------|--------|-------|
 | **FASE 0** | ✅ Concluído | 28/28 módulos conectados (25 `[x]` + 3 channels opcionais) |
 | **FASE 1** | ✅ Concluído | onboarding.html → /api/v1/user/preferences → contexto injetado no agente |
-| **FASE 2** | ⬜ Pending | User: "pesquise X" → resultado real da Tavily |
-| **FASE 2B** | ⬜ Pending | User: "pesquise preços no ML" → Playwright navega + extrai dados |
+| **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
+| **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
 | **FASE 3** | ⬜ Pending | User cria agent → aparece em chat → responde |
 | **FASE 4A** | ⬜ Pending | User: "leia meus emails" → gmail_search() funciona |
 | **FASE 5** | ✅ Validar | Voice recording + transcription + response |

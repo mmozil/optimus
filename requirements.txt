@@ -38,6 +38,9 @@ python-jose[cryptography]>=3.3.0
 # === Audio ===
 edge-tts>=6.1.0
 
+# === Browser Automation (FASE 2B) ===
+playwright>=1.49.0
+
 # === Utilities ===
 tenacity>=9.0.0
 python-dotenv>=1.0.0

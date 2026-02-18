@@ -21,7 +21,8 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    /opt/venv/bin/playwright install --with-deps chromium
 
 # ────────────────────────────────────────────
 # Stage 2: Runner — imagem slim de produção
@@ -33,18 +34,25 @@ LABEL maintainer="Agent Optimus Team"
 LABEL version="0.1.0"
 LABEL description="Agent Optimus — AI Agent Platform"
 
-# Runtime deps only (libpq para asyncpg)
+# Runtime deps (libpq para asyncpg + Chromium libs para Playwright)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 curl && \
+    apt-get install -y --no-install-recommends \
+        libpq5 curl \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+        libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+        libxrandr2 libgbm1 libasound2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root user para segurança
 RUN groupadd --gid 1000 optimus && \
     useradd --uid 1000 --gid 1000 --create-home optimus
 
-# Copia venv do builder
+# Copia venv do builder (inclui Playwright + Chromium binários)
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /root/.cache/ms-playwright /home/optimus/.cache/ms-playwright
+RUN chown -R optimus:optimus /home/optimus/.cache
+ENV PATH="/opt/venv/bin:$PATH" \
+    PLAYWRIGHT_BROWSERS_PATH="/home/optimus/.cache/ms-playwright"
 
 # Working directory
 WORKDIR /app
