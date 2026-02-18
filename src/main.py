@@ -905,6 +905,10 @@ app.include_router(agents_router)
 from src.api.oauth_google import router as oauth_google_router
 app.include_router(oauth_google_router)
 
+# FASE 4C: IMAP/SMTP Universal Email
+from src.api.imap_accounts import router as imap_router
+app.include_router(imap_router)
+
 
 class SearchRequest(BaseModel):
     query: str

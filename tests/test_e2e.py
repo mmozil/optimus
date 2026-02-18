@@ -4359,3 +4359,214 @@ class TestMemoryDBSync:
             "agent_working_memory table missing from migration"
         assert "agent_long_term_memory" in content, \
             "agent_long_term_memory table missing from migration"
+
+
+# ============================================
+# FASE 4C: IMAP/SMTP Universal Email Tests
+# ============================================
+class TestImapIntegration:
+    """
+    E2E tests for FASE 4C: IMAP/SMTP Universal Email.
+
+    REGRA DE OURO Checkpoint 2: These tests validate the integration.
+    All tests pass with graceful fallback when no IMAP accounts are configured.
+
+    Call path tested:
+      imap_service.read_emails(user_id) → _get_credentials() → None (no account) → _NOT_CONFIGURED_MSG
+      imap_service.send_email(user_id, ...) → _get_credentials() → None → _NOT_CONFIGURED_MSG
+    """
+
+    def test_imap_service_exists(self):
+        """
+        ImapService singleton must be importable and initialized.
+
+        Call path:
+        from src.core.imap_service import imap_service
+        """
+        from src.core.imap_service import imap_service, ImapService
+        assert imap_service is not None, "imap_service singleton should exist"
+        assert isinstance(imap_service, ImapService)
+
+    def test_imap_service_methods_exist(self):
+        """All required methods must be present on ImapService."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        for method in ("add_account", "list_accounts", "remove_account",
+                       "test_connection", "read_emails", "send_email",
+                       "get_email_body", "_translate_query"):
+            assert hasattr(svc, method), f"ImapService.{method}() not implemented"
+
+    def test_provider_presets_complete(self):
+        """PROVIDER_PRESETS must include key providers."""
+        from src.core.imap_service import PROVIDER_PRESETS
+        required = ["outlook", "office365", "yahoo", "gmail", "locaweb", "hostgator", "custom"]
+        for provider in required:
+            assert provider in PROVIDER_PRESETS, f"Provider '{provider}' missing from PROVIDER_PRESETS"
+            preset = PROVIDER_PRESETS[provider]
+            assert "imap_host" in preset, f"Provider '{provider}' missing imap_host"
+            assert "smtp_host" in preset, f"Provider '{provider}' missing smtp_host"
+            assert "imap_port" in preset, f"Provider '{provider}' missing imap_port"
+            assert "smtp_port" in preset, f"Provider '{provider}' missing smtp_port"
+
+    def test_outlook_preset_correct(self):
+        """Outlook preset must have correct IMAP/SMTP hosts."""
+        from src.core.imap_service import PROVIDER_PRESETS
+        outlook = PROVIDER_PRESETS["outlook"]
+        assert "imap.outlook.com" in outlook["imap_host"], "Outlook IMAP host incorrect"
+        assert "smtp.office365.com" in outlook["smtp_host"], "Outlook SMTP host incorrect"
+        assert outlook["imap_port"] == 993, "Outlook IMAP port should be 993 (SSL)"
+        assert outlook["smtp_port"] == 587, "Outlook SMTP port should be 587 (STARTTLS)"
+
+    def test_query_translation_unseen(self):
+        """_translate_query('is:unread') must return IMAP UNSEEN criteria."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        result = svc._translate_query("is:unread")
+        assert "UNSEEN" in result, f"Expected UNSEEN in IMAP criteria, got: {result}"
+
+    def test_query_translation_from(self):
+        """_translate_query('from:boss@co.com') must return IMAP FROM criteria."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        result = svc._translate_query("from:boss@company.com")
+        assert "FROM" in result, f"Expected FROM in IMAP criteria, got: {result}"
+        assert "boss@company.com" in result
+
+    def test_query_translation_empty(self):
+        """_translate_query('') must return 'ALL'."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        assert svc._translate_query("") == "ALL"
+        assert svc._translate_query("   ") == "ALL"
+
+    def test_query_translation_newer_than(self):
+        """_translate_query('newer_than:3d') must include SINCE with valid date."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        result = svc._translate_query("newer_than:3d")
+        assert "SINCE" in result, f"Expected SINCE in IMAP criteria, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_read_emails_without_accounts(self):
+        """
+        read_emails() without configured accounts must return helpful fallback message.
+        NOT a 500 error.
+        """
+        from src.core.imap_service import imap_service
+        result = await imap_service.read_emails(
+            user_id="00000000-0000-0000-0000-000000000099",
+            query="is:unread",
+        )
+        assert isinstance(result, str), "Should return string fallback message"
+        assert len(result) > 0, "Should not return empty string"
+        assert "settings" in result.lower() or "configurad" in result.lower() or "⚠️" in result, \
+            f"Should provide helpful message, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_send_email_without_accounts(self):
+        """
+        send_email() without configured accounts must return helpful fallback message.
+        NOT a 500 error.
+        """
+        from src.core.imap_service import imap_service
+        result = await imap_service.send_email(
+            user_id="00000000-0000-0000-0000-000000000099",
+            to="test@example.com",
+            subject="Test",
+            body="Test body",
+        )
+        assert isinstance(result, str), "Should return string fallback message"
+        assert "settings" in result.lower() or "configurad" in result.lower() or "⚠️" in result, \
+            f"Should provide helpful message, got: {result}"
+
+    @pytest.mark.asyncio
+    async def test_list_accounts_without_db(self):
+        """
+        list_accounts() must return empty list (not crash) when DB is unavailable.
+        """
+        from src.core.imap_service import imap_service
+        result = await imap_service.list_accounts(
+            user_id="00000000-0000-0000-0000-000000000099",
+        )
+        assert isinstance(result, list), "Should return list (possibly empty)"
+
+    def test_imap_mcp_tools_registered(self):
+        """All IMAP/SMTP MCP tools must be registered in the registry."""
+        from src.skills.mcp_tools import mcp_tools
+
+        expected_tools = [
+            "email_read",
+            "email_get",
+            "email_send",
+            "email_list_accounts",
+        ]
+
+        registered_names = [t.name for t in mcp_tools.list_tools()]
+        for tool_name in expected_tools:
+            assert tool_name in registered_names, \
+                f"MCP tool '{tool_name}' should be registered (FASE 4C IMAP integration)"
+
+    def test_email_send_tool_requires_approval(self):
+        """email_send must have requires_approval=True — never auto-send."""
+        from src.skills.mcp_tools import mcp_tools
+        tool = mcp_tools.get("email_send")
+        assert tool is not None, "email_send tool not found"
+        assert tool.requires_approval is True, \
+            "email_send must require approval (never auto-send emails)"
+
+    def test_imap_api_endpoints_exist(self):
+        """IMAP API endpoints must exist and be accessible."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Providers endpoint is public (no auth needed)
+        response = client.get("/api/v1/imap/providers")
+        assert response.status_code == 200, \
+            f"GET /api/v1/imap/providers should return 200, got {response.status_code}"
+        data = response.json()
+        assert "outlook" in data, "Outlook preset missing from /api/v1/imap/providers"
+
+        # Accounts endpoint requires auth
+        response = client.get("/api/v1/imap/accounts")
+        assert response.status_code in [200, 401, 403], \
+            f"GET /api/v1/imap/accounts should exist, got {response.status_code}"
+
+    def test_migration_018_exists(self):
+        """Migration 018_imap_accounts.sql must exist with correct table."""
+        from pathlib import Path
+        migration = Path(__file__).parent.parent / "migrations" / "018_imap_accounts.sql"
+        assert migration.exists(), "migrations/018_imap_accounts.sql not found"
+        content = migration.read_text()
+        assert "imap_accounts" in content, "imap_accounts table missing from migration"
+        assert "password_encrypted" in content, \
+            "password_encrypted column missing — passwords must be encrypted"
+        assert "imap_host" in content and "smtp_host" in content, \
+            "IMAP/SMTP host columns missing from migration"
+
+    def test_encryption_is_reversible(self):
+        """Fernet encryption must be deterministic and reversible."""
+        from src.core.imap_service import ImapService
+        svc = ImapService()
+        original = "minha_senha_secreta_123"
+        encrypted = svc._encrypt(original)
+        decrypted = svc._decrypt(encrypted)
+        assert decrypted == original, "Fernet decrypt(encrypt(x)) must equal x"
+        assert encrypted != original, "Encrypted password must differ from plaintext"
+
+    def test_encryption_uses_jwt_secret(self):
+        """Two ImapService instances must encrypt/decrypt the same way (deterministic key)."""
+        from src.core.imap_service import ImapService
+        svc1 = ImapService()
+        svc2 = ImapService()
+        password = "test_password_42"
+        encrypted = svc1._encrypt(password)
+        # svc2 must be able to decrypt what svc1 encrypted (same JWT_SECRET → same key)
+        decrypted = svc2._decrypt(encrypted)
+        assert decrypted == password, "Encryption key must be deterministic from JWT_SECRET"

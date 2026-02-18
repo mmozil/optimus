@@ -253,6 +253,78 @@
       <div id="google-loading" style="font-size:13px;color:#555;">Verificando conexão...</div>
     </div>
 
+    <!-- Emails IMAP/SMTP -->
+    <div class="section">
+      <div class="section-title">Emails (IMAP/SMTP)</div>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Conecte contas de email via IMAP/SMTP: Outlook, Office 365, Yahoo, corporativo e outros provedores.
+      </p>
+
+      <!-- Account list -->
+      <div id="imap-accounts-list" style="margin-bottom:16px;"></div>
+
+      <!-- Add account form (toggle) -->
+      <div id="imap-add-form" style="display:none;background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Adicionar Conta de Email</div>
+
+        <div style="display:grid;gap:10px;">
+          <div>
+            <label style="font-size:12px;color:#aaa;">Provedor</label>
+            <select id="imap-provider" onchange="onImapProviderChange()" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;">
+              <option value="outlook">Outlook / Hotmail / Live</option>
+              <option value="office365">Office 365 / Exchange Online</option>
+              <option value="yahoo">Yahoo Mail</option>
+              <option value="gmail">Gmail (App Password)</option>
+              <option value="locaweb">Locaweb</option>
+              <option value="hostgator">HostGator Brasil</option>
+              <option value="uol">UOL Mail</option>
+              <option value="terra">Terra</option>
+              <option value="custom">Personalizado (IMAP/SMTP próprio)</option>
+            </select>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <label style="font-size:12px;color:#aaa;">Email</label>
+              <input type="email" id="imap-email" placeholder="usuario@outlook.com" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:#aaa;">Senha / App Password</label>
+              <input type="password" id="imap-password" placeholder="••••••••" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+          </div>
+
+          <div id="imap-custom-fields" style="display:none;display:grid;grid-template-columns:1fr 80px 1fr 80px;gap:8px;">
+            <div>
+              <label style="font-size:12px;color:#aaa;">IMAP Host</label>
+              <input type="text" id="imap-host" placeholder="imap.suaempresa.com" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:#aaa;">Porta</label>
+              <input type="number" id="imap-port" value="993" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:#aaa;">SMTP Host</label>
+              <input type="text" id="smtp-host" placeholder="smtp.suaempresa.com" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:#aaa;">Porta</label>
+              <input type="number" id="smtp-port" value="587" style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;margin-top:4px;box-sizing:border-box;">
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button class="btn" onclick="saveImapAccount()" style="flex:1;">💾 Salvar</button>
+            <button class="btn" onclick="document.getElementById('imap-add-form').style.display='none'" style="background:#333;color:#e0e0e0;">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn" onclick="document.getElementById('imap-add-form').style.display='block'" style="font-size:13px;padding:8px 16px;">
+        ➕ Adicionar Conta de Email
+      </button>
+    </div>
+
     <!-- API Key -->
     <div class="section">
       <div class="section-title">API Key</div>
@@ -464,6 +536,146 @@
     loadPreferences();
     loadApiKey();
     loadGoogleStatus();
+    loadImapAccounts();
+
+    // ============================================
+    // IMAP/SMTP Email Accounts (FASE 4C)
+    // ============================================
+
+    let imapProviders = {};
+
+    async function loadImapAccounts() {
+      try {
+        // Load providers for form
+        const pResp = await fetch('/api/v1/imap/providers');
+        if (pResp.ok) imapProviders = await pResp.json();
+
+        // Load user's accounts
+        const resp = await fetch('/api/v1/imap/accounts', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderImapAccounts(data.accounts || []);
+      } catch (e) {
+        console.warn('Could not load IMAP accounts:', e);
+      }
+    }
+
+    function renderImapAccounts(accounts) {
+      const container = document.getElementById('imap-accounts-list');
+      if (!accounts.length) {
+        container.innerHTML = '<p style="font-size:13px;color:#666;">Nenhuma conta configurada ainda.</p>';
+        return;
+      }
+      container.innerHTML = accounts.map(acc => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;margin-bottom:8px;">
+          <span style="font-size:20px;">📧</span>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;">${acc.display_name}</div>
+            <div style="font-size:12px;color:#888;">${acc.provider} · ${acc.imap_host}:${acc.imap_port}</div>
+          </div>
+          <button onclick="testImapAccount('${acc.email}')" class="btn" style="font-size:12px;padding:6px 10px;background:#333;">
+            🔌 Testar
+          </button>
+          <button onclick="removeImapAccount('${acc.email}')" class="btn" style="font-size:12px;padding:6px 10px;background:#c0392b;">
+            🗑️
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function onImapProviderChange() {
+      const provider = document.getElementById('imap-provider').value;
+      const customFields = document.getElementById('imap-custom-fields');
+      const preset = imapProviders[provider];
+      if (provider === 'custom' || !preset) {
+        customFields.style.display = 'grid';
+      } else {
+        customFields.style.display = 'none';
+        document.getElementById('imap-host').value = preset.imap_host;
+        document.getElementById('imap-port').value = preset.imap_port;
+        document.getElementById('smtp-host').value = preset.smtp_host;
+        document.getElementById('smtp-port').value = preset.smtp_port;
+      }
+    }
+
+    async function saveImapAccount() {
+      const email = document.getElementById('imap-email').value.trim();
+      const password = document.getElementById('imap-password').value;
+      const provider = document.getElementById('imap-provider').value;
+
+      if (!email || !password) {
+        showError('Email e senha são obrigatórios.');
+        return;
+      }
+
+      const preset = imapProviders[provider] || {};
+      const body = {
+        email, password, provider,
+        imap_host: document.getElementById('imap-host').value || preset.imap_host || '',
+        imap_port: parseInt(document.getElementById('imap-port').value) || preset.imap_port || 993,
+        smtp_host: document.getElementById('smtp-host').value || preset.smtp_host || '',
+        smtp_port: parseInt(document.getElementById('smtp-port').value) || preset.smtp_port || 587,
+      };
+
+      try {
+        const resp = await fetch('/api/v1/imap/accounts', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+          showSuccess(`✅ Conta ${email} adicionada com sucesso!`);
+          document.getElementById('imap-add-form').style.display = 'none';
+          document.getElementById('imap-email').value = '';
+          document.getElementById('imap-password').value = '';
+          await loadImapAccounts();
+        } else {
+          showError(data.detail || data.error || 'Erro ao salvar conta.');
+        }
+      } catch (e) {
+        showError('Erro ao salvar conta: ' + e.message);
+      }
+    }
+
+    async function removeImapAccount(email) {
+      if (!confirm(`Remover a conta ${email}?`)) return;
+      try {
+        const resp = await fetch(`/api/v1/imap/accounts/${encodeURIComponent(email)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (resp.ok) {
+          showSuccess(`Conta ${email} removida.`);
+          await loadImapAccounts();
+        } else {
+          showError('Erro ao remover conta.');
+        }
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    async function testImapAccount(email) {
+      showSuccess('Testando conexão...');
+      try {
+        const resp = await fetch('/api/v1/imap/accounts/test', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          showSuccess(data.message);
+        } else {
+          showError(data.message);
+        }
+      } catch (e) {
+        showError('Erro ao testar: ' + e.message);
+      }
+    }
   </script>
 </body>
 </html>

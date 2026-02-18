@@ -1953,6 +1953,70 @@ ReAct loop → LLM escolhe tool (ex: calendar_create_event)
 
 ---
 
+### FASE 4C: IMAP/SMTP Universal Email ✅ IMPLEMENTADO
+
+**Call path:**
+```
+User em settings.html → "Adicionar Conta de Email"
+  → Seleciona provider (Outlook, Office 365, corporativo, etc.)
+    → POST /api/v1/imap/accounts {email, password, provider, imap_host, smtp_host}
+      → imap_service.add_account() → encrypt(password, JWT_SECRET) → INSERT INTO imap_accounts
+
+ReAct loop → LLM escolhe tool=email_read (query="is:unread")
+  → mcp_tools._tool_email_read(query, account_email)
+    → imap_service.read_emails(user_id, query)
+      → _get_credentials(user_id) → SELECT + Fernet.decrypt(password)
+        → aioimaplib.IMAP4_SSL.connect(imap_host, 993)
+          → LOGIN → SELECT INBOX → SEARCH UNSEEN → FETCH headers
+            → Retorna lista formatada de emails
+
+ReAct loop → LLM escolhe tool=email_send (requires_approval=True)
+  → Mostra rascunho ao usuário → aguarda confirmação
+    → mcp_tools._tool_email_send(to, subject, body, from_account)
+      → imap_service.send_email(user_id, ...)
+        → aiosmtplib → STARTTLS → AUTH → SEND → ✅ confirmação
+```
+
+**Provedores suportados:**
+| Provider | IMAP | SMTP | Notas |
+|----------|------|------|-------|
+| `outlook` | imap.outlook.com:993 | smtp.office365.com:587 | Outlook.com, Hotmail, Live |
+| `office365` | outlook.office365.com:993 | smtp.office365.com:587 | Office 365 corporativo |
+| `yahoo` | imap.mail.yahoo.com:993 | smtp.mail.yahoo.com:587 | Yahoo Mail |
+| `gmail` | imap.gmail.com:993 | smtp.gmail.com:587 | Gmail via App Password |
+| `locaweb` | imap.locaweb.com.br:993 | smtp.locaweb.com.br:587 | Locaweb |
+| `hostgator` | mail.hostgator.com.br:993 | mail.hostgator.com.br:587 | HostGator Brasil |
+| `uol` | imap.uol.com.br:993 | smtp.uol.com.br:587 | UOL Mail |
+| `terra` | imap.terra.com.br:993 | smtp.terra.com.br:587 | Terra |
+| `custom` | configurável | configurável | Qualquer IMAP/SMTP |
+
+**Arquivos criados:**
+- `migrations/018_imap_accounts.sql` — tabela com password_encrypted
+- `src/core/imap_service.py` — serviço completo (IMAP + SMTP + criptografia)
+- `src/api/imap_accounts.py` — REST API (GET/POST/DELETE /api/v1/imap/accounts)
+- MCP tools: `email_read`, `email_get`, `email_send` ⚠️, `email_list_accounts`
+
+**Segurança:**
+- Senhas criptografadas com Fernet (key derivada de JWT_SECRET via SHA256)
+- Chave determinística: sobrevive restarts, sem env var adicional
+
+**Testes E2E:** `TestImapIntegration` — 16 testes incluindo:
+- `test_provider_presets_complete` — 9 providers configurados
+- `test_outlook_preset_correct` — imap.outlook.com + smtp.office365.com:587
+- `test_query_translation_*` — is:unread, from:, newer_than:3d, vazio
+- `test_read_emails_without_accounts` — graceful fallback
+- `test_send_email_without_accounts` — graceful fallback
+- `test_email_send_tool_requires_approval` — segurança
+- `test_encryption_is_reversible` — Fernet encrypt/decrypt
+- `test_imap_api_endpoints_exist` — /api/v1/imap/providers retorna 200
+
+**Ação necessária para ativar:**
+1. Deploy automático via Coolify após push
+2. settings.html → Emails (IMAP/SMTP) → Adicionar Conta
+3. Selecionar Outlook → entrar email + senha/app password → Salvar → Testar
+
+---
+
 ## FASE 6 — Modelar OpenClaw Features (NÃO COPIAR CÓDIGO)
 
 > **Semana 12-13 após FASE 4**
@@ -2081,6 +2145,7 @@ Optimus roda em sua máquina
 | **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
 | **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | Calendar ✅; gmail_send impl; aguarda reconexão OAuth + Drive propagação |
 | **FASE 4B** | 🟡 Impl ✅ / Prod ⚠️ | 12 novos tools (Gmail modify, Calendar write, Drive write, Contacts); requer reconexão OAuth |
+| **FASE 4C** | 🟡 Impl ✅ / Prod ⚠️ | IMAP/SMTP universal (Outlook, Office 365, Yahoo, corporativo, Locaweb); 4 MCP tools; settings UI |
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
 | **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |

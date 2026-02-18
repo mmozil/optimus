@@ -607,6 +607,64 @@ class MCPToolRegistry:
             handler=self._tool_contacts_list,
         ))
 
+        # --- IMAP/SMTP Universal Email Tools (FASE 4C) ---
+        self.register(MCPTool(
+            name="email_read",
+            description=(
+                "Read emails from any configured email account (Outlook, Office 365, Yahoo, corporate IMAP). "
+                "Use when the user asks about emails from a non-Gmail provider. "
+                "Query syntax: 'is:unread', 'from:boss@co.com', 'subject:meeting', 'newer_than:3d', or plain text."
+            ),
+            category="email",
+            parameters={
+                "query": {"type": "string", "description": "Email search query (empty = last 10 emails)"},
+                "account_email": {"type": "string", "description": "Which email account to use (empty = first configured)"},
+                "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
+            },
+            handler=self._tool_email_read,
+        ))
+
+        self.register(MCPTool(
+            name="email_get",
+            description=(
+                "Read the full body of a specific email by its IMAP message ID. "
+                "Use email_read first to list emails and get the message ID."
+            ),
+            category="email",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "IMAP message sequence number (from email_read results)"},
+                "account_email": {"type": "string", "description": "Which email account to use (empty = first configured)"},
+            },
+            handler=self._tool_email_get,
+        ))
+
+        self.register(MCPTool(
+            name="email_send",
+            description=(
+                "Send an email via SMTP from a configured IMAP/SMTP account (Outlook, Office 365, corporate, etc.). "
+                "IMPORTANT: ALWAYS show the full email draft (to, subject, body, from_account) "
+                "and wait for explicit user approval BEFORE calling this tool. Never send without confirmation."
+            ),
+            category="email",
+            parameters={
+                "to": {"type": "string", "required": True, "description": "Recipient email address"},
+                "subject": {"type": "string", "required": True, "description": "Email subject line"},
+                "body": {"type": "string", "required": True, "description": "Email body (plain text)"},
+                "from_account": {"type": "string", "description": "Sender email account (empty = first configured account)"},
+                "cc": {"type": "string", "description": "CC email addresses (comma-separated, optional)"},
+            },
+            handler=self._tool_email_send,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="email_list_accounts",
+            description="List all configured IMAP/SMTP email accounts for this user. Use to see which accounts are available before reading/sending.",
+            category="email",
+            parameters={},
+            handler=self._tool_email_list_accounts,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -1193,6 +1251,49 @@ class MCPToolRegistry:
         from src.core.google_oauth_service import google_oauth_service
         user_id = self._current_user_id()
         return await google_oauth_service.contacts_list(user_id, max_results=max_results)
+
+    # ============================================
+    # IMAP/SMTP Email Handlers (FASE 4C)
+    # ============================================
+
+    async def _tool_email_read(self, query: str = "", account_email: str = "", max_results: int = 10) -> str:
+        """Read emails from IMAP account."""
+        from src.core.imap_service import imap_service
+        user_id = self._current_user_id()
+        return await imap_service.read_emails(
+            user_id, query=query, account_email=account_email, max_results=max_results
+        )
+
+    async def _tool_email_get(self, message_id: str, account_email: str = "") -> str:
+        """Get full body of an IMAP email."""
+        from src.core.imap_service import imap_service
+        user_id = self._current_user_id()
+        return await imap_service.get_email_body(
+            user_id, message_id=message_id, account_email=account_email
+        )
+
+    async def _tool_email_send(self, to: str, subject: str, body: str, from_account: str = "", cc: str = "") -> str:
+        """Send email via SMTP (requires prior user approval)."""
+        from src.core.imap_service import imap_service
+        user_id = self._current_user_id()
+        return await imap_service.send_email(
+            user_id, to=to, subject=subject, body=body, from_account=from_account, cc=cc
+        )
+
+    async def _tool_email_list_accounts(self) -> str:
+        """List configured IMAP accounts."""
+        from src.core.imap_service import imap_service
+        user_id = self._current_user_id()
+        accounts = await imap_service.list_accounts(user_id)
+        if not accounts:
+            return "📭 Nenhuma conta de email IMAP configurada. Acesse /settings.html → Emails (IMAP/SMTP)."
+        lines = [f"📧 **{len(accounts)} conta(s) de email configurada(s):**\n"]
+        for acc in accounts:
+            lines.append(
+                f"- **{acc['display_name']}** ({acc['email']})\n"
+                f"  Provedor: {acc['provider']} | IMAP: {acc['imap_host']}:{acc['imap_port']}"
+            )
+        return "\n".join(lines)
 
     def _current_user_id(self) -> str:
         """Get current user_id from execution context (set by ReAct loop)."""
