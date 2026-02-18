@@ -75,7 +75,7 @@
 | 1 | `tot_service` | Agent.think() ou ReAct deep mode | [ ] |
 | 2 | `uncertainty_quantifier` | ReAct final answer confidence | [x] |
 | 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
-| 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
+| 4 | `intent_predictor` | Proactive research / cron jobs | [x] |
 | 5 | `autonomous_executor` | API endpoints (Jarvis Mode) | [x] |
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [x] |
 | 7 | `reflection_engine` | Cron job semanal | [x] |
@@ -222,6 +222,46 @@ CronScheduler._scheduler_loop() [cron_scheduler.py:241]
   - **Suggestions** — recomendações acionáveis baseadas em patterns e gaps
 - Report salvo em `workspace/memory/reflections/optimus/<ano-W<semana>>.md`
 - **Zero LLM cost** — análise baseada em keyword matching e contagem estatística
+
+---
+
+### ✅ #4 IntentPredictor — CONCLUÍDO
+
+**Call Path:**
+```
+CronScheduler._execute_job("pattern_learning")
+    → EventBus.emit(CRON_TRIGGERED, {job_name: "pattern_learning"}) [cron_scheduler.py:153]
+        → intent_handlers.on_pattern_learning_triggered(event) [intent_handlers.py:25]
+            → intent_predictor.learn_patterns(agent_name="optimus", days=30)
+                → daily_notes.get_date() → coleta últimos 30 dias de notas
+                → _extract_actions() → detecta ações via keywords (deploy, bug_fix, meeting, etc)
+                → Analisa weekdays + time_slots para cada ação
+                → Calcula confidence baseado em frequência
+            → intent_predictor.save_patterns("optimus", patterns)
+                → workspace/patterns/optimus.json
+```
+
+**Agendamento:**
+- Job `pattern_learning` criado no startup (main.py:90-105)
+- Executa semanalmente (schedule_type="every", schedule_value="7d")
+- Primeira execução: 7 dias após startup
+- Análise: últimos 30 dias de daily notes
+
+**Arquivos criados/modificados:**
+- `src/engine/intent_handlers.py` (novo — handler + register_intent_handlers)
+- `src/main.py` linhas 90-105 (_schedule_pattern_learning)
+- `src/main.py` linhas 54-56 (lifespan registra handlers)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestIntentPredictorIntegration`
+- Testa: singleton existente, handlers registrados no EventBus, evento cron gera patterns.json, ignora jobs irrelevantes
+- **4/4 testes passando** ✅
+
+**Impacto:**
+- IntentPredictor agora aprende padrões comportamentais automaticamente toda semana
+- Detecta horários e dias da semana preferidos para cada tipo de ação (deploy, meeting, code_review, etc)
+- Patterns salvos permitem sugestões proativas tipo "🚀 Preparar deploy? Você costuma fazer isso às sextas no período da tarde."
+- Preparação para **FASE 11: Jarvis Mode** — sugestões contextualizadas e preditivas
 
 ---
 
