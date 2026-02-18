@@ -99,7 +99,7 @@
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
 | 26 | `CronScheduler` | main.py lifespan | [x] |
 | 27 | `ContextAwareness` | Session bootstrap + greeting | [x] |
-| 28 | `ConfirmationService` | ReAct human-in-the-loop | [ ] |
+| 28 | `ConfirmationService` | ReAct human-in-the-loop | [x] |
 
 **Formato de entrega por módulo:**
 - 1 PR por módulo (ou grupos afins)
@@ -518,6 +518,105 @@ general → optimus (standard thinking - fallback)
 - ✅ Validado em https://optimus.tier.finance/
 - ✅ trace_event("intent_classified") registrado em logs
 - ✅ Diferentes intents classificados corretamente (code, research, planning, urgent)
+
+---
+
+### ✅ #28 ConfirmationService — CONCLUÍDO
+
+**Call Path:**
+```
+OptimusAgent.process() → react_loop()
+    ↓
+FOR each tool_call iteration:
+    ↓
+    Check permission (security_manager) [react_loop.py:222]
+    ↓
+    # FASE 0 #28: Confirmation check
+    confirmation_service.should_confirm(tool_name, user_id) [react_loop.py:245]
+    ↓
+    IF HIGH or CRITICAL risk:
+        ↓
+        BLOCK tool execution
+        ↓
+        Send informative message to agent
+        ↓
+        Agent informs user: "This action needs your approval"
+    ELSE:
+        ↓
+        Execute tool (mcp_tools.execute)
+```
+
+**Arquivos modificados:**
+- `src/engine/react_loop.py` linhas 242-277 (added confirmation check before tool execution)
+- Tool execution blocked for HIGH/CRITICAL risk tools
+- Agent receives clear message explaining why tool was blocked
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestConfirmationServiceIntegration`
+- Testa: service API ready, should_confirm logic, confirmation workflow lifecycle
+- **4/4 testes passando** ✅
+
+**Risk Levels & Behavior:**
+```
+LOW (file_read, search, list_files, db_query)
+    → Auto-approve ✅ (no confirmation needed)
+
+MEDIUM (file_write, file_edit, db_insert, db_update)
+    → Auto-approve ✅ (for now - may change in future)
+
+HIGH (git_push, http_request, api_call)
+    → BLOCKED ⚠️ (requires user confirmation)
+    → Agent receives: "Tool requires confirmation (HIGH risk)"
+    → Agent must inform user and request approval
+
+CRITICAL (file_delete, deploy, send_email, code_execute, db_delete)
+    → BLOCKED 🚫 (requires user confirmation)
+    → Agent receives: "Action blocked (CRITICAL risk)"
+    → Agent must explain action and get explicit approval
+```
+
+**Agent Experience (when tool is blocked):**
+```
+Agent attempts: file_delete("/important/data.db")
+    ↓
+ConfirmationService blocks execution
+    ↓
+Agent receives:
+"⚠️ AÇÃO BLOQUEADA: A ferramenta 'file_delete' requer confirmação do usuário.
+
+**Motivo:** Esta é uma ação de alto risco ou irreversível (risco: CRITICAL).
+
+**Próximos passos:**
+1. Informe o usuário sobre a ação que você pretende executar
+2. Explique claramente o que 'file_delete' fará e quais os impactos
+3. Aguarde aprovação explícita do usuário antes de tentar novamente
+
+**Argumentos:** {path: "/important/data.db"}
+
+Não tente executar esta ação sem confirmação."
+    ↓
+Agent informs user: "Preciso deletar o arquivo X. Posso prosseguir?"
+    ↓
+User approves → (FASE futura: API endpoint approve/deny)
+```
+
+**Impacto para o usuário:**
+- **Proteção Human-in-the-Loop:** Agent não pode executar ações destrutivas sem aprovação
+- **Transparência:** Agent explica exatamente o que quer fazer e por que está bloqueado
+- **Segurança:** Previne deleções acidentais, deploys não autorizados, envios de email indesejados
+- **Controle:** Usuário mantém controle final sobre ações de alto impacto
+
+**FASE 0 Implementation (pragmatic):**
+- ✅ Confirmation check integrated in ReAct loop
+- ✅ HIGH/CRITICAL risk tools blocked
+- ✅ Agent receives informative message
+- 🔜 API endpoints (approve/deny) → FASE futura quando UI estiver pronta
+- 🔜 WebSocket notifications → FASE futura para real-time approval flow
+
+**Testado em produção:**
+- ✅ Validado em https://optimus.tier.finance/
+- ✅ Logs confirmam: "Tool execution blocked: {tool_name} requires confirmation"
+- ✅ Agent demonstra awareness quando tool é bloqueado
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado
