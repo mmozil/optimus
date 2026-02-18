@@ -77,7 +77,7 @@
 | 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
 | 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
 | 5 | `autonomous_executor` | API endpoints (Jarvis Mode) | [x] |
-| 6 | `proactive_researcher` | Cron job (3x/dia) | [ ] |
+| 6 | `proactive_researcher` | Cron job (3x/dia) | [x] |
 | 7 | `reflection_engine` | Cron job semanal | [ ] |
 | 8 | `working_memory` | Session bootstrap context | [x] |
 | 9 | `rag_pipeline` | knowledge_tool semantic search | [x] |
@@ -142,6 +142,43 @@ CronScheduler._scheduler_loop() [cron_scheduler.py:241]
 - StandupGenerator agora é acionado automaticamente todo dia às 09:00 BRT
 - Relatório salvo em `workspace/standups/<data>.md` e na ActivityFeed
 - `/standup` no chat agora reflete dados reais do dia
+
+---
+
+### ✅ #6 ProactiveResearcher — CONCLUÍDO
+
+**Call Path:**
+```
+CronScheduler._scheduler_loop() [cron_scheduler.py:241]
+    → _execute_job(job{name="proactive_research"}) [cron_scheduler.py:189]
+        → EventBus.emit(CRON_TRIGGERED) [cron_scheduler.py:198]
+            → research_handlers.on_research_cron_triggered(event) [research_handlers.py:25]
+                → proactive_researcher.run_check_cycle() [proactive_researcher.py:359]
+                    → get_due_sources() → filtra sources com check_interval atingido
+                    → check_source(source) → dispatch para fetch_rss | fetch_github | fetch_url
+                → generate_briefing(findings) [proactive_researcher.py:382]
+                → save_briefing() → workspace/research/findings/optimus-<date>.md
+```
+
+**Agendamento:**
+- `main.py: _schedule_proactive_research()` registra job "proactive_research" com `schedule_type="every"` / `8h`
+- Executa 3x/dia (a cada 8 horas)
+- Job persiste em JSON (`workspace/cron/jobs.json`) — sobrevive a restarts
+
+**Arquivos criados/modificados:**
+- `src/engine/research_handlers.py` (novo — handler + register_research_handlers)
+- `src/main.py` — `_schedule_proactive_research()` + `register_research_handlers()` no lifespan
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestProactiveResearcherIntegration`
+- Testa: singleton existe, handler registrado, CRON_TRIGGERED gera briefing, job errado ignorado
+- **4/4 testes passando** ✅
+
+**Impacto:**
+- ProactiveResearcher agora é acionado automaticamente 3x/dia
+- Monitora fontes configuradas (RSS, GitHub, URLs) e gera briefings com novidades relevantes
+- Briefing salvo em `workspace/research/findings/optimus-<date>.md`
+- Usuários podem configurar fontes personalizadas via `proactive_researcher.add_source()`
 
 ---
 
