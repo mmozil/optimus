@@ -173,8 +173,13 @@ async def voice_command(request: VoiceCommandRequest) -> VoiceCommandResponse:
             try:
                 from src.core.gateway import gateway
 
+                # Add voice context note so agent knows this was transcribed from audio
+                voice_context_message = (
+                    f"[Mensagem de voz transcrita automaticamente por Groq Whisper]\n{command}"
+                )
+
                 result = await gateway.route_message(
-                    message=command,
+                    message=voice_context_message,
                     context={
                         "user_id": request.user_id,
                         "session_id": request.session_id or request.user_id,
