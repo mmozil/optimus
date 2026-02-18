@@ -379,7 +379,11 @@
       try {
         const resp = await fetch(API, { headers: headers() });
         if (resp.status === 401) { window.location.href = '/login.html'; return; }
-        const agents = await resp.json();
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || `Erro HTTP ${resp.status}`);
+        }
+        const agents = Array.isArray(data) ? data : [];
 
         const system = agents.filter(a => a.system);
         const custom = agents.filter(a => !a.system);
