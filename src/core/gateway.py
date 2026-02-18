@@ -162,6 +162,10 @@ class Gateway:
 
             agent_name = target_agent or "optimus"
 
+            # FASE 0 #3: Classify message intent for routing and analytics
+            from src.engine.intent_classifier import intent_classifier
+            intent_result = intent_classifier.classify(message)
+
             # FASE 0 #22: Emit MESSAGE_RECEIVED for ActivityFeed
             from src.core.events import event_bus, EventType
             await event_bus.emit_simple(
@@ -188,6 +192,17 @@ class Gateway:
             context["user_id"] = user_id
             context["sentiment"] = sentiment
             context["tone_instruction"] = sentiment.tone_instruction
+
+            # FASE 0 #3: Add intent classification to context
+            context["intent_classification"] = intent_result
+
+            # Log intent for analytics
+            trace_event("intent_classified", {
+                "intent": intent_result.intent,
+                "confidence": intent_result.confidence,
+                "suggested_agent": intent_result.suggested_agent,
+                "thinking_level": intent_result.thinking_level,
+            })
 
             # Log mood to daily notes
             if sentiment.mood != "neutral":
@@ -302,17 +317,22 @@ class Gateway:
 
         agent_name = target_agent or "optimus"
 
+        # FASE 0 #3: Classify message intent
+        from src.engine.intent_classifier import intent_classifier
+        intent_result = intent_classifier.classify(message)
+
         # 1. Context loading (same as regular route)
         from src.memory.session_bootstrap import session_bootstrap
         await session_bootstrap.load_context(agent_name)
 
         from src.engine.emotional_adapter import emotional_adapter
         sentiment = emotional_adapter.analyze(message)
-        
+
         if context is None:
             context = {}
         context["sentiment"] = sentiment
         context["tone_instruction"] = sentiment.tone_instruction
+        context["intent_classification"] = intent_result  # FASE 0 #3
 
         # 2. Resolve file_ids to attachments
         from src.core.files_service import files_service
