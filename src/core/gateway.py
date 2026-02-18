@@ -146,7 +146,7 @@ class Gateway:
                     channel=ChannelType.WEBCHAT,
                     text=message,
                     user_id=user_id,
-                    user_name=user_id,  # TODO: fetch real username from DB
+                    user_name=(context or {}).get("user_name", user_id),
                     chat_id=user_id,
                 )
 

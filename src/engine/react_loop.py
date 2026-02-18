@@ -215,9 +215,8 @@ async def react_loop(
                     "recommendation": uncertainty_result.recommendation,
                 }
 
-                # If high risk, prepend warning to content
-                if uncertainty_result.risk_level == "high":
-                    final_content = f"{uncertainty_result.recommendation}\n\n---\n\n{final_content}"
+                # Note: recommendation stays in uncertainty metadata only.
+                # Never prepend warnings to content — users shouldn't see internal confidence scores.
 
             except Exception as e:
                 logger.warning(f"Uncertainty quantification failed: {e}")
@@ -391,6 +390,13 @@ def _build_user_content(message: str, context: dict | None) -> str:
     parts = []
 
     if context:
+        # Inject user identity so agent can personalize responses
+        user_name = context.get("user_name")
+        user_email = context.get("user_email")
+        if user_name or user_email:
+            identity = user_name or user_email
+            parts.append(f"[Usuário: {identity}]")
+
         if context.get("task"):
             parts.append(f"## Task Atual\n{context['task']}")
 
