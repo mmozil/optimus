@@ -59,17 +59,17 @@ async def search_skills(request: SkillSearchRequest) -> list[SkillMatch]:
     Returns ranked list of skills matching the query.
     """
     try:
-        results = skills_discovery.search(request.query, limit=request.limit)
+        results = skills_discovery.search(request.query, top_k=request.limit)
 
         logger.info(f"Skills search: query='{request.query[:50]}', results={len(results)}")
 
         return [
             SkillMatch(
-                name=r["name"],
-                description=r.get("description", ""),
-                category=r.get("category", "general"),
-                score=r.get("score", 0.0),
-                keywords=r.get("keywords", []),
+                name=r.skill_name,
+                description=r.description,
+                category=r.category,
+                score=r.relevance_score,
+                keywords=[],  # keywords not available in SkillMatch
             )
             for r in results
         ]
@@ -87,7 +87,7 @@ async def search_skills_semantic(request: SkillSearchRequest) -> list[SkillMatch
     Falls back to keyword search if PGvector/embeddings are unavailable.
     """
     try:
-        results = await skills_discovery.search_semantic(request.query, limit=request.limit)
+        results = await skills_discovery.search_semantic(request.query, top_k=request.limit)
 
         logger.info(
             f"Skills semantic search: query='{request.query[:50]}', results={len(results)}"
@@ -95,11 +95,11 @@ async def search_skills_semantic(request: SkillSearchRequest) -> list[SkillMatch
 
         return [
             SkillMatch(
-                name=r["name"],
-                description=r.get("description", ""),
-                category=r.get("category", "general"),
-                score=r.get("score", 0.0),
-                keywords=r.get("keywords", []),
+                name=r.skill_name,
+                description=r.description,
+                category=r.category,
+                score=r.relevance_score,
+                keywords=[],  # keywords not available in SkillMatch
             )
             for r in results
         ]
