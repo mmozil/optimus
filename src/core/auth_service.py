@@ -62,12 +62,13 @@ class AuthService:
     # JWT Token Management
     # ============================================
 
-    def create_access_token(self, user_id: str, email: str, role: str) -> str:
+    def create_access_token(self, user_id: str, email: str, role: str, display_name: str = "") -> str:
         """Create a JWT access token."""
         payload = {
             "sub": user_id,
             "email": email,
             "role": role,
+            "display_name": display_name,
             "type": "access",
             "exp": datetime.now(timezone.utc) + timedelta(
                 minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -152,7 +153,8 @@ class AuthService:
             await session.commit()
 
         user_id = str(row[0])
-        access_token = self.create_access_token(user_id, email, role)
+        stored_display_name = row[2] or ""
+        access_token = self.create_access_token(user_id, email, role, display_name=stored_display_name)
         refresh_token = self.create_refresh_token(user_id)
 
         logger.info(f"User registered: {email} (role={role})")
@@ -195,7 +197,7 @@ class AuthService:
         if not self._verify_password(password, hashed_pw):
             raise ValueError("Credenciais inválidas.")
 
-        access_token = self.create_access_token(str(user_id), user_email, role)
+        access_token = self.create_access_token(str(user_id), user_email, role, display_name=display_name or "")
         refresh_token = self.create_refresh_token(str(user_id))
 
         logger.info(f"User login: {user_email}")

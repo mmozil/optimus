@@ -394,7 +394,8 @@ class ChatRequest(BaseModel):
 async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_user)):
     """Send a message to an agent. user_id is extracted from the JWT."""
     # Merge user identity into context so the agent knows who it's talking to
-    user_name = user.email.split("@")[0] if user.email else "user"
+    # Prefer display_name (set at registration) over email prefix
+    user_name = user.display_name or (user.email.split("@")[0] if user.email else "user")
     context = {**(request.context or {}), "user_email": user.email, "user_name": user_name}
     result = await gateway.route_message(
         message=request.message,

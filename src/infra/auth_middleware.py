@@ -34,6 +34,7 @@ class CurrentUser:
     id: str
     email: str
     role: str  # admin | user | viewer
+    display_name: str = ""
     auth_method: str = "jwt"  # jwt | api_key
 
 
@@ -65,6 +66,7 @@ async def get_current_user(
             id=user_data["id"],
             email=user_data["email"],
             role=user_data["role"],
+            display_name=user_data.get("display_name", ""),
             auth_method="api_key",
         )
 
@@ -86,6 +88,7 @@ async def get_current_user(
             id=payload["sub"],
             email=payload.get("email", ""),
             role=payload.get("role", "user"),
+            display_name=payload.get("display_name", ""),
             auth_method="jwt",
         )
 
