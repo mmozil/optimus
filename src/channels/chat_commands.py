@@ -30,6 +30,7 @@ COMMANDS = {
     "/new": "Inicia nova sessão",
     "/help": "Mostra esta lista de comandos",
     "/standup": "Gera standup do time",
+    "/cron": "Lista jobs agendados: /cron list",
 }
 
 
@@ -63,6 +64,7 @@ class ChatCommandHandler:
             "/new": self._cmd_new,
             "/help": self._cmd_help,
             "/standup": self._cmd_standup,
+            "/cron": self._cmd_cron,
         }.get(command)
 
         if not handler:
@@ -216,6 +218,60 @@ class ChatCommandHandler:
             report = report[:2000] + "\n\n_... truncado. Use a API para relatório completo._"
 
         return CommandResult(text=report)
+
+    async def _cmd_cron(self, args: str, msg: IncomingMessage) -> CommandResult:
+        """List scheduled cron jobs."""
+        from src.core.cron_scheduler import cron_scheduler
+        from datetime import datetime, timezone
+
+        action = args.strip().lower() or "list"
+
+        if action == "list":
+            jobs = cron_scheduler.list_jobs()
+            if not jobs:
+                return CommandResult(text="⏰ Nenhum job agendado.")
+
+            lines = ["⏰ **Jobs Agendados**\n"]
+            now = datetime.now(timezone.utc)
+
+            for job in jobs:
+                # Status emoji
+                status = "✅" if job.enabled else "⏸️"
+
+                # Calculate next run time
+                next_run = "—"
+                if job.next_run:
+                    try:
+                        next_dt = datetime.fromisoformat(job.next_run)
+                        if next_dt.tzinfo is None:
+                            next_dt = next_dt.replace(tzinfo=timezone.utc)
+
+                        # Time until next run
+                        delta = next_dt - now
+                        if delta.total_seconds() < 0:
+                            next_run = "⚠️ Atrasado"
+                        elif delta.total_seconds() < 3600:
+                            next_run = f"em {int(delta.total_seconds() / 60)}min"
+                        elif delta.total_seconds() < 86400:
+                            next_run = f"em {int(delta.total_seconds() / 3600)}h"
+                        else:
+                            next_run = f"em {int(delta.total_seconds() / 86400)}d"
+                    except (ValueError, TypeError):
+                        next_run = "erro"
+
+                # Job info
+                schedule = f"a cada {job.schedule_value}" if job.schedule_type == "every" else job.schedule_value
+                lines.append(
+                    f"{status} **{job.name}**\n"
+                    f"   └ {schedule} | próxima: {next_run} | execuções: {job.run_count}"
+                )
+
+            return CommandResult(text="\n".join(lines))
+
+        return CommandResult(
+            text="⏰ **Comandos de Cron**\n"
+                 "• `/cron list` — Listar jobs agendados"
+        )
 
 
 # Singleton
