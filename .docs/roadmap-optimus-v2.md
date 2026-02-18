@@ -73,7 +73,7 @@
 | # | Módulo | Deve Ser Chamado Por | Status |
 |---|--------|---------------------|--------|
 | 1 | `tot_service` | Agent.think() ou ReAct deep mode | [ ] |
-| 2 | `uncertainty_quantifier` | ReAct pós-resposta (calibração) | [ ] |
+| 2 | `uncertainty_quantifier` | ReAct final answer confidence | [x] |
 | 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
 | 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
 | 5 | `autonomous_executor` | ReAct (high confidence tasks) | [ ] |
@@ -1206,6 +1206,90 @@ Agent needs information
 | Threshold | Fixo | Configurável (0.7) |
 
 ---
+
+### ✅ #2 UncertaintyQuantifier — CONCLUÍDO
+
+**Status:** ✅ Integrado via ReAct loop + testes E2E passando
+
+**Call Path:**
+```
+ReAct loop generates final response (no more tool_calls)
+  → uncertainty_quantifier.quantify(query, response, agent_name, db_session=None)
+    → _self_assess(query, response)
+      → LLM evaluates confidence: 0.0-1.0
+        → Prompt: "Avalie sua confiança na seguinte resposta..."
+        → Economy model (cheap, fast)
+    → _find_similar_errors(query, db_session)
+      → PGvector semantic search for error patterns
+      → Returns similar past errors (empty for now)
+    → Calculate calibrated_confidence
+      → confidence - pattern_penalty
+    → _classify_risk(calibrated)
+      → >= 0.7: "low"
+      → >= 0.4: "medium"
+      → < 0.4: "high"
+    → _generate_recommendation(calibrated, risk_level, errors)
+      → ✅ low: "Confiança alta. Resposta pode ser usada diretamente."
+      → ⚠️ medium: "Confiança moderada. Recomendo validar pontos-chave."
+      → 🔴 high: "Confiança baixa. Não recomendo usar sem validação."
+  → If risk_level == "high": prepend warning to content
+  → Return ReActResult with uncertainty metadata
+```
+
+**Arquivos Modificados:**
+- `src/engine/react_loop.py`:
+  - Adicionado campo `uncertainty: dict | None` em ReActResult dataclass
+  - Importado `uncertainty_quantifier`
+  - Antes de retornar resposta final (sem tool_calls):
+    - Chama `await uncertainty_quantifier.quantify()`
+    - Converte UncertaintyResult → dict
+    - Se risk_level == "high", injeta warning no content
+    - Adiciona uncertainty metadata ao resultado
+
+- `src/engine/uncertainty.py` (já existia, agora CONECTADO):
+  - `quantify()` — full uncertainty pipeline
+  - `_self_assess()` — LLM self-evaluation (0.0-1.0)
+  - `_find_similar_errors()` — PGvector pattern matching (TODO)
+  - `_classify_risk()` — thresholds: 0.7 low, 0.4 medium
+  - `_generate_recommendation()` — actionable advice
+  - `record_error()` — store error patterns for calibration
+
+- `tests/test_e2e.py`:
+  - `TestUncertaintyQuantifierIntegration`: 4 testes E2E
+    - `test_uncertainty_quantifier_exists`
+    - `test_react_result_has_uncertainty_field` (critical)
+    - `test_react_loop_calls_uncertainty_quantifier` (critical)
+    - `test_uncertainty_self_assessment`
+
+**Testes:** ✅ 4/4 passing
+
+**Commit:** `76e9eb1` — feat: FASE 0 #2 — UncertaintyQuantifier integration (confidence calibration)
+
+**Impact:**
+- **Self-awareness:** Agent now evaluates its own confidence on every response
+- **User protection:** Warns user when confidence < 0.4 (high risk)
+- **Transparency:** Uncertainty metadata available in ReActResult
+- **Future-ready:** Lays groundwork for error pattern learning via PGvector
+- **UI integration:** Frontend can display confidence scores (e.g., progress bar)
+
+**Example Uncertainty Metadata:**
+```json
+{
+  "confidence": 0.75,
+  "calibrated_confidence": 0.75,
+  "risk_level": "low",
+  "recommendation": "✅ Confiança alta. Resposta pode ser usada diretamente."
+}
+```
+
+**High Risk Response Example:**
+```
+🔴 Confiança baixa. Não recomendo usar sem validação. Escalar para Optimus (Lead) ou solicitar pesquisa adicional.
+
+---
+
+[Agent's original response here...]
+```
 
 ## Próximo Passo
 
