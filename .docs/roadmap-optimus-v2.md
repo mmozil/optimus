@@ -95,7 +95,7 @@
 | 21 | `TaskManager` | Chat commands + UI task CRUD | [x] |
 | 22 | `ActivityFeed` | Event bus subscribers | [x] |
 | 23 | `StandupGenerator` | Cron job diário 09:00 BRT | [x] |
-| 24 | `Orchestrator` | Complex multi-agent flows | [ ] |
+| 24 | `Orchestrator` | Complex multi-agent flows | [x] |
 | 25 | `A2AProtocol` | Agent-to-agent delegation | [ ] |
 | 26 | `CronScheduler` | main.py lifespan | [x] |
 | 27 | `ContextAwareness` | Session bootstrap + greeting | [x] |
