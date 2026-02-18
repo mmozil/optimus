@@ -719,6 +719,10 @@ app.include_router(knowledge_router)
 from src.api.skills import router as skills_router
 app.include_router(skills_router)
 
+# FASE 0 #18: Voice Interface API
+from src.api.voice import router as voice_router
+app.include_router(voice_router)
+
 
 class SearchRequest(BaseModel):
     query: str

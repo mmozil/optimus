@@ -2969,3 +2969,171 @@ class TestSkillsDiscoveryIntegration:
         assert "indexed_skills" in data, "Should include indexed_skills count"
         assert "total_terms" in data, "Should include total_terms count"
         assert "categories" in data, "Should include categories"
+
+
+# ============================================
+# FASE 0 #18: Voice Interface Integration Tests
+# ============================================
+class TestVoiceInterfaceIntegration:
+    """
+    E2E tests for Voice Interface REST API integration.
+
+    FASE 0 #18: These tests FAIL before integration (404s),
+    PASS after REST API endpoints are added.
+    """
+
+    @pytest.mark.asyncio
+    async def test_voice_interface_exists(self):
+        """Verify VoiceInterface module is importable."""
+        from src.channels.voice_interface import VoiceInterface, voice_interface
+        assert voice_interface is not None
+        assert isinstance(voice_interface, VoiceInterface)
+
+    @pytest.mark.asyncio
+    async def test_voice_stt_basic(self):
+        """Test basic STT functionality."""
+        from src.channels.voice_interface import VoiceInterface, VoiceConfig, VoiceProviderType
+
+        config = VoiceConfig(stt_provider=VoiceProviderType.STUB)
+        vi = VoiceInterface(config)
+
+        # Stub provider should return placeholder
+        result = await vi.listen(b"fake_audio_data")
+        assert "transcribed" in result or "bytes" in result
+
+    @pytest.mark.asyncio
+    async def test_voice_tts_basic(self):
+        """Test basic TTS functionality."""
+        from src.channels.voice_interface import VoiceInterface, VoiceConfig, VoiceProviderType
+
+        config = VoiceConfig(tts_provider=VoiceProviderType.STUB)
+        vi = VoiceInterface(config)
+
+        # Stub provider should return placeholder
+        result = await vi.speak("Hello world")
+        assert len(result) > 0
+        assert isinstance(result, bytes)
+
+    @pytest.mark.asyncio
+    async def test_wake_word_detection(self):
+        """Test wake word detection."""
+        from src.channels.voice_interface import VoiceInterface
+
+        vi = VoiceInterface()
+
+        assert vi.detect_wake_word("Hey Optimus, what's the weather?") is True
+        assert vi.detect_wake_word("Optimus show me the dashboard") is True
+        assert vi.detect_wake_word("Just a regular message") is False
+
+        # Test strip_wake_word
+        clean = vi.strip_wake_word("Hey Optimus, what's the weather?")
+        assert "optimus" not in clean.lower()
+        assert "weather" in clean.lower()
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_voice_listen(self):
+        """Test POST /api/v1/voice/listen endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Send audio for transcription (base64 encoded)
+        import base64
+        fake_audio = base64.b64encode(b"fake_audio_data").decode()
+
+        response = client.post("/api/v1/voice/listen", json={
+            "audio_base64": fake_audio
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /voice/listen should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "text" in data, "Should return transcribed text"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_voice_speak(self):
+        """Test POST /api/v1/voice/speak endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Request TTS synthesis
+        response = client.post("/api/v1/voice/speak", json={
+            "text": "Hello from Optimus"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /voice/speak should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "audio_base64" in data, "Should return audio as base64"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_voice_command(self):
+        """Test POST /api/v1/voice/command endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Send voice command
+        import base64
+        fake_audio = base64.b64encode(b"hey optimus what time is it").decode()
+
+        response = client.post("/api/v1/voice/command", json={
+            "audio_base64": fake_audio,
+            "user_id": "test_user"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /voice/command should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "transcribed_text" in data or "response" in data, \
+            "Should return command processing result"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_voice_config(self):
+        """Test GET /api/v1/voice/config endpoint (FAILS before integration)."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Get voice config
+        response = client.get("/api/v1/voice/config")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /voice/config should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "stt_provider" in data, "Should include STT provider"
+        assert "tts_provider" in data, "Should include TTS provider"
+        assert "wake_words" in data, "Should include wake words list"
