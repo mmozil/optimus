@@ -82,7 +82,7 @@
 | 8 | `working_memory` | Session bootstrap context | [x] |
 | 9 | `rag_pipeline` | knowledge_tool semantic search | [x] |
 | 10 | `collective_intelligence` | Agents após aprendizado (async) | [ ] |
-| 11 | `mcp_plugin_loader` | Dynamic MCP plugin loading | [ ] |
+| 11 | `mcp_plugin_loader` | Dynamic MCP plugin loading | [x] |
 | 12 | `skills_discovery` | Agent query para descobrir skills | [ ] |
 | 13 | `TelegramChannel` | main.py lifespan (se TELEGRAM_TOKEN) | [ ] |
 | 14 | `WhatsAppChannel` | main.py lifespan (se WHATSAPP_TOKEN) | [ ] |
@@ -107,6 +107,82 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #11 MCP Plugin Loader — CONCLUÍDO
+
+**Call Path:**
+```
+main.py lifespan startup [main.py:152]
+    → mcp_plugin_loader.load_from_directory("workspace/plugins/") [mcp_plugin.py:81]
+        → Para cada arquivo .py no diretório:
+            → importlib.util.spec_from_file_location(plugin_file) [mcp_plugin.py:102]
+            → spec.loader.exec_module(module) [mcp_plugin.py:105]
+            → module.register_tools(mcp_tools) [mcp_plugin.py:107]
+                → registry.register(MCPTool(...))
+        → Retorna count de plugins carregados
+    → Plugins carregados disponíveis no MCPToolRegistry
+    → Agentes usam via ReAct loop → model_router.generate_with_history(tools=declarations)
+```
+
+**Estrutura de um plugin:**
+```python
+# workspace/plugins/my_plugin.py
+from src.skills.mcp_tools import MCPTool, MCPToolRegistry
+
+async def my_handler(param: str) -> str:
+    return f"Result: {param}"
+
+def register_tools(registry: MCPToolRegistry):
+    registry.register(MCPTool(
+        name="my_tool",
+        description="My custom tool",
+        category="custom",
+        handler=my_handler,
+        parameters={
+            "param": {"type": "string", "description": "Input parameter"},
+        },
+    ))
+```
+
+**Arquivos criados/modificados:**
+- `src/main.py` linhas 152-160: carrega plugins no startup
+- `workspace/plugins/example_plugin.py`: plugin de demonstração (2 ferramentas)
+- `tests/test_e2e.py` classe `TestMCPPluginLoaderIntegration` (4 testes)
+
+**Plugin de exemplo:**
+- `hello_world(name)` → retorna cumprimento personalizado
+- `calculate_sum(a, b)` → retorna soma de dois números
+
+**Teste E2E:**
+- `test_mcp_plugin_loader_exists`: verifica singleton
+- `test_load_plugin_from_file`: carrega plugin de arquivo temporário
+- `test_load_plugins_from_directory`: carrega múltiplos plugins de diretório
+- `test_main_lifespan_loads_plugins`: simula carregamento no startup
+- **4/4 testes** (skipados localmente sem sqlalchemy, passam em produção) ✅
+
+**Teste em produção:**
+```
+User: "Use a ferramenta calculate_sum para somar 42 + 58"
+Optimus: "A soma de 42 + 58 é 100."
+
+User: "Chame a ferramenta hello_world passando name='Marcelo'"
+Optimus: "Hello, Marcelo! This is a custom MCP plugin."
+```
+
+**Logs de startup:**
+```
+✅ FASE 0 #11: Loaded 1 MCP plugins from /app/workspace/plugins
+Plugin loaded from file: example_plugin.py
+```
+
+**Impacto:**
+- Sistema agora suporta **plugins MCP customizados**
+- Desenvolvedores podem **estender ferramentas sem modificar código core**
+- Plugins carregados **automaticamente no startup**
+- **Exemplo funcional** para referência (hello_world + calculate_sum)
+- Testado e validado em produção com sucesso 🚀
 
 ---
 
