@@ -402,9 +402,17 @@ Admin → PUT /api/v1/voice/config {stt_provider, tts_provider}
 - `test_api_endpoint_voice_speak`: POST /speak
 - `test_api_endpoint_voice_command`: POST /command
 - `test_api_endpoint_voice_config`: GET /config
-- **9/9 testes** (4 básicos PASSANDO, 5 API aguardando teste em produção) ⏳
+- **9/9 testes** (4 básicos PASSANDO, 5 API VALIDADOS em produção) ✅
 
-**Teste em produção:** ⏳ Aguardando validação via Swagger UI em https://optimus.tier.finance/docs
+**Teste em produção VALIDADO:**
+```
+✅ GET /config → {"stt_provider": "stub", "tts_provider": "stub", "wake_words": [...]} (status 200)
+✅ POST /listen → {"text": "[transcribed: 15 bytes]", "wake_word_detected": false} (status 200)
+✅ POST /speak → Audio base64 retornado (status 200)
+✅ POST /command → {"transcribed_text": "...", "wake_word_detected": false, ...} (status 200)
+✅ Stub provider funcionando (sem API keys configuradas)
+✅ Pipeline completo: STT → wake word detection → gateway routing → TTS
+```
 
 **Exemplo uso esperado:**
 ```json
