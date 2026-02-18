@@ -206,10 +206,14 @@ class MCPToolRegistry:
 
         self.register(MCPTool(
             name="research_fetch_url",
-            description="Fetch and extract content from a URL",
+            description=(
+                "Read the full content of any URL as clean text/markdown. "
+                "Uses Jina Reader (free) — ideal for reading news articles, blog posts, documentation. "
+                "Use this after research_search returns URLs you want to read in depth."
+            ),
             category="research",
             parameters={
-                "url": {"type": "string", "required": True, "description": "URL to fetch"},
+                "url": {"type": "string", "required": True, "description": "URL to read (must start with http:// or https://)"},
             },
             handler=self._tool_research_fetch_url,
         ))
@@ -624,38 +628,58 @@ class MCPToolRegistry:
             return f"❌ Erro ao buscar cotação: {e}"
 
     async def _tool_research_search(self, query: str, max_results: int = 5) -> str:
-        """Web search — uses Tavily if configured, otherwise DuckDuckGo Instant Answer."""
+        """
+        Smart web search with automatic provider routing:
+        1. Brave Search API (primary) — real web results, 1000/month free
+        2. DuckDuckGo Instant Answer (fallback) — free, limited to summaries
+        """
         from src.core.config import settings
         import httpx
 
-        # ── Tavily (preferred, requires TAVILY_API_KEY) ────────────────
-        if settings.TAVILY_API_KEY:
+        # ── 1. Brave Search API (primary) ──────────────────────────────
+        if settings.BRAVE_SEARCH_API_KEY:
             try:
                 async with httpx.AsyncClient(timeout=15) as client:
-                    resp = await client.post(
-                        "https://api.tavily.com/search",
-                        json={
-                            "api_key": settings.TAVILY_API_KEY,
-                            "query": query,
-                            "max_results": max_results,
-                            "search_depth": "basic",
-                            "include_answer": True,
+                    resp = await client.get(
+                        "https://api.search.brave.com/res/v1/web/search",
+                        params={
+                            "q": query,
+                            "count": max_results,
+                            "search_lang": "pt",
+                            "country": "br",
+                            "safesearch": "moderate",
+                            "freshness": "pw",  # past week for recency
+                        },
+                        headers={
+                            "Accept": "application/json",
+                            "Accept-Encoding": "gzip",
+                            "X-Subscription-Token": settings.BRAVE_SEARCH_API_KEY,
                         },
                     )
                     resp.raise_for_status()
                     data = resp.json()
 
-                lines = []
-                if data.get("answer"):
-                    lines.append(f"**Resposta:** {data['answer']}\n")
-                for r in data.get("results", [])[:max_results]:
-                    lines.append(f"- **{r.get('title', '')}**: {r.get('content', '')[:200]}")
-                    lines.append(f"  ({r.get('url', '')})")
-                return "\n".join(lines) if lines else "Nenhum resultado encontrado."
-            except Exception as e:
-                logger.warning(f"Tavily search failed: {e} — falling back to DuckDuckGo")
+                results = data.get("web", {}).get("results", [])
+                if not results:
+                    raise ValueError("No results from Brave")
 
-        # ── DuckDuckGo Instant Answer (free fallback) ──────────────────
+                lines = [f"🔍 **Brave Search** — '{query}'\n"]
+                for r in results[:max_results]:
+                    title = r.get("title", "")
+                    desc = r.get("description", "")[:200]
+                    url_r = r.get("url", "")
+                    age = r.get("age", "")
+                    age_str = f" _{age}_" if age else ""
+                    lines.append(f"**{title}**{age_str}")
+                    lines.append(f"{desc}")
+                    lines.append(f"({url_r})\n")
+
+                return "\n".join(lines)
+
+            except Exception as e:
+                logger.warning(f"Brave search failed: {e} — falling back to DuckDuckGo")
+
+        # ── 2. DuckDuckGo Instant Answer (free fallback) ───────────────
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
                 resp = await client.get(
@@ -675,24 +699,52 @@ class MCPToolRegistry:
                     lines.append(f"- {topic['Text'][:200]}")
 
             if lines:
-                return "\n".join(lines)
+                return "🔍 **DuckDuckGo** (resumo)\n\n" + "\n".join(lines)
+
             return (
-                f"🔍 Busca por '{query}': DuckDuckGo não retornou resultado instantâneo. "
-                f"Configure TAVILY_API_KEY para pesquisa web completa."
+                f"🔍 Busca por '{query}': nenhum resultado instantâneo disponível. "
+                f"Para resultados completos, configure BRAVE_SEARCH_API_KEY no servidor."
             )
         except Exception as e:
             logger.error(f"DuckDuckGo search failed: {e}")
-            return (
-                f"❌ Busca por '{query}' falhou ({e}). "
-                f"Configure TAVILY_API_KEY para habilitar pesquisa web em tempo real."
-            )
+            return f"❌ Busca por '{query}' falhou: {e}"
 
     async def _tool_research_fetch_url(self, url: str) -> str:
-        """Fetch URL content."""
+        """
+        Read the content of any URL as clean markdown.
+        Uses Jina Reader (r.jina.ai) — free, no API key, handles JS pages.
+        Falls back to raw httpx if Jina fails.
+        """
         import httpx
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(url)
-            return response.text[:10_000]
+
+        # ── Jina Reader (free, converts any URL to clean markdown) ─────
+        jina_url = f"https://r.jina.ai/{url}"
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                resp = await client.get(
+                    jina_url,
+                    headers={
+                        "Accept": "text/plain",
+                        "User-Agent": "AgentOptimus/1.0",
+                    },
+                )
+                if resp.status_code == 200:
+                    content = resp.text.strip()
+                    if content and len(content) > 100:
+                        return content[:12_000]
+        except Exception as e:
+            logger.warning(f"Jina Reader failed for {url}: {e} — falling back to raw fetch")
+
+        # ── Raw httpx fallback ─────────────────────────────────────────
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "AgentOptimus/1.0"},
+                )
+                return resp.text[:10_000]
+        except Exception as e:
+            return f"❌ Não foi possível acessar {url}: {e}"
 
     async def _tool_memory_search(self, agent_name: str, query: str) -> str:
         """Search long-term memory."""

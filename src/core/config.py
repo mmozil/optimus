@@ -59,7 +59,8 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # === Search APIs ===
-    TAVILY_API_KEY: str = ""  # https://tavily.com — best for real-time web search
+    TAVILY_API_KEY: str = ""  # https://tavily.com — legacy, prefer Brave
+    BRAVE_SEARCH_API_KEY: str = ""  # https://api.search.brave.com — 1000 free/month
 
     # === Sentry ===
     SENTRY_DSN: str = ""
