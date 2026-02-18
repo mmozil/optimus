@@ -1055,3 +1055,122 @@ class TestStandupGeneratorIntegration:
         standup_entries = [a for a in recent if a.type == "standup_generated"]
         assert len(standup_entries) == 0, \
             "standup_generated recorded for a non-standup job! Handler must filter by job_name."
+
+
+# ============================================
+# FASE 0 #8: WorkingMemory Integration
+# ============================================
+class TestWorkingMemoryIntegration:
+    """
+    FASE 0 Module #8: WorkingMemory integration test.
+
+    This test FAILS if working_memory is NOT loaded in session_bootstrap.load_context().
+    Validates REGRA DE OURO checkpoint #2: "test that fails without the feature".
+    """
+
+    @pytest.mark.asyncio
+    async def test_working_memory_loaded_in_bootstrap(self):
+        """
+        Test that working memory is loaded during session bootstrap.
+
+        If working_memory.load() is NOT called in session_bootstrap.load_context(),
+        the BootstrapContext will not include the agent's scratchpad.
+        """
+        from src.memory.session_bootstrap import session_bootstrap
+        from src.memory.working_memory import working_memory
+
+        # Create a working memory with specific content
+        test_content = """# WORKING.md — optimus
+
+## Status Atual
+Processing user request for FASE 0 #8 integration.
+
+## Tasks Ativas
+- Implement working_memory integration
+- Write E2E tests
+
+## Contexto
+- Current focus: session_bootstrap integration
+- Expected call path: gateway → session_bootstrap → working_memory
+
+## Notas Rápidas
+- [14:30] Started working_memory integration
+"""
+        await working_memory.save("optimus", test_content)
+
+        # Load bootstrap context (force reload to bypass cache)
+        ctx = await session_bootstrap.load_context("optimus", force=True)
+
+        # CRITICAL: Must include working memory
+        assert hasattr(ctx, 'working'), \
+            "BootstrapContext missing 'working' attribute! working_memory not integrated."
+        assert ctx.working, \
+            "Working memory is EMPTY! session_bootstrap did not call working_memory.load()"
+
+        # Verify it contains our test content
+        assert "Processing user request for FASE 0 #8" in ctx.working, \
+            "Working memory content mismatch! Integration failed."
+        assert "Tasks Ativas" in ctx.working, \
+            "Working memory missing expected sections"
+
+    @pytest.mark.asyncio
+    async def test_working_memory_in_prompt(self):
+        """Test that working memory is injected into final prompt."""
+        from src.memory.session_bootstrap import session_bootstrap
+        from src.memory.working_memory import working_memory
+
+        # Set up working memory with clear marker
+        marker = "INTEGRATION_TEST_MARKER_12345"
+        test_content = f"""# WORKING.md — optimus
+
+## Status Atual
+{marker}
+
+## Tasks Ativas
+- Test task
+
+## Notas Rápidas
+- Test note
+"""
+        await working_memory.save("optimus", test_content)
+
+        # Load context and build prompt
+        ctx = await session_bootstrap.load_context("optimus", force=True)
+        prompt = ctx.build_prompt()
+
+        # CRITICAL: Prompt must include working memory
+        assert marker in prompt, \
+            "Working memory NOT in final prompt! Integration failed."
+        assert "Working Memory" in prompt or "WORKING.md" in prompt, \
+            "Prompt missing working memory section header"
+
+    @pytest.mark.asyncio
+    async def test_working_memory_default_creation(self):
+        """Test that default working memory is created if not exists."""
+        from src.memory.working_memory import working_memory
+        from pathlib import Path
+
+        # Use a test agent that doesn't exist
+        test_agent = "test_agent_nonexistent_xyz"
+
+        # Delete file if exists
+        file_path = working_memory._file_path(test_agent)
+        if file_path.exists():
+            file_path.unlink()
+
+        # Load should create default
+        content = await working_memory.load(test_agent)
+
+        assert content, "Default working memory not created"
+        assert f"WORKING.md — {test_agent}" in content, \
+            "Default content missing agent name"
+        assert "Status Atual" in content, \
+            "Default content missing Status Atual section"
+        assert "Tasks Ativas" in content, \
+            "Default content missing Tasks Ativas section"
+        assert "Notas Rápidas" in content, \
+            "Default content missing Notas Rápidas section"
+
+        # Cleanup
+        if file_path.exists():
+            file_path.unlink()

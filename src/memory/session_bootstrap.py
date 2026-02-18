@@ -32,6 +32,7 @@ class BootstrapContext:
     daily_yesterday: str = ""
     user_prefs: str = ""
     ambient_context: str = ""  # FASE 0 #27: ContextAwareness integration
+    working: str = ""  # FASE 0 #8: WorkingMemory integration
     loaded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
@@ -51,6 +52,12 @@ class BootstrapContext:
 
         if self.user_prefs:
             sections.append(f"## User Preferences\n{self.user_prefs}")
+
+        # FASE 0 #8: Working memory (agent's scratchpad - current focus)
+        if self.working:
+            # Limit to last 1500 chars to keep it focused on recent work
+            working_preview = self.working[-1500:] if len(self.working) > 1500 else self.working
+            sections.append(f"## Working Memory (Scratchpad)\n{working_preview}")
 
         if self.memory:
             # Limit memory to last 2000 chars to avoid token bloat
@@ -153,6 +160,11 @@ class SessionBootstrap:
         ambient = await context_awareness.enrich_with_activity(ambient, agent_name)
         ctx.ambient_context = context_awareness.build_context_prompt(ambient)
 
+        # FASE 0 #8: Load working memory (agent's scratchpad)
+        from src.memory.working_memory import working_memory
+
+        ctx.working = await working_memory.load(agent_name)
+
         # Cache the result
         self._cache[agent_name] = ctx
 
@@ -160,7 +172,7 @@ class SessionBootstrap:
             f"Bootstrap loaded for {agent_name}: "
             f"soul={len(ctx.soul)}c, memory={len(ctx.memory)}c, "
             f"today={len(ctx.daily_today)}c, yesterday={len(ctx.daily_yesterday)}c, "
-            f"ambient={len(ctx.ambient_context)}c"
+            f"ambient={len(ctx.ambient_context)}c, working={len(ctx.working)}c"
         )
 
         return ctx
