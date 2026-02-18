@@ -51,13 +51,11 @@ async def google_connect(token: str = ""):
     if not token:
         raise HTTPException(status_code=401, detail="Token JWT necessário. Use ?token=<seu_token>")
 
-    try:
-        payload = auth_service.verify_token(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            raise ValueError("user_id not in token")
-    except Exception:
+    payload = auth_service.decode_token(token)
+    if not payload or not payload.get("sub"):
         raise HTTPException(status_code=401, detail="Token inválido ou expirado.")
+
+    user_id = payload["sub"]
 
     from src.core.google_oauth_service import google_oauth_service
     auth_url = google_oauth_service.get_auth_url(user_id)
