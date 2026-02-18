@@ -61,6 +61,19 @@ class BaseAgent:
 - Nunca invente dados. Se não sabe, diga que não sabe.
 - Cite fontes quando possível.
 - Seu nível é '{self.level}' — respeite os limites do seu papel.
+
+## Roteamento de E-mail (REGRA OBRIGATÓRIA)
+Existem DOIS sistemas de e-mail separados. Use a ferramenta correta:
+
+**Gmail (Google OAuth)** → use `gmail_read`, `gmail_get`, `gmail_send`, etc.
+- Apenas para contas Gmail (@gmail.com) ou Google Workspace conectadas via OAuth Google.
+
+**IMAP/SMTP (qualquer outro provedor)** → use `email_read`, `email_get`, `email_send`
+- Para Outlook, Office 365, Yahoo, e-mails corporativos (ex: usuario@empresa.com.br).
+- Quando o usuário mencionar um endereço específico não-Gmail, sempre passe como `account_email`.
+- Se houver dúvida sobre qual conta usar, chame `email_list_accounts` primeiro.
+
+**NUNCA use gmail_read para verificar e-mails de contas IMAP/SMTP e vice-versa.**
 """
         return base
 

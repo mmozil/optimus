@@ -378,7 +378,12 @@ class MCPToolRegistry:
         # --- Google Workspace Tools (FASE 4) ---
         self.register(MCPTool(
             name="gmail_read",
-            description="Search and list Gmail emails. Use Gmail query syntax (e.g. 'is:unread', 'from:boss@company.com', 'newer_than:3d'). Returns subject, sender, date and snippet.",
+            description=(
+                "Search and list emails from the Gmail account connected via Google OAuth. "
+                "ONLY use this tool for Gmail/Google accounts (@gmail.com or Google Workspace). "
+                "For any other provider (Outlook, corporate IMAP, Yahoo, etc.) use email_read instead. "
+                "Use Gmail query syntax (e.g. 'is:unread', 'from:boss@company.com', 'newer_than:3d')."
+            ),
             category="google",
             parameters={
                 "query": {"type": "string", "required": True, "description": "Gmail search query (e.g. 'is:unread', 'subject:meeting', 'newer_than:1d')"},
@@ -611,14 +616,17 @@ class MCPToolRegistry:
         self.register(MCPTool(
             name="email_read",
             description=(
-                "Read emails from any configured email account (Outlook, Office 365, Yahoo, corporate IMAP). "
-                "Use when the user asks about emails from a non-Gmail provider. "
-                "Query syntax: 'is:unread', 'from:boss@co.com', 'subject:meeting', 'newer_than:3d', or plain text."
+                "Read emails via IMAP from a configured account (Outlook, Office 365, Yahoo, corporate, etc.). "
+                "Use this when the user mentions a specific email address that is NOT Gmail "
+                "(e.g. 'marcelo@tier.finance', 'user@outlook.com', 'user@empresa.com.br'). "
+                "IMPORTANT: If the user mentions a specific email address, pass it as account_email. "
+                "Call email_list_accounts first if unsure which accounts are configured. "
+                "Query syntax: 'is:unread', 'from:boss@co.com', 'subject:meeting', 'newer_than:3d', or empty for last 10."
             ),
             category="email",
             parameters={
                 "query": {"type": "string", "description": "Email search query (empty = last 10 emails)"},
-                "account_email": {"type": "string", "description": "Which email account to use (empty = first configured)"},
+                "account_email": {"type": "string", "description": "Specific email account to use (e.g. 'marcelo@tier.finance'). Empty = first configured IMAP account."},
                 "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
             },
             handler=self._tool_email_read,
@@ -659,7 +667,12 @@ class MCPToolRegistry:
 
         self.register(MCPTool(
             name="email_list_accounts",
-            description="List all configured IMAP/SMTP email accounts for this user. Use to see which accounts are available before reading/sending.",
+            description=(
+                "List all IMAP/SMTP email accounts configured by the user (Outlook, corporate, Yahoo, etc.). "
+                "Call this first whenever the user asks 'which email?' or mentions a specific address "
+                "and you need to confirm it is configured as an IMAP account. "
+                "Note: Gmail via Google OAuth is a SEPARATE system — it does NOT appear here."
+            ),
             category="email",
             parameters={},
             handler=self._tool_email_list_accounts,
