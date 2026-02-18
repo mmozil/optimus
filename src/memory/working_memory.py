@@ -55,10 +55,10 @@ class WorkingMemory:
         # FASE 6: fallback to DB (container restart recovery)
         db_content = await self._load_from_db(agent_name)
         if db_content:
-            # Restore file from DB
+            # Restore file from DB (container restart recovery)
             path.write_text(db_content, encoding="utf-8")
             self._cache[agent_name] = db_content
-            logger.info(f"[WorkingMemory] Restored {agent_name} from DB ({len(db_content)} chars)")
+            logger.info(f"✅ [WorkingMemory] Restored {agent_name} from DB ({len(db_content)} chars)")
             return db_content
 
         # Create default working memory
@@ -75,9 +75,9 @@ class WorkingMemory:
 
         # FASE 6: sync to DB in background (non-blocking — does not slow down agent)
         try:
-            asyncio.get_event_loop().create_task(self._save_to_db(agent_name, content))
+            asyncio.create_task(self._save_to_db(agent_name, content))
         except RuntimeError:
-            # No event loop (e.g., test environment) — skip background task
+            # No running event loop (e.g., test/sync context) — skip background task
             pass
 
     async def update(self, agent_name: str, section: str, content: str):
@@ -164,9 +164,9 @@ class WorkingMemory:
                     {"name": agent_name, "content": content},
                 )
                 await session.commit()
-                logger.debug(f"[WorkingMemory] DB synced for {agent_name}")
+                logger.info(f"[WorkingMemory] DB synced for {agent_name} ({len(content)} chars)")
         except Exception as e:
-            logger.debug(f"[WorkingMemory] DB sync skipped for {agent_name}: {e}")
+            logger.warning(f"[WorkingMemory] DB sync failed for {agent_name}: {e}")
 
     def _default_content(self, agent_name: str) -> str:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

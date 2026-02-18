@@ -49,7 +49,7 @@ class LongTermMemory:
             header = f"# MEMORY.md — {agent_name}\n_Memória de longo prazo curada._\n\n"
             full_content = header + db_content
             path.write_text(full_content, encoding="utf-8")
-            logger.info(f"[LongTermMemory] Rebuilt {agent_name} from DB")
+            logger.info(f"✅ [LongTermMemory] Rebuilt {agent_name} from DB")
             return full_content
 
         return ""
@@ -86,11 +86,11 @@ class LongTermMemory:
 
         # FASE 6: sync to DB in background (non-blocking)
         try:
-            asyncio.get_event_loop().create_task(
+            asyncio.create_task(
                 self._insert_to_db(agent_name, category, learning, source)
             )
         except RuntimeError:
-            # No event loop (e.g., test environment) — skip background task
+            # No running event loop (e.g., test/sync context) — skip background task
             pass
 
     async def search_local(self, agent_name: str, query: str) -> list[str]:
@@ -156,9 +156,9 @@ class LongTermMemory:
                     },
                 )
                 await session.commit()
-                logger.debug(f"[LongTermMemory] DB insert for {agent_name}: {category}")
+                logger.info(f"[LongTermMemory] DB insert for {agent_name}: {category}")
         except Exception as e:
-            logger.debug(f"[LongTermMemory] DB insert skipped for {agent_name}: {e}")
+            logger.warning(f"[LongTermMemory] DB insert failed for {agent_name}: {e}")
 
     async def _rebuild_from_db(self, agent_name: str) -> str:
         """Rebuild MEMORY.md content from DB entries (cold start recovery)."""
