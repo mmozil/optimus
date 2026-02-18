@@ -43,7 +43,7 @@ class SkillStatsResponse(BaseModel):
 
     indexed_skills: int
     total_terms: int
-    categories: dict[str, int]
+    categories: list[str]  # List of unique category terms from indexed skills
 
 
 # ============================================
