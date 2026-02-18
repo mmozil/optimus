@@ -224,11 +224,22 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
+        .msg-content audio {
+            display: block;
+            width: 260px;
+            min-width: 200px;
+            height: 36px;
+            margin-bottom: 4px;
+            border-radius: 20px;
+        }
+
         .audio-transcript-toggle {
             font-size: 0.72rem;
             cursor: pointer;
             opacity: 0.5;
             user-select: none;
+            display: inline-block;
+            margin-top: 2px;
         }
         .audio-transcript-toggle:hover { opacity: 1; }
 
@@ -857,7 +868,7 @@
             div.innerHTML = `
                 <div class="avatar ${avatarClass}">${avatarLabel}</div>
                 <div class="msg-content">
-                    <audio controls src="${audioUrl}" style="max-width:260px;width:100%;display:block;margin-bottom:2px;"></audio>
+                    <audio controls src="${audioUrl}"></audio>
                     ${transcriptHtml}
                 </div>
             `;
