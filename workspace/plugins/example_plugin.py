@@ -18,31 +18,24 @@ async def calculate_sum(a: float, b: float) -> float:
 
 def register_tools(registry: MCPToolRegistry):
     """Register custom tools with the MCP registry."""
-    
+
     registry.register(MCPTool(
         name="hello_world",
         description="Say hello to someone (example plugin tool)",
         category="example",
         handler=hello_world,
-        input_schema={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Name to greet"},
-            },
+        parameters={
+            "name": {"type": "string", "description": "Name to greet", "default": "World"},
         },
     ))
-    
+
     registry.register(MCPTool(
         name="calculate_sum",
         description="Calculate sum of two numbers (example plugin tool)",
         category="example",
         handler=calculate_sum,
-        input_schema={
-            "type": "object",
-            "properties": {
-                "a": {"type": "number", "description": "First number"},
-                "b": {"type": "number", "description": "Second number"},
-            },
-            "required": ["a", "b"],
+        parameters={
+            "a": {"type": "number", "description": "First number"},
+            "b": {"type": "number", "description": "Second number"},
         },
     ))
