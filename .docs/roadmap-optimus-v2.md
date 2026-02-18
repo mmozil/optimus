@@ -72,7 +72,7 @@
 
 | # | Módulo | Deve Ser Chamado Por | Status |
 |---|--------|---------------------|--------|
-| 1 | `tot_service` | Agent.think() ou ReAct deep mode | [ ] |
+| 1 | `tot_service` | Agent.think() ou ReAct deep mode | [x] |
 | 2 | `uncertainty_quantifier` | ReAct final answer confidence | [x] |
 | 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
 | 4 | `intent_predictor` | Proactive research / cron jobs | [x] |
@@ -107,6 +107,62 @@
 - Teste que falha sem a chamada
 - Testado em produção (não localhost)
 - Roadmap atualizado com status
+
+---
+
+### ✅ #1 ToT Service — CONCLUÍDO
+
+**Call Path:**
+```
+User query → Gateway.route_message() [gateway.py:266]
+    → BaseAgent.think(query, context) [base.py:301]
+        → _is_complex_query(query) → detecta keywords ou len > 200 chars
+            → SE complexa:
+                → tot_service.deep_think(query, context, agent_soul) [tot_service.py:124]
+                    → ToTEngine.think() → gera 3 hipóteses paralelas:
+                        - CONSERVATIVE strategy
+                        - CREATIVE strategy
+                        - ANALYTICAL strategy
+                    → Ranqueia hipóteses por score
+                    → Retorna synthesis + confidence + best_strategy
+                → Retorna resposta enriquecida com tot_meta
+            → SE simples:
+                → agent.process() → fluxo normal (ReAct ou simple)
+```
+
+**Detecção de Complexidade:**
+- **Keywords:** analise, compare, avalie, decida, planeje, estratégia, prós e contras, trade-off, arquitetura, design, etc.
+- **Length:** queries > 200 caracteres
+- **Função:** `BaseAgent._is_complex_query()` [base.py:358]
+
+**Arquivos criados/modificados:**
+- `src/agents/base.py` linhas 301-383: método `think()` com integração ToT + `_is_complex_query()`
+- `src/core/gateway.py` linhas 266, 271: mudou `agent.process()` → `agent.think()`
+- `tests/test_e2e.py` classe `TestToTServiceIntegration` (4/4 testes passando)
+
+**Teste E2E:**
+- `test_tot_service_exists`: verifica singleton ToT Service
+- `test_base_agent_think_detects_complexity`: mock ToT, verifica acionamento
+- `test_tot_service_think_returns_structured_result`: valida estrutura de retorno
+- `test_complexity_detection_keywords`: testa detecção de keywords
+- **4/4 testes passando** ✅
+
+**Impacto:**
+- Queries complexas recebem **análise multi-estratégia automática**
+- **Maior confiança** em decisões críticas (planejamento, arquitetura, trade-offs)
+- Resposta enriquecida com `tot_meta` (confidence, best_strategy, hypotheses_count)
+- **Sem delegação** para outros agentes quando ToT resolve internamente
+- Exemplo real: "Analise Docker vs Kubernetes" → síntese estruturada com múltiplas perspectivas
+
+**Exemplo de resposta ToT:**
+```
+SÍNTESE FINAL: Docker vs. Kubernetes...
+Os Melhores Insights Combinados:
+- Docker: Agilidade do Início...
+- Kubernetes: Orquestração Robusta...
+Eliminação de Contradições e Priorização...
+Nível de Confiança Geral: Alta
+```
 
 ---
 
