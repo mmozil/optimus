@@ -148,6 +148,17 @@ async def lifespan(app: FastAPI):
 
     await gateway.initialize()
 
+    # FASE 0 #11: Load external MCP plugins from workspace/plugins/
+    # Dynamic loading of custom tools via plugin system
+    from pathlib import Path
+    from src.skills.mcp_plugin import mcp_plugin_loader
+    plugins_dir = Path(__file__).parent.parent / "workspace" / "plugins"
+    if plugins_dir.exists():
+        plugin_count = await mcp_plugin_loader.load_from_directory(str(plugins_dir))
+        print(f"✅ FASE 0 #11: Loaded {plugin_count} MCP plugins from {plugins_dir}")
+    else:
+        print(f"ℹ️  FASE 0 #11: Plugins directory {plugins_dir} not found, skipping plugin loading")
+
     # FASE 0 #20: Register notification handlers on EventBus
     # TaskManager emits TASK_CREATED/UPDATED/COMPLETED → handlers send notifications
     from src.collaboration.notification_handlers import register_notification_handlers

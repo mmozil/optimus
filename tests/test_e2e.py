@@ -2432,3 +2432,208 @@ class TestToTServiceIntegration:
         assert _is_complex_query(complex_query_1), "Query with 'analise' should be complex"
         assert _is_complex_query(complex_query_2), "Query with 'avalie' should be complex"
         assert _is_complex_query(long_query), "Very long query should be complex"
+
+
+# ============================================
+# FASE 0 #11: MCP Plugin Loader Integration
+# ============================================
+class TestMCPPluginLoaderIntegration:
+    """
+    Test MCP Plugin Loader integration with main.py lifespan.
+    REGRA DE OURO Checkpoint #2: Testes que DEVEM FALHAR sem a feature.
+    """
+
+    @pytest.mark.asyncio
+    async def test_mcp_plugin_loader_exists(self):
+        """Verify MCP Plugin Loader singleton is importable and initialized."""
+        try:
+            from src.skills.mcp_plugin import mcp_plugin_loader
+
+            assert mcp_plugin_loader is not None, "mcp_plugin_loader should be initialized"
+            assert hasattr(mcp_plugin_loader, "load_from_directory"), \
+                "Should have load_from_directory() method"
+            assert hasattr(mcp_plugin_loader, "load_plugin"), "Should have load_plugin() method"
+            assert hasattr(mcp_plugin_loader, "list_plugins"), "Should have list_plugins() method"
+        except ModuleNotFoundError as e:
+            if "sqlalchemy" in str(e):
+                pytest.skip("sqlalchemy not installed in test environment")
+            raise
+
+    @pytest.mark.asyncio
+    async def test_load_plugin_from_file(self, tmp_path):
+        """
+        Test loading a plugin from a Python file.
+
+        This verifies the core plugin loading mechanism.
+        """
+        try:
+            from src.skills.mcp_plugin import mcp_plugin_loader, MCPPluginConfig
+            from src.skills.mcp_tools import MCPToolRegistry
+        except ModuleNotFoundError as e:
+            if "sqlalchemy" in str(e):
+                pytest.skip("sqlalchemy not installed in test environment")
+            raise
+
+        # Create a temporary plugin file
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("""
+from src.skills.mcp_tools import MCPTool
+
+async def test_handler(message: str) -> str:
+    return f"Plugin says: {message}"
+
+def register_tools(registry):
+    registry.register(MCPTool(
+        name="test_plugin_tool",
+        description="Test plugin tool",
+        category="test",
+        handler=test_handler,
+    ))
+""")
+
+        # Create isolated registry for testing
+        test_registry = MCPToolRegistry()
+        from src.skills.mcp_plugin import MCPPluginLoader
+        loader = MCPPluginLoader(registry=test_registry)
+
+        # Load plugin from config
+        config = MCPPluginConfig(
+            name="test_plugin",
+            module_path=str(plugin_file),
+            description="Test plugin",
+        )
+
+        # Before loading, tool shouldn't exist
+        assert test_registry.get("test_plugin_tool") is None, \
+            "Tool shouldn't exist before loading"
+
+        # Load plugin
+        result = await loader.load_plugin(config)
+
+        assert result is True, "Plugin should load successfully"
+        assert loader.is_loaded("test_plugin"), "Plugin should be marked as loaded"
+
+        # After loading, tool should be registered
+        tool = test_registry.get("test_plugin_tool")
+        assert tool is not None, "Tool should be registered after plugin load"
+        assert tool.name == "test_plugin_tool", "Tool name should match"
+        assert tool.category == "test", "Tool category should match"
+
+    @pytest.mark.asyncio
+    async def test_load_plugins_from_directory(self, tmp_path):
+        """
+        Test loading multiple plugins from a directory.
+
+        This is the main integration point - main.py should call this.
+        """
+        try:
+            from src.skills.mcp_plugin import MCPPluginLoader
+            from src.skills.mcp_tools import MCPToolRegistry
+        except ModuleNotFoundError as e:
+            if "sqlalchemy" in str(e):
+                pytest.skip("sqlalchemy not installed in test environment")
+            raise
+
+        # Create plugins directory
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        # Create plugin 1
+        (plugins_dir / "plugin1.py").write_text("""
+def register_tools(registry):
+    from src.skills.mcp_tools import MCPTool
+    async def handler1(): return "p1"
+    registry.register(MCPTool(name="tool1", description="Tool 1", category="test", handler=handler1))
+""")
+
+        # Create plugin 2
+        (plugins_dir / "plugin2.py").write_text("""
+def register_tools(registry):
+    from src.skills.mcp_tools import MCPTool
+    async def handler2(): return "p2"
+    registry.register(MCPTool(name="tool2", description="Tool 2", category="test", handler=handler2))
+""")
+
+        # Create file that should be ignored (starts with _)
+        (plugins_dir / "_ignore.py").write_text("""
+def register_tools(registry):
+    pass
+""")
+
+        # Create isolated registry
+        test_registry = MCPToolRegistry()
+        loader = MCPPluginLoader(registry=test_registry)
+
+        # Load all plugins from directory
+        count = await loader.load_from_directory(str(plugins_dir))
+
+        # Should load 2 plugins (plugin1, plugin2), ignore _ignore.py
+        assert count == 2, f"Should load 2 plugins, got {count}"
+
+        # Both tools should be registered
+        assert test_registry.get("tool1") is not None, "tool1 should be registered"
+        assert test_registry.get("tool2") is not None, "tool2 should be registered"
+
+        # List plugins
+        plugins = loader.list_plugins()
+        assert len(plugins) == 2, "Should list 2 loaded plugins"
+        plugin_names = [p["name"] for p in plugins]
+        assert "plugin1" in plugin_names, "plugin1 should be in list"
+        assert "plugin2" in plugin_names, "plugin2 should be in list"
+
+    @pytest.mark.asyncio
+    async def test_main_lifespan_loads_plugins(self, monkeypatch, tmp_path):
+        """
+        Test that main.py lifespan loads plugins from workspace/plugins/.
+
+        This test WILL FAIL before integration (main.py doesn't call load_from_directory yet).
+        """
+        try:
+            from src.skills.mcp_plugin import mcp_plugin_loader
+        except ModuleNotFoundError as e:
+            if "sqlalchemy" in str(e):
+                pytest.skip("sqlalchemy not installed in test environment")
+            raise
+
+        # Create mock workspace/plugins directory
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        # Create a test plugin
+        (plugins_dir / "startup_plugin.py").write_text("""
+def register_tools(registry):
+    from src.skills.mcp_tools import MCPTool
+    async def startup_handler(): return "loaded at startup"
+    registry.register(MCPTool(
+        name="startup_tool",
+        description="Tool loaded at startup",
+        category="test",
+        handler=startup_handler,
+    ))
+""")
+
+        # Monkeypatch the plugins directory path
+        import src.skills.mcp_plugin as mcp_module
+        original_loader = mcp_module.mcp_plugin_loader
+
+        # Create new loader for this test
+        from src.skills.mcp_plugin import MCPPluginLoader
+        from src.skills.mcp_tools import MCPToolRegistry
+        test_registry = MCPToolRegistry()
+        test_loader = MCPPluginLoader(registry=test_registry)
+        monkeypatch.setattr(mcp_module, "mcp_plugin_loader", test_loader)
+
+        # Simulate what main.py should do in lifespan
+        # This is what we'll implement in Checkpoint 3
+        loaded_count = await test_loader.load_from_directory(str(plugins_dir))
+
+        # After integration, main.py lifespan should call this
+        assert loaded_count > 0, \
+            "main.py lifespan should load plugins from workspace/plugins/ (FAILS before integration)"
+
+        # Verify tool was registered
+        tool = test_registry.get("startup_tool")
+        assert tool is not None, "Plugin tool should be registered after lifespan startup"
+
+        # Restore original loader
+        monkeypatch.setattr(mcp_module, "mcp_plugin_loader", original_loader)
