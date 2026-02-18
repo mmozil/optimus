@@ -100,10 +100,16 @@ async def lifespan(app: FastAPI):
     # Only adds the job if it doesn't already exist (jobs persist across restarts)
     _schedule_daily_standup(cron_scheduler)
 
+    # FASE 0 #16: Start WebChatChannel
+    # Enables REST API + SSE streaming for web-based chat
+    from src.channels.webchat import webchat_channel
+    await webchat_channel.start()
+
     yield
 
-    # Shutdown: stop cron scheduler
+    # Shutdown: stop cron scheduler and webchat channel
     await cron_scheduler.stop()
+    await webchat_channel.stop()
 
 
 app = FastAPI(
@@ -323,6 +329,82 @@ async def get_chat_history(
     messages = conv.get("messages", [])
     # Return last `limit` messages
     return {"status": "success", "data": messages[-limit:]}
+
+
+# ============================================
+# FASE 0 #16: WebChat Channel (SSE Streaming)
+# ============================================
+class WebChatSessionRequest(BaseModel):
+    user_name: str = ""
+
+
+class WebChatMessageRequest(BaseModel):
+    session_id: str
+    message: str
+    context: dict | None = None
+
+
+@app.post("/api/v1/webchat/session")
+async def create_webchat_session(
+    request: WebChatSessionRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new WebChat session. Returns session_id."""
+    from src.channels.webchat import webchat_channel
+
+    session_id = await webchat_channel.create_session(
+        user_id=user.id,
+        user_name=request.user_name or user.email,
+    )
+    return {"status": "success", "session_id": session_id}
+
+
+@app.post("/api/v1/webchat/message")
+async def send_webchat_message(
+    request: WebChatMessageRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Send a message to a WebChat session (async processing)."""
+    from src.channels.webchat import webchat_channel
+
+    await webchat_channel.receive_message(
+        session_id=request.session_id,
+        message=request.message,
+        context=request.context,
+    )
+    return {"status": "success", "message": "processing"}
+
+
+@app.get("/api/v1/webchat/stream/{session_id}")
+async def stream_webchat_responses(
+    session_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Stream responses for a WebChat session via SSE."""
+    from src.channels.webchat import webchat_channel
+    from sse_starlette.sse import EventSourceResponse
+    import json
+
+    async def event_generator():
+        async for chunk in webchat_channel.stream_responses(session_id):
+            yield {
+                "event": chunk.get("type", "token"),
+                "data": json.dumps(chunk),
+            }
+
+    return EventSourceResponse(event_generator())
+
+
+@app.delete("/api/v1/webchat/session/{session_id}")
+async def close_webchat_session(
+    session_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Close a WebChat session."""
+    from src.channels.webchat import webchat_channel
+
+    await webchat_channel.close_session(session_id)
+    return {"status": "success"}
 
 
 # ============================================

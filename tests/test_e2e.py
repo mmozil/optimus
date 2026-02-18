@@ -1469,3 +1469,132 @@ class TestConfirmationServiceIntegration:
         # 1. Call should_confirm() before executing tool
         # 2. If True, skip tool and inform agent
         # 3. Agent tells user: "This action needs your approval"
+
+
+# ============================================
+# FASE 0 #16: WebChatChannel Integration
+# ============================================
+class TestWebChatChannelIntegration:
+    """
+    Tests for WebChatChannel integration with main.py.
+
+    REGRA DE OURO Checkpoint 2: These tests MUST FAIL before integration.
+    They document the expected behavior after WebChatChannel is connected.
+    """
+
+    @pytest.mark.asyncio
+    async def test_webchat_channel_can_start(self):
+        """
+        Test that WebChatChannel can be started and stopped.
+
+        Expected call path (after integration):
+        - main.py lifespan startup → webchat_channel.start()
+        - main.py lifespan shutdown → webchat_channel.stop()
+        """
+        from src.channels.webchat import webchat_channel
+
+        # Start channel
+        await webchat_channel.start()
+        assert webchat_channel.is_running, "WebChatChannel should be running after start()"
+
+        # Stop channel
+        await webchat_channel.stop()
+        assert not webchat_channel.is_running, "WebChatChannel should stop after stop()"
+
+    @pytest.mark.asyncio
+    async def test_webchat_session_lifecycle(self):
+        """
+        Test that sessions can be created and closed.
+
+        Expected call path (after integration):
+        - Client → POST /api/v1/webchat/session → webchat_channel.create_session()
+        - Client → DELETE /api/v1/webchat/session/{id} → webchat_channel.close_session()
+        """
+        from src.channels.webchat import webchat_channel
+
+        await webchat_channel.start()
+
+        # Create session
+        session_id = await webchat_channel.create_session(user_id="test_user_123")
+        assert session_id is not None, "create_session() should return session_id"
+        assert session_id in webchat_channel._sessions, "Session should be tracked in _sessions"
+
+        # Close session
+        await webchat_channel.close_session(session_id)
+        assert session_id not in webchat_channel._sessions, "Session should be removed after close"
+
+        await webchat_channel.stop()
+
+    @pytest.mark.asyncio
+    async def test_webchat_message_processing(self):
+        """
+        Test that messages can be received and processed.
+
+        Expected call path (after integration):
+        - Client → POST /api/v1/webchat/message
+          → webchat_channel.receive_message(session_id, message)
+            → gateway.stream_route_message()
+              → chunks queued to _response_queues[session_id]
+        """
+        from src.channels.webchat import webchat_channel
+        import asyncio
+
+        await webchat_channel.start()
+
+        # Create session
+        session_id = await webchat_channel.create_session(user_id="test_user_123")
+
+        # Receive message (this should trigger gateway processing)
+        # Note: We're testing the integration, not the full gateway flow
+        # The message should be queued for processing
+        await webchat_channel.receive_message(
+            session_id=session_id,
+            message="test message",
+            context={"test": True}
+        )
+
+        # Verify response queue was created
+        assert session_id in webchat_channel._response_queues, \
+            "Response queue should be created for session"
+
+        # Give it a moment to process (webchat spawns background task)
+        await asyncio.sleep(0.1)
+
+        await webchat_channel.close_session(session_id)
+        await webchat_channel.stop()
+
+    @pytest.mark.asyncio
+    async def test_webchat_stream_responses(self):
+        """
+        Test that responses can be streamed via SSE.
+
+        Expected call path (after integration):
+        - Client → GET /api/v1/webchat/stream/{session_id}
+          → webchat_channel.stream_responses(session_id)
+            → yields chunks from _response_queues[session_id]
+        """
+        from src.channels.webchat import webchat_channel
+        import asyncio
+
+        await webchat_channel.start()
+
+        # Create session
+        session_id = await webchat_channel.create_session(user_id="test_user_123")
+
+        # Put a test chunk in the response queue directly
+        queue = webchat_channel._response_queues[session_id]
+        await queue.put({"type": "token", "content": "test"})
+        await queue.put({"type": "done"})
+
+        # Consume stream
+        chunks = []
+        async for chunk in webchat_channel.stream_responses(session_id):
+            chunks.append(chunk)
+            if chunk.get("type") == "done":
+                break
+
+        assert len(chunks) >= 1, "Should receive at least one chunk"
+        assert chunks[0]["content"] == "test", "Should receive the test chunk"
+
+        await webchat_channel.close_session(session_id)
+        await webchat_channel.stop()

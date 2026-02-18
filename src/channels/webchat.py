@@ -27,6 +27,11 @@ class WebChatChannel(BaseChannel):
         self._sessions: dict[str, dict] = {}  # session_id → session data
         self._response_queues: dict[str, asyncio.Queue] = {}  # session_id → response queue
 
+    @property
+    def is_running(self) -> bool:
+        """Check if channel is active."""
+        return self._running
+
     async def start(self):
         """Mark WebChat as active (no external connection needed)."""
         self._running = True
@@ -76,68 +81,101 @@ class WebChatChannel(BaseChannel):
         self._response_queues.pop(session_id, None)
         logger.info(f"[WebChat] Session closed: {session_id}")
 
-    async def receive_message(self, session_id: str, text: str) -> OutgoingMessage | None:
+    async def receive_message(
+        self,
+        session_id: str,
+        message: str,
+        context: dict | None = None,
+    ) -> None:
         """
         Process an incoming message from WebChat.
         Called by the FastAPI POST /chat endpoint.
+
+        Spawns a background task that streams response chunks to the session's queue.
         """
         session = self._sessions.get(session_id)
         if not session:
             logger.warning(f"[WebChat] Unknown session: {session_id}")
-            return None
+            return
 
-        incoming = IncomingMessage(
-            channel=ChannelType.WEBCHAT,
-            chat_id=session_id,
-            user_id=session["user_id"],
-            user_name=session["user_name"],
-            text=text,
-        )
-
-        # Store in session history
+        # Store message in session history
         session["messages"].append({
             "role": "user",
-            "content": text,
+            "content": message,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Process through handler
-        response = await self.handle_incoming(incoming)
+        # FASE 0 #16: Spawn background task to stream response via gateway
+        asyncio.create_task(self._stream_to_queue(session_id, message, context))
 
-        if response:
-            session["messages"].append({
-                "role": "assistant",
-                "content": response.text,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+    async def _stream_to_queue(
+        self,
+        session_id: str,
+        message: str,
+        context: dict | None = None,
+    ):
+        """
+        Background task: streams gateway response chunks to session queue.
 
-        return response
+        Call path:
+        receive_message() → _stream_to_queue() → gateway.stream_route_message()
+        → chunks queued to _response_queues[session_id]
+        """
+        from src.core.gateway import gateway
+
+        session = self._sessions.get(session_id)
+        if not session:
+            return
+
+        queue = self._response_queues.get(session_id)
+        if not queue:
+            return
+
+        try:
+            # Stream response from gateway
+            async for chunk in gateway.stream_route_message(
+                message=message,
+                user_id=session["user_id"],
+                target_agent=None,
+                context=context,
+                file_ids=None,
+            ):
+                await queue.put(chunk)
+
+            # Signal end of stream
+            await queue.put({"type": "done"})
+
+        except Exception as e:
+            logger.error(f"[WebChat] Streaming failed: {e}")
+            await queue.put({"type": "error", "content": str(e)})
 
     async def stream_responses(self, session_id: str):
         """
-        SSE generator for streaming responses.
-        Use with FastAPI StreamingResponse.
+        Stream response chunks for a session.
 
-        Example FastAPI endpoint:
-            @app.get("/chat/{session_id}/stream")
-            async def stream(session_id: str):
-                return StreamingResponse(
-                    webchat.stream_responses(session_id),
-                    media_type="text/event-stream"
-                )
+        Yields dict chunks from the session's response queue.
+        Chunks are in gateway format: {"type": "token", "content": "..."}
+
+        FASE 0 #16: Integrates with gateway.stream_route_message() output.
         """
         queue = self._response_queues.get(session_id)
         if not queue:
-            yield "data: {\"error\": \"session_not_found\"}\n\n"
+            yield {"type": "error", "content": "session_not_found"}
             return
 
         while self._running:
             try:
-                message = await asyncio.wait_for(queue.get(), timeout=30.0)
-                yield f"data: {{\"text\": \"{message.text}\", \"chat_id\": \"{message.chat_id}\"}}\n\n"
+                chunk = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                yield chunk
+
+                # Stop streaming on done/error
+                if chunk.get("type") in ("done", "error"):
+                    break
+
             except asyncio.TimeoutError:
                 # Send keepalive
-                yield ": keepalive\n\n"
+                yield {"type": "keepalive"}
 
     def get_session(self, session_id: str) -> dict | None:
         """Get session data."""
@@ -154,3 +192,7 @@ class WebChatChannel(BaseChannel):
             }
             for s in self._sessions.values()
         ]
+
+
+# Singleton
+webchat_channel = WebChatChannel()
