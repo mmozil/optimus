@@ -1321,6 +1321,129 @@ class TestReflectionEngineIntegration:
 
 
 # ============================================
+# FASE 0 #4 — IntentPredictor Integration
+# ============================================
+class TestIntentPredictorIntegration:
+    """
+    REGRA DE OURO Checkpoint 2 — Tests that FAIL without #4:
+    - IntentPredictor is triggered by CronScheduler weekly (every 168h)
+    - CRON_TRIGGERED(job_name="pattern_learning") → learn_patterns()
+    - Patterns saved to workspace/patterns/<agent>.json
+    - intent_handlers registered on EventBus
+    """
+
+    def test_intent_predictor_exists(self):
+        """Verify singleton exists and is properly initialized."""
+        from src.engine.intent_predictor import intent_predictor
+
+        assert intent_predictor is not None
+        assert hasattr(intent_predictor, "learn_patterns")
+        assert hasattr(intent_predictor, "predict_next")
+        assert hasattr(intent_predictor, "save_patterns")
+
+    @pytest.mark.asyncio
+    async def test_intent_handler_registered_on_eventbus(self):
+        """
+        Test that EventBus has intent handler for CRON_TRIGGERED.
+        Validates that register_intent_handlers() is called in main.py lifespan.
+        """
+        from src.engine.intent_handlers import register_intent_handlers
+        from src.core.events import event_bus, EventType
+
+        register_intent_handlers()
+
+        handlers = event_bus._handlers.get(EventType.CRON_TRIGGERED.value, [])
+        assert len(handlers) > 0, \
+            "No handler for CRON_TRIGGERED! register_intent_handlers() not called."
+
+    @pytest.mark.asyncio
+    async def test_intent_cron_event_learns_patterns(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED(job_name="pattern_learning") learns patterns.
+
+        Call Path:
+          EventBus.emit(CRON_TRIGGERED, {job_name: "pattern_learning"})
+            → on_pattern_learning_triggered(event)
+              → intent_predictor.learn_patterns(agent_name, days=30)
+                → patterns saved to workspace/patterns/<agent>.json
+        """
+        import asyncio
+        from src.engine.intent_handlers import register_intent_handlers
+        from src.engine.intent_predictor import intent_predictor
+        from src.core.events import event_bus, EventType, Event
+
+        # Redirect patterns file writes to tmp_path
+        import src.engine.intent_predictor as ip_module
+        monkeypatch.setattr(ip_module, "PATTERNS_DIR", tmp_path)
+
+        register_intent_handlers()
+
+        # Simulate CronScheduler firing the pattern_learning job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "test_pattern_job",
+                "job_name": "pattern_learning",
+                "payload": "Learn behavioral patterns from last 30 days",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)  # Allow async handler to complete
+
+        # Patterns file must exist (format: <agent>.json)
+        patterns_file = tmp_path / "optimus.json"
+
+        assert patterns_file.exists(), \
+            f"Patterns file not created at {patterns_file}! Handler did not save patterns."
+
+        # Verify it's valid JSON with expected structure
+        import json
+        content = json.loads(patterns_file.read_text(encoding="utf-8"))
+        assert isinstance(content, list), \
+            f"Patterns file must be a JSON array. Got: {type(content)}"
+
+    @pytest.mark.asyncio
+    async def test_intent_cron_ignores_other_jobs(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED events for other jobs are ignored.
+        Only job_name='pattern_learning' triggers pattern learning.
+        """
+        import asyncio
+        from src.engine.intent_handlers import register_intent_handlers
+        from src.core.events import event_bus, EventType, Event
+
+        import src.engine.intent_predictor as ip_module
+        monkeypatch.setattr(ip_module, "PATTERNS_DIR", tmp_path)
+
+        register_intent_handlers()
+
+        # Fire a different cron job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "other_job",
+                "job_name": "some_other_job",
+                "payload": "Do something else",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)
+
+        # No patterns file should be created
+        patterns_file = tmp_path / "optimus.json"
+        assert not patterns_file.exists(), \
+            "Patterns file created for a non-pattern-learning job! Handler must filter by job_name."
+
+
+# ============================================
 # FASE 0 #8: WorkingMemory Integration
 # ============================================
 class TestWorkingMemoryIntegration:

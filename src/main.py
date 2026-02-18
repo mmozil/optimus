@@ -105,6 +105,30 @@ def _schedule_weekly_reflection(cron_scheduler) -> None:
     logger.info(f"FASE 0 #7: Weekly reflection scheduled — runs every 168h (7 days), first run at {cron_scheduler._jobs[job_id].next_run}")
 
 
+def _schedule_pattern_learning(cron_scheduler) -> None:
+    """
+    Schedule weekly pattern learning (every 168h / 7 days).
+    Skips if a job named 'pattern_learning' already exists (jobs persist across restarts).
+    """
+    from src.core.cron_scheduler import CronJob
+
+    existing = [j for j in cron_scheduler.list_jobs() if j.name == "pattern_learning"]
+    if existing:
+        logger.info(f"FASE 0 #4: Pattern learning already scheduled — next run: {existing[0].next_run}")
+        return
+
+    job = CronJob(
+        name="pattern_learning",
+        schedule_type="every",
+        schedule_value="168h",  # 7 days
+        payload="Learn behavioral patterns from last 30 days",
+        delete_after_run=False,
+    )
+    job_id = cron_scheduler.add(job)
+
+    logger.info(f"FASE 0 #4: Pattern learning scheduled — runs every 168h (7 days), first run at {cron_scheduler._jobs[job_id].next_run}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -149,6 +173,11 @@ async def lifespan(app: FastAPI):
     from src.engine.reflection_handlers import register_reflection_handlers
     register_reflection_handlers()
 
+    # FASE 0 #4: Register pattern learning cron handler on EventBus
+    # CronScheduler fires CRON_TRIGGERED(job_name="pattern_learning") → learns user patterns
+    from src.engine.intent_handlers import register_intent_handlers
+    register_intent_handlers()
+
     # FASE 0 #26: Start CronScheduler
     # Background loop checks for due jobs every 60s
     # Emits CRON_TRIGGERED events on EventBus
@@ -165,6 +194,10 @@ async def lifespan(app: FastAPI):
     # FASE 0 #7: Schedule weekly reflection every 168h (7 days)
     # Only adds the job if it doesn't already exist (jobs persist across restarts)
     _schedule_weekly_reflection(cron_scheduler)
+
+    # FASE 0 #4: Schedule weekly pattern learning every 168h (7 days)
+    # Only adds the job if it doesn't already exist (jobs persist across restarts)
+    _schedule_pattern_learning(cron_scheduler)
 
     # FASE 0 #16: Start WebChatChannel
     # Enables REST API + SSE streaming for web-based chat
