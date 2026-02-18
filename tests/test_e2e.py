@@ -2637,3 +2637,166 @@ def register_tools(registry):
 
         # Restore original loader
         monkeypatch.setattr(mcp_module, "mcp_plugin_loader", original_loader)
+
+
+# ============================================
+# FASE 0 #10: Collective Intelligence Integration
+# ============================================
+class TestCollectiveIntelligenceIntegration:
+    """
+    Test Collective Intelligence API endpoints and knowledge sharing.
+    REGRA DE OURO Checkpoint #2: Testes que DEVEM FALHAR sem a feature.
+    """
+
+    @pytest.mark.asyncio
+    async def test_collective_intelligence_exists(self):
+        """Verify Collective Intelligence singleton is importable and initialized."""
+        from src.memory.collective_intelligence import collective_intelligence
+
+        assert collective_intelligence is not None, "collective_intelligence should be initialized"
+        assert hasattr(collective_intelligence, "share"), "Should have share() method"
+        assert hasattr(collective_intelligence, "query"), "Should have query() method"
+        assert hasattr(collective_intelligence, "query_semantic"), "Should have query_semantic() method"
+        assert hasattr(collective_intelligence, "get_stats"), "Should have get_stats() method"
+
+    @pytest.mark.asyncio
+    async def test_knowledge_sharing_and_query(self):
+        """
+        Test basic knowledge sharing and retrieval.
+
+        This validates the core functionality of share() and query().
+        """
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        # Create isolated instance for testing
+        ci = CollectiveIntelligence()
+
+        # Share some knowledge
+        sk1 = ci.share("optimus", "docker", "Docker is great for containerization")
+        sk2 = ci.share("fury", "kubernetes", "K8s is good for orchestration")
+        sk3 = ci.share("dev", "docker", "Always use multi-stage builds")
+
+        assert sk1 is not None, "First share should succeed"
+        assert sk2 is not None, "Second share should succeed"
+        assert sk3 is not None, "Third share should succeed"
+
+        # Query by topic
+        docker_knowledge = ci.query("docker", requesting_agent="tester")
+        assert len(docker_knowledge) == 2, "Should find 2 docker-related learnings"
+
+        k8s_knowledge = ci.query("kubernetes", requesting_agent="tester")
+        assert len(k8s_knowledge) == 1, "Should find 1 kubernetes learning"
+
+        # Verify usage tracking
+        assert "tester" in sk1.used_by, "Usage should be tracked"
+
+    @pytest.mark.asyncio
+    async def test_knowledge_deduplication(self):
+        """
+        Test that duplicate learnings are rejected.
+        """
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+
+        # Share same learning twice
+        sk1 = ci.share("optimus", "testing", "Always write tests first")
+        sk2 = ci.share("fury", "testing", "Always write tests first")  # Duplicate
+
+        assert sk1 is not None, "First share should succeed"
+        assert sk2 is None, "Duplicate share should be rejected"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_share_knowledge(self):
+        """
+        Test POST /api/v1/knowledge/share endpoint.
+
+        This test WILL FAIL before integration (endpoint doesn't exist yet).
+        """
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Share knowledge via API
+        response = client.post("/api/v1/knowledge/share", json={
+            "agent": "optimus",
+            "topic": "fastapi",
+            "learning": "FastAPI is async by default"
+        })
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "POST /knowledge/share should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "source_agent" in data, "Should return SharedKnowledge"
+        assert data["source_agent"] == "optimus", "Should preserve agent name"
+        assert data["topic"] == "fastapi", "Should preserve topic"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_query_knowledge(self):
+        """
+        Test GET /api/v1/knowledge/query endpoint.
+
+        This test WILL FAIL before integration (endpoint doesn't exist yet).
+        """
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+            from src.memory.collective_intelligence import collective_intelligence
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        # Pre-populate some knowledge
+        collective_intelligence.share("optimus", "python", "Use type hints for better IDE support")
+        collective_intelligence.share("fury", "python", "Always use virtual environments")
+
+        client = TestClient(app)
+
+        # Query knowledge via API
+        response = client.get("/api/v1/knowledge/query?topic=python&agent=tester")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /knowledge/query should exist (FAILS before integration)"
+
+        data = response.json()
+        assert isinstance(data, list), "Should return list of knowledge"
+        assert len(data) >= 2, "Should find python-related knowledge"
+
+    @pytest.mark.asyncio
+    async def test_api_endpoint_knowledge_stats(self):
+        """
+        Test GET /api/v1/knowledge/stats endpoint.
+
+        This test WILL FAIL before integration (endpoint doesn't exist yet).
+        """
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            if "fastapi" in str(e):
+                pytest.skip("fastapi not installed in test environment")
+            raise
+
+        client = TestClient(app)
+
+        # Get stats via API
+        response = client.get("/api/v1/knowledge/stats")
+
+        # After integration, this should succeed
+        assert response.status_code == 200, \
+            "GET /knowledge/stats should exist (FAILS before integration)"
+
+        data = response.json()
+        assert "total_shared" in data, "Should include total_shared"
+        assert "unique_agents" in data, "Should include unique_agents"
+        assert "unique_topics" in data, "Should include unique_topics"

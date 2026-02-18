@@ -711,6 +711,10 @@ async def speech_to_text(
 from src.api.v1.routers import debug
 app.include_router(debug.router, prefix="/api/v1/debug", tags=["Debug"])
 
+# FASE 0 #10: Collective Intelligence Knowledge API
+from src.api.knowledge import router as knowledge_router
+app.include_router(knowledge_router)
+
 
 class SearchRequest(BaseModel):
     query: str
