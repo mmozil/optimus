@@ -1695,3 +1695,90 @@ Final thoughts and summary.
         assert "db_session" in params, "Should accept db_session parameter"
         assert "query" in params, "Should accept query parameter"
         assert "source_type" in params, "Should accept source_type parameter (optional)"
+
+
+# ============================================
+# FASE 0 #2: UncertaintyQuantifier Integration
+# ============================================
+class TestUncertaintyQuantifierIntegration:
+    """
+    Tests for UncertaintyQuantifier integration with ReAct loop.
+
+    REGRA DE OURO Checkpoint 2: These tests MUST FAIL before integration.
+    They document the expected behavior after uncertainty_quantifier is connected.
+    """
+
+    @pytest.mark.asyncio
+    async def test_uncertainty_quantifier_exists(self):
+        """
+        Test that UncertaintyQuantifier singleton exists and has expected methods.
+
+        This verifies the module is ready for integration.
+        """
+        from src.engine.uncertainty import uncertainty_quantifier
+
+        assert uncertainty_quantifier is not None, "uncertainty_quantifier singleton should exist"
+        assert hasattr(uncertainty_quantifier, "quantify"), "Should have quantify() method"
+        assert hasattr(uncertainty_quantifier, "record_error"), "Should have record_error() method"
+
+    @pytest.mark.asyncio
+    async def test_react_result_has_uncertainty_field(self):
+        """
+        CRITICAL TEST: Verifies ReActResult dataclass includes uncertainty metadata.
+
+        Expected behavior (after integration):
+        ReActResult contains uncertainty: UncertaintyResult | None field
+        """
+        from src.engine.react_loop import ReActResult
+        import inspect
+
+        # Check ReActResult dataclass has uncertainty field
+        sig = inspect.signature(ReActResult)
+        params = list(sig.parameters.keys())
+
+        assert "uncertainty" in params, \
+            "ReActResult should have uncertainty field after integration"
+
+    @pytest.mark.asyncio
+    async def test_react_loop_calls_uncertainty_quantifier(self):
+        """
+        CRITICAL TEST: Verifies react_loop imports and uses uncertainty_quantifier.
+
+        Expected call path (after integration):
+        react_loop() → final response → uncertainty_quantifier.quantify()
+        """
+        from src.engine import react_loop
+        import inspect
+
+        # Check that react_loop module imports uncertainty_quantifier
+        source = inspect.getsource(react_loop)
+        assert "from src.engine.uncertainty import uncertainty_quantifier" in source, \
+            "react_loop should import uncertainty_quantifier"
+
+        # Check that react_loop function calls quantify
+        func_source = inspect.getsource(react_loop.react_loop)
+        assert "uncertainty_quantifier" in func_source, \
+            "react_loop() should call uncertainty_quantifier methods"
+
+    @pytest.mark.asyncio
+    async def test_uncertainty_self_assessment(self):
+        """
+        Test that uncertainty_quantifier.quantify() performs self-assessment.
+
+        This validates the core calibration logic.
+        """
+        from src.engine.uncertainty import uncertainty_quantifier
+
+        # Test with a confident response
+        result = await uncertainty_quantifier.quantify(
+            query="What is 2+2?",
+            response="2+2 equals 4.",
+            agent_name="test",
+            db_session=None,
+        )
+
+        assert result is not None, "Should return UncertaintyResult"
+        assert 0.0 <= result.confidence <= 1.0, "Confidence should be 0.0-1.0"
+        assert 0.0 <= result.calibrated_confidence <= 1.0, "Calibrated confidence should be 0.0-1.0"
+        assert result.risk_level in ["low", "medium", "high"], "Risk level should be valid"
+        assert len(result.recommendation) > 0, "Should provide recommendation"

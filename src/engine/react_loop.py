@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from src.core.config import settings
 from src.core.security import Permission, security_manager
 from src.infra.metrics import MCP_TOOL_CALLS, MCP_TOOL_ERRORS, MCP_TOOL_LATENCY
+from src.engine.uncertainty import uncertainty_quantifier  # FASE 0 #2
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class ReActResult:
     timed_out: bool = False
     max_iterations_reached: bool = False
     tool_calls_total: int = 0
+    uncertainty: dict | None = None  # FASE 0 #2: Uncertainty quantification metadata
 
 
 # ============================================
@@ -193,13 +195,42 @@ async def react_loop(
                 type="reason",
                 result=result.get("content", ""),
             ))
+
+            # FASE 0 #2: Quantify uncertainty before returning
+            final_content = result.get("content", "")
+            uncertainty_result = None
+            try:
+                uncertainty_result = await uncertainty_quantifier.quantify(
+                    query=user_message,
+                    response=final_content,
+                    agent_name=agent_name,
+                    db_session=None,  # TODO: pass db_session from context if available
+                )
+
+                # Add uncertainty metadata to result
+                uncertainty_dict = {
+                    "confidence": uncertainty_result.confidence,
+                    "calibrated_confidence": uncertainty_result.calibrated_confidence,
+                    "risk_level": uncertainty_result.risk_level,
+                    "recommendation": uncertainty_result.recommendation,
+                }
+
+                # If high risk, prepend warning to content
+                if uncertainty_result.risk_level == "high":
+                    final_content = f"{uncertainty_result.recommendation}\n\n---\n\n{final_content}"
+
+            except Exception as e:
+                logger.warning(f"Uncertainty quantification failed: {e}")
+                uncertainty_dict = None
+
             return ReActResult(
-                content=result.get("content", ""),
+                content=final_content,
                 model=last_model,
                 usage=total_usage,
                 steps=steps,
                 iterations=iteration,
                 tool_calls_total=tool_calls_total,
+                uncertainty=uncertainty_dict,
             )
 
         # d. ACT: execute each tool call (with self-correction)
