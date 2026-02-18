@@ -273,6 +273,11 @@ async def settings_page():
     """Serve the Settings page."""
     return FileResponse("src/static/settings.html")
 
+@app.get("/agents.html")
+async def agents_page():
+    """Serve the Agents management page."""
+    return FileResponse("src/static/agents.html")
+
 
 # ============================================
 # Health & Status (público)
@@ -781,6 +786,10 @@ app.include_router(a2a_router)
 # FASE 1: User Profile & Preferences API
 from src.api.user_profile import router as user_profile_router
 app.include_router(user_profile_router)
+
+# FASE 3: Dynamic Agents API
+from src.api.agents_api import router as agents_router
+app.include_router(agents_router)
 
 
 class SearchRequest(BaseModel):

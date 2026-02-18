@@ -1762,38 +1762,58 @@ Gateway: loads agent_id from user_agents
 Agent responds with custom SOUL
 ```
 
+### ✅ CONCLUÍDO — 2026-02-18
+
+#### Call Path Real (Implementado)
+```
+User acessa /agents.html
+    ↓
+GET /api/v1/agents → lista system agents + custom agents do user
+    ↓
+User clica "+ Novo Agente" → modal com nome, role, soul_md
+    ↓
+POST /api/v1/agents {display_name, role, soul_md, model, temperature}
+    ↓
+DB insert user_agents (agent_slug gerado automaticamente)
+    ↓
+GET /api/v1/agents → dropdown no chat.html atualizado dinamicamente
+    ↓
+User seleciona agent no dropdown → gateway.route_message(target_agent=slug)
+    ↓
+gateway._load_user_agent_from_db(slug, user_id) → AgentFactory.create(soul_content=soul_md)
+    ↓
+Agent responde com SOUL customizada
+```
+
 ### Passos
 
-1. [ ] **Database**: tabela `user_agents` (user_id, agent_name, skill, soul_md)
-   - Chamado por: migrations on startup
+1. [x] **Database**: tabela `user_agents` (user_id, agent_slug UNIQUE, display_name, role, soul_md, model, temperature)
+   - `migrations/015_user_agents.sql`
 
-2. [ ] **API**: `POST/GET/DELETE /api/v1/agents`
-   - Chamado por: UI "Meus Agentes"
-   - Test: create → appears in list → delete → gone
+2. [x] **API**: `GET/POST/GET/{slug}/PUT/{slug}/DELETE/{slug} /api/v1/agents`
+   - `src/api/agents_api.py` — CRUD completo + lista system agents + user agents
+   - Soft-delete: `is_active = FALSE`
+   - `AgentFactory.remove(slug)` forçando reload no próximo request
 
-3. [ ] **AgentFactory**: load agent from `user_agents`
-   - Chamado por: gateway.route_message()
-   - Before: "sempre Optimus"
-   - After: "qual agent o user selecionou?"
+3. [x] **AgentFactory + Gateway**: load dinâmico de user_agents do DB
+   - `gateway._load_user_agent_from_db()` — fallback quando agent não está no registry
+   - `soul_content` injetado na criação do AgentFactory
 
-4. [ ] **Frontend**: "Meus Agentes" page
-   - Chamado por: sidebar menu
-   - Form: name, skill (dropdown), clone SOUL template
+4. [x] **Frontend**: página `/agents.html` — grid view system + custom agents
+   - Modal criação/edição com soul_md textarea
+   - Auto-fill SOUL_TEMPLATE quando nome é preenchido
 
-5. [ ] **Chat UI**: agent selector dropdown
-   - Chamado por: user clicking selector
-   - Reloads history para esse agent
+5. [x] **Chat UI**: dropdown atualizado com agents customizados
+   - `index.html` corrigido: slugs corretos (`analyst`, `writer`, `guardian`)
+   - JS dinâmico: busca `GET /api/v1/agents` e popula dropdown com custom agents
 
-**Teste E2E:**
-```
-1. User cria agent "CodeReviewer" (skill: "code-review")
-2. Agent aparece no dropdown
-3. User seleciona CodeReviewer
-4. Envia: "review meu código Python"
-5. CodeReviewer responde com SOUL de especialista
-6. User deleta CodeReviewer
-7. Desaparece da UI
-```
+**Arquivos criados/modificados:**
+- `migrations/015_user_agents.sql`
+- `src/api/agents_api.py`
+- `src/static/agents.html`
+- `src/core/gateway.py` — `_load_user_agent_from_db()`
+- `src/static/index.html` — dropdown corrigido + dynamic loading
+- `src/main.py` — router + `/agents.html` route registrados
 
 ---
 
@@ -1929,7 +1949,7 @@ Optimus roda em sua máquina
 | **FASE 1** | ✅ Concluído | onboarding.html → /api/v1/user/preferences → contexto injetado no agente |
 | **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
-| **FASE 3** | ⬜ Pending | User cria agent → aparece em chat → responde |
+| **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
 | **FASE 4A** | ⬜ Pending | User: "leia meus emails" → gmail_search() funciona |
 | **FASE 5** | ✅ Validar | Voice recording + transcription + response |
 | **FASE 6** | ⬜ Pending | Documento comparativo + gaps fechados |

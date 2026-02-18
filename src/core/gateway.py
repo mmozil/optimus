@@ -257,6 +257,9 @@ class Gateway:
             # 7. Process
             if target_agent:
                 agent = AgentFactory.get(target_agent)
+                # FASE 3: If not found in registry, try loading from user_agents DB
+                if not agent:
+                    agent = await self._load_user_agent_from_db(target_agent, user_id)
                 if not agent:
                     return {
                         "content": f"❌ Agent '{target_agent}' não encontrado. Agents disponíveis: {[a['name'] for a in AgentFactory.list_agents()]}",
@@ -281,6 +284,46 @@ class Gateway:
                 span.set_attribute("response.model", result.get("model", ""))
 
             return result
+
+    async def _load_user_agent_from_db(self, agent_slug: str, user_id: str) -> "BaseAgent | None":
+        """
+        FASE 3: Dynamically load a user-created agent from the DB.
+        Creates and registers it in AgentFactory for subsequent requests.
+        """
+        try:
+            from src.infra.supabase_client import get_async_session
+            from sqlalchemy import text as sql_text
+
+            async with get_async_session() as session:
+                result = await session.execute(
+                    sql_text("""
+                        SELECT display_name, role, soul_md, model, temperature
+                        FROM user_agents
+                        WHERE agent_slug = :slug AND user_id = :uid AND is_active = TRUE
+                    """),
+                    {"slug": agent_slug, "uid": user_id},
+                )
+                row = result.fetchone()
+
+            if not row:
+                return None
+
+            display_name, role, soul_md, model, temperature = row
+            agent = AgentFactory.create(
+                name=agent_slug,
+                role=role or "Specialist",
+                level="specialist",
+                model=model or "gemini-2.5-flash",
+                model_chain="default",
+                temperature=float(temperature) if temperature else 0.7,
+                soul_content=soul_md or "",
+            )
+            logger.info(f"FASE 3: Loaded user agent '{display_name}' (slug={agent_slug}) from DB")
+            return agent
+
+        except Exception as e:
+            logger.warning(f"Failed to load user agent '{agent_slug}' from DB: {e}")
+            return None
 
     async def stream_route_message(
         self,

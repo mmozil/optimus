@@ -463,10 +463,13 @@
         <div class="header-right">
             <select id="agent-select" class="agent-select">
                 <option value="optimus">Optimus</option>
-                <option value="shuri">Shuri · Análise</option>
-                <option value="loki">Loki · Escrita</option>
-                <option value="vision">Vision · Guardião</option>
+                <option value="friday">Friday · Dev</option>
+                <option value="fury">Fury · Pesquisa</option>
+                <option value="analyst">Shuri · Análise</option>
+                <option value="writer">Loki · Escrita</option>
+                <option value="guardian">Vision · Guardião</option>
             </select>
+            <a href="/agents.html" class="btn-settings">🤖 Agentes</a>
             <a href="/settings.html" class="btn-settings">⚙ Config</a>
             <button class="btn-logout" id="logout-btn">Sair</button>
         </div>
@@ -544,6 +547,29 @@
         const micToast      = document.getElementById('mic-toast');
 
         document.getElementById('logout-btn').addEventListener('click', auth.logout);
+
+        // ── Load custom agents into dropdown ─────────────────────────
+        (async () => {
+            try {
+                const resp = await fetch('/api/v1/agents', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!resp.ok) return;
+                const agents = await resp.json();
+                const custom = agents.filter(a => !a.system);
+                if (custom.length === 0) return;
+                const sep = document.createElement('option');
+                sep.disabled = true;
+                sep.textContent = '── Meus Agentes ──';
+                agentSelect.appendChild(sep);
+                custom.forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.slug;
+                    opt.textContent = a.display_name + ' · Custom';
+                    agentSelect.appendChild(opt);
+                });
+            } catch (_) {}
+        })();
 
         // ── PWA ─────────────────────────────────────────────────────
         if ('serviceWorker' in navigator) {

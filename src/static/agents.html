@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meus Agentes — Optimus</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    .back-btn {
+      color: #666;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .back-btn:hover { color: #aaa; }
+
+    .header-title { font-size: 16px; font-weight: 600; color: #fff; }
+
+    .header-actions { margin-left: auto; }
+
+    .btn {
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #888;
+      border: 1px solid #333;
+    }
+
+    .btn-ghost:hover { color: #ccc; border-color: #555; }
+
+    .btn-danger {
+      background: transparent;
+      color: #f66;
+      border: 1px solid #5a2020;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+
+    .btn-danger:hover { background: #2a1010; }
+
+    .container {
+      max-width: 900px;
+      margin: 32px auto;
+      padding: 0 24px;
+    }
+
+    .alert {
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .alert-success { background: #0f2a1a; border: 1px solid #1a5a30; color: #5af098; }
+    .alert-error { background: #2a1010; border: 1px solid #5a2020; color: #f88; }
+
+    /* Agent Grid */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .agent-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+
+    .agent-card:hover { border-color: #3a3a3a; }
+
+    .agent-card.system { opacity: 0.7; }
+
+    .agent-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #2a2a2a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .agent-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .agent-role {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .agent-badge {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: #222;
+      color: #888;
+      border: 1px solid #333;
+    }
+
+    .agent-badge.custom {
+      background: #0f1e2a;
+      color: #5ab0f0;
+      border-color: #1a4060;
+    }
+
+    .agent-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: #555;
+      font-size: 14px;
+      background: #1a1a1a;
+      border: 1px dashed #2a2a2a;
+      border-radius: 12px;
+    }
+
+    .empty-state p:first-child { font-size: 28px; margin-bottom: 8px; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 11px 13px;
+      font-size: 14px;
+      color: #e0e0e0;
+      margin-bottom: 18px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus, textarea:focus { border-color: #555; }
+
+    textarea {
+      resize: vertical;
+      min-height: 200px;
+      font-family: 'Fira Code', 'Menlo', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" class="back-btn">← Chat</a>
+    <span class="header-title">Meus Agentes</span>
+    <div class="header-actions">
+      <button class="btn" onclick="openCreateModal()">+ Novo Agente</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="alert-success" class="alert alert-success"></div>
+    <div id="alert-error" class="alert alert-error"></div>
+
+    <!-- System Agents -->
+    <div class="section-header">
+      <div class="section-title">Agentes do Sistema</div>
+    </div>
+    <div class="agents-grid" id="system-agents-grid">
+      <div style="color:#555;font-size:13px;">Carregando...</div>
+    </div>
+
+    <!-- Custom Agents -->
+    <div class="section-header">
+      <div class="section-title">Meus Agentes Personalizados</div>
+    </div>
+    <div class="agents-grid" id="custom-agents-grid">
+      <div style="color:#555;font-size:13px;">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-title" id="modal-title">Novo Agente</div>
+
+      <label for="m-name">Nome do agente</label>
+      <input type="text" id="m-name" placeholder="Ex: CodeReviewer, Analista de Dados...">
+
+      <div class="field-row">
+        <div>
+          <label for="m-role">Função / Especialidade</label>
+          <input type="text" id="m-role" placeholder="Ex: Code Review Specialist">
+        </div>
+        <div>
+          <label for="m-model">Modelo</label>
+          <select id="m-model">
+            <option value="gemini-2.5-flash">Gemini Flash (rápido)</option>
+            <option value="gemini-2.5-pro">Gemini Pro (avançado)</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="m-soul">SOUL.md — Personalidade e instruções</label>
+      <textarea id="m-soul" placeholder="Descreva a personalidade, responsabilidades e formato de resposta do agente..."></textarea>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+        <button class="btn" id="modal-save-btn" onclick="saveAgent()">Criar Agente</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('optimus_token');
+    if (!token) window.location.href = '/login.html';
+
+    const API = '/api/v1/agents';
+    let editingSlug = null;
+
+    const SOUL_TEMPLATE = (name, role) => `# SOUL.md — ${name}\n\n**Nome:** ${name}\n**Papel:** ${role}\n**Nível:** specialist\n\n## Personalidade\nDescreva a personalidade aqui.\n\n## O Que Você Faz\n- Responsabilidade 1\n- Responsabilidade 2\n\n## O Que Você NÃO Faz\n- Fora do escopo 1\n\n## Formato de Resposta\n- Use markdown quando relevante\n- Seja claro e objetivo\n`;
+
+    function headers() {
+      return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+    }
+
+    function showSuccess(msg) {
+      const el = document.getElementById('alert-success');
+      document.getElementById('alert-error').style.display = 'none';
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('alert-error');
+      document.getElementById('alert-success').style.display = 'none';
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function agentInitial(name) {
+      return name.charAt(0).toUpperCase();
+    }
+
+    function renderSystemAgent(agent) {
+      return `
+        <div class="agent-card system">
+          <div class="agent-avatar">${agentInitial(agent.display_name)}</div>
+          <div class="agent-name">${agent.display_name}</div>
+          <div class="agent-role">${agent.role}</div>
+          <span class="agent-badge">Sistema</span>
+        </div>`;
+    }
+
+    function renderCustomAgent(agent) {
+      return `
+        <div class="agent-card" id="card-${agent.slug}">
+          <div class="agent-avatar">${agentInitial(agent.display_name)}</div>
+          <div class="agent-name">${agent.display_name}</div>
+          <div class="agent-role">${agent.role}</div>
+          <span class="agent-badge custom">Personalizado</span>
+          <div class="agent-actions">
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="openEditModal('${agent.slug}')">Editar</button>
+            <button class="btn btn-danger" onclick="deleteAgent('${agent.slug}', '${agent.display_name}')">Deletar</button>
+          </div>
+        </div>`;
+    }
+
+    async function loadAgents() {
+      try {
+        const resp = await fetch(API, { headers: headers() });
+        if (resp.status === 401) { window.location.href = '/login.html'; return; }
+        const agents = await resp.json();
+
+        const system = agents.filter(a => a.system);
+        const custom = agents.filter(a => !a.system);
+
+        document.getElementById('system-agents-grid').innerHTML =
+          system.map(renderSystemAgent).join('') || '<div style="color:#555">Nenhum.</div>';
+
+        document.getElementById('custom-agents-grid').innerHTML = custom.length
+          ? custom.map(renderCustomAgent).join('')
+          : `<div class="empty-state">
+              <p>🤖</p>
+              <p>Nenhum agente personalizado ainda.</p>
+              <p style="margin-top:8px">Clique em <strong>+ Novo Agente</strong> para criar o seu.</p>
+            </div>`;
+      } catch (e) {
+        showError('Erro ao carregar agentes: ' + e.message);
+      }
+    }
+
+    function openCreateModal() {
+      editingSlug = null;
+      document.getElementById('modal-title').textContent = 'Novo Agente';
+      document.getElementById('modal-save-btn').textContent = 'Criar Agente';
+      document.getElementById('m-name').value = '';
+      document.getElementById('m-role').value = '';
+      document.getElementById('m-model').value = 'gemini-2.5-flash';
+      document.getElementById('m-soul').value = '';
+      document.getElementById('modal-overlay').classList.add('open');
+    }
+
+    async function openEditModal(slug) {
+      try {
+        const resp = await fetch(`${API}/${slug}`, { headers: headers() });
+        const agent = await resp.json();
+        editingSlug = slug;
+        document.getElementById('modal-title').textContent = 'Editar Agente';
+        document.getElementById('modal-save-btn').textContent = 'Salvar';
+        document.getElementById('m-name').value = agent.display_name;
+        document.getElementById('m-role').value = agent.role;
+        document.getElementById('m-model').value = agent.model || 'gemini-2.5-flash';
+        document.getElementById('m-soul').value = agent.soul_md;
+        document.getElementById('modal-overlay').classList.add('open');
+      } catch (e) {
+        showError('Erro ao carregar agente: ' + e.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('open');
+      editingSlug = null;
+    }
+
+    // Auto-fill soul template when name/role changes
+    document.getElementById('m-name').addEventListener('blur', () => {
+      if (!editingSlug && !document.getElementById('m-soul').value.trim()) {
+        const name = document.getElementById('m-name').value.trim();
+        const role = document.getElementById('m-role').value.trim() || 'Specialist';
+        if (name) document.getElementById('m-soul').value = SOUL_TEMPLATE(name, role);
+      }
+    });
+
+    async function saveAgent() {
+      const name = document.getElementById('m-name').value.trim();
+      const role = document.getElementById('m-role').value.trim() || 'Specialist';
+      const model = document.getElementById('m-model').value;
+      const soul_md = document.getElementById('m-soul').value.trim();
+
+      if (!name) { showError('Informe o nome do agente.'); return; }
+
+      const btn = document.getElementById('modal-save-btn');
+      btn.disabled = true;
+
+      try {
+        let resp;
+        if (editingSlug) {
+          resp = await fetch(`${API}/${editingSlug}`, {
+            method: 'PUT',
+            headers: headers(),
+            body: JSON.stringify({ display_name: name, role, model, soul_md }),
+          });
+        } else {
+          resp = await fetch(API, {
+            method: 'POST',
+            headers: headers(),
+            body: JSON.stringify({ display_name: name, role, soul_md, model }),
+          });
+        }
+
+        if (!resp.ok) throw new Error((await resp.json()).detail || 'Erro');
+
+        closeModal();
+        showSuccess(editingSlug ? 'Agente atualizado!' : `Agente "${name}" criado!`);
+        await loadAgents();
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteAgent(slug, name) {
+      if (!confirm(`Deletar o agente "${name}"? Esta ação não pode ser desfeita.`)) return;
+      try {
+        const resp = await fetch(`${API}/${slug}`, { method: 'DELETE', headers: headers() });
+        if (!resp.ok && resp.status !== 204) throw new Error('Erro ao deletar');
+        showSuccess(`Agente "${name}" deletado.`);
+        await loadAgents();
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    // Close modal on overlay click
+    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal-overlay')) closeModal();
+    });
+
+    loadAgents();
+  </script>
+</body>
+</html>
