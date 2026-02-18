@@ -456,6 +456,157 @@ class MCPToolRegistry:
             requires_approval=True,
         ))
 
+        self.register(MCPTool(
+            name="gmail_mark_read",
+            description="Mark a Gmail email as read. Use gmail_read first to get the message_id.",
+            category="google",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "Gmail message ID (from gmail_read results)"},
+            },
+            handler=self._tool_gmail_mark_read,
+        ))
+
+        self.register(MCPTool(
+            name="gmail_archive",
+            description="Archive a Gmail email (removes from inbox, keeps in All Mail). Use gmail_read first to get the message_id.",
+            category="google",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "Gmail message ID (from gmail_read results)"},
+            },
+            handler=self._tool_gmail_archive,
+        ))
+
+        self.register(MCPTool(
+            name="gmail_trash",
+            description=(
+                "Move a Gmail email to trash. "
+                "IMPORTANT: Show the email subject/sender and wait for user confirmation before calling."
+            ),
+            category="google",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "Gmail message ID (from gmail_read results)"},
+            },
+            handler=self._tool_gmail_trash,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="gmail_add_label",
+            description="Add a label to a Gmail email. Creates the label if it doesn't exist. Use gmail_read first to get the message_id.",
+            category="google",
+            parameters={
+                "message_id": {"type": "string", "required": True, "description": "Gmail message ID (from gmail_read results)"},
+                "label_name": {"type": "string", "required": True, "description": "Label name to add (e.g. 'Importante', 'Projeto X')"},
+            },
+            handler=self._tool_gmail_add_label,
+        ))
+
+        # --- Google Calendar Write (FASE 4B) ---
+        self.register(MCPTool(
+            name="calendar_create_event",
+            description=(
+                "Create a new Google Calendar event. "
+                "IMPORTANT: ALWAYS show the full event details (title, date, time, attendees) and wait for user approval BEFORE calling. "
+                "Use ISO 8601 format for times, e.g. '2026-02-20T14:00:00'."
+            ),
+            category="google",
+            parameters={
+                "title": {"type": "string", "required": True, "description": "Event title/summary"},
+                "start_time": {"type": "string", "required": True, "description": "Start datetime ISO 8601 (e.g. '2026-02-20T14:00:00')"},
+                "end_time": {"type": "string", "required": True, "description": "End datetime ISO 8601 (e.g. '2026-02-20T15:00:00')"},
+                "description": {"type": "string", "description": "Event description or notes"},
+                "location": {"type": "string", "description": "Event location"},
+                "attendees": {"type": "string", "description": "Comma-separated attendee emails (e.g. 'alice@gmail.com,bob@gmail.com')"},
+                "timezone": {"type": "string", "description": "IANA timezone (default: America/Sao_Paulo)"},
+            },
+            handler=self._tool_calendar_create_event,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="calendar_update_event",
+            description=(
+                "Update an existing Google Calendar event. "
+                "Use calendar_search or calendar_list first to get the event ID. "
+                "IMPORTANT: Show proposed changes and wait for user confirmation before calling."
+            ),
+            category="google",
+            parameters={
+                "event_id": {"type": "string", "required": True, "description": "Google Calendar event ID (from calendar_search or calendar_list)"},
+                "title": {"type": "string", "description": "New event title (leave empty to keep current)"},
+                "start_time": {"type": "string", "description": "New start datetime ISO 8601 (leave empty to keep current)"},
+                "end_time": {"type": "string", "description": "New end datetime ISO 8601 (leave empty to keep current)"},
+                "description": {"type": "string", "description": "New description (leave empty to keep current)"},
+                "location": {"type": "string", "description": "New location (leave empty to keep current)"},
+            },
+            handler=self._tool_calendar_update_event,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="calendar_delete_event",
+            description=(
+                "Delete a Google Calendar event permanently. "
+                "IMPORTANT: ALWAYS confirm the event title and date with the user before deleting — this action is irreversible."
+            ),
+            category="google",
+            parameters={
+                "event_id": {"type": "string", "required": True, "description": "Google Calendar event ID (from calendar_search or calendar_list)"},
+            },
+            handler=self._tool_calendar_delete_event,
+            requires_approval=True,
+        ))
+
+        # --- Google Drive Write (FASE 4B) ---
+        self.register(MCPTool(
+            name="drive_upload_text",
+            description=(
+                "Upload a text file to Google Drive. "
+                "IMPORTANT: Show the file name and content preview to the user and wait for approval before calling."
+            ),
+            category="google",
+            parameters={
+                "filename": {"type": "string", "required": True, "description": "File name (e.g. 'Relatorio Q1.txt')"},
+                "content": {"type": "string", "required": True, "description": "Text content of the file"},
+                "folder_id": {"type": "string", "description": "Parent folder ID (optional, uploads to root if not specified)"},
+            },
+            handler=self._tool_drive_upload_text,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="drive_create_folder",
+            description="Create a new folder in Google Drive.",
+            category="google",
+            parameters={
+                "folder_name": {"type": "string", "required": True, "description": "Folder name"},
+                "parent_id": {"type": "string", "description": "Parent folder ID (optional, creates in root if not specified)"},
+            },
+            handler=self._tool_drive_create_folder,
+        ))
+
+        # --- Google Contacts (FASE 4B) ---
+        self.register(MCPTool(
+            name="contacts_search",
+            description="Search Google Contacts by name, email or phone number. Returns contact details.",
+            category="google",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Search term (name, email, or phone)"},
+                "max_results": {"type": "integer", "description": "Max contacts to return (default: 10)"},
+            },
+            handler=self._tool_contacts_search,
+        ))
+
+        self.register(MCPTool(
+            name="contacts_list",
+            description="List Google Contacts sorted by name. Returns names, emails and phone numbers.",
+            category="google",
+            parameters={
+                "max_results": {"type": "integer", "description": "Max contacts to return (default: 20)"},
+            },
+            handler=self._tool_contacts_list,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -948,6 +1099,100 @@ class MCPToolRegistry:
         return await google_oauth_service.gmail_send(
             user_id, to=to, subject=subject, body=body, cc=cc
         )
+
+    async def _tool_gmail_mark_read(self, message_id: str) -> str:
+        """Mark a Gmail message as read."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_mark_read(user_id, message_id=message_id)
+
+    async def _tool_gmail_archive(self, message_id: str) -> str:
+        """Archive a Gmail message."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_archive(user_id, message_id=message_id)
+
+    async def _tool_gmail_trash(self, message_id: str) -> str:
+        """Move a Gmail message to trash (requires user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_trash(user_id, message_id=message_id)
+
+    async def _tool_gmail_add_label(self, message_id: str, label_name: str) -> str:
+        """Add a label to a Gmail message."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.gmail_add_label(user_id, message_id=message_id, label_name=label_name)
+
+    async def _tool_calendar_create_event(
+        self,
+        title: str,
+        start_time: str,
+        end_time: str,
+        description: str = "",
+        location: str = "",
+        attendees: str = "",
+        timezone: str = "America/Sao_Paulo",
+    ) -> str:
+        """Create a Google Calendar event (requires user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.calendar_create_event(
+            user_id, title=title, start_time=start_time, end_time=end_time,
+            description=description, location=location, attendees=attendees, timezone=timezone,
+        )
+
+    async def _tool_calendar_update_event(
+        self,
+        event_id: str,
+        title: str = "",
+        start_time: str = "",
+        end_time: str = "",
+        description: str = "",
+        location: str = "",
+        timezone: str = "America/Sao_Paulo",
+    ) -> str:
+        """Update a Google Calendar event (requires user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.calendar_update_event(
+            user_id, event_id=event_id, title=title, start_time=start_time, end_time=end_time,
+            description=description, location=location, timezone=timezone,
+        )
+
+    async def _tool_calendar_delete_event(self, event_id: str) -> str:
+        """Delete a Google Calendar event (requires user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.calendar_delete_event(user_id, event_id=event_id)
+
+    async def _tool_drive_upload_text(self, filename: str, content: str, folder_id: str = "") -> str:
+        """Upload a text file to Google Drive (requires user approval)."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.drive_upload_text(
+            user_id, filename=filename, content=content, folder_id=folder_id
+        )
+
+    async def _tool_drive_create_folder(self, folder_name: str, parent_id: str = "") -> str:
+        """Create a folder in Google Drive."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.drive_create_folder(
+            user_id, folder_name=folder_name, parent_id=parent_id
+        )
+
+    async def _tool_contacts_search(self, query: str, max_results: int = 10) -> str:
+        """Search Google Contacts."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.contacts_search(user_id, query=query, max_results=max_results)
+
+    async def _tool_contacts_list(self, max_results: int = 20) -> str:
+        """List Google Contacts."""
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+        return await google_oauth_service.contacts_list(user_id, max_results=max_results)
 
     def _current_user_id(self) -> str:
         """Get current user_id from execution context (set by ReAct loop)."""

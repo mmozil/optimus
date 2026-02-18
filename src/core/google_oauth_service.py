@@ -28,8 +28,10 @@ logger = logging.getLogger(__name__)
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",       # FASE 4A: enviar e-mails
-    "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",     # FASE 4B: marcar lido, arquivar, labels, lixo
+    "https://www.googleapis.com/auth/calendar",         # FASE 4B: criar/editar/deletar eventos (inclui readonly)
+    "https://www.googleapis.com/auth/drive",            # FASE 4B: criar/editar arquivos (inclui readonly)
+    "https://www.googleapis.com/auth/contacts.readonly", # FASE 4B: buscar contatos
     "openid",
     "email",
     "profile",
@@ -385,6 +387,87 @@ class GoogleOAuthService:
             logger.error(f"Gmail send error for user {user_id}: {e}")
             return f"❌ Erro ao enviar e-mail: {e}"
 
+    async def gmail_mark_read(self, user_id: str, message_id: str) -> str:
+        """Mark a Gmail message as read (removes UNREAD label)."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("gmail", "v1", credentials=creds)
+            service.users().messages().modify(
+                userId="me", id=message_id,
+                body={"removeLabelIds": ["UNREAD"]},
+            ).execute()
+            return f"✅ Email `{message_id}` marcado como lido."
+        except Exception as e:
+            logger.error(f"Gmail mark_read error for user {user_id}: {e}")
+            return f"❌ Erro ao marcar email como lido: {e}"
+
+    async def gmail_archive(self, user_id: str, message_id: str) -> str:
+        """Archive a Gmail message (removes from INBOX)."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("gmail", "v1", credentials=creds)
+            service.users().messages().modify(
+                userId="me", id=message_id,
+                body={"removeLabelIds": ["INBOX"]},
+            ).execute()
+            return f"✅ Email `{message_id}` arquivado com sucesso."
+        except Exception as e:
+            logger.error(f"Gmail archive error for user {user_id}: {e}")
+            return f"❌ Erro ao arquivar email: {e}"
+
+    async def gmail_trash(self, user_id: str, message_id: str) -> str:
+        """Move a Gmail message to trash."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("gmail", "v1", credentials=creds)
+            service.users().messages().trash(userId="me", id=message_id).execute()
+            return f"✅ Email `{message_id}` movido para a lixeira."
+        except Exception as e:
+            logger.error(f"Gmail trash error for user {user_id}: {e}")
+            return f"❌ Erro ao mover email para lixeira: {e}"
+
+    async def gmail_add_label(self, user_id: str, message_id: str, label_name: str) -> str:
+        """Add a label to a Gmail message (creates label if not exists)."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("gmail", "v1", credentials=creds)
+
+            # Find existing label by name (case-insensitive)
+            labels_resp = service.users().labels().list(userId="me").execute()
+            label_id = None
+            for lbl in labels_resp.get("labels", []):
+                if lbl["name"].lower() == label_name.lower():
+                    label_id = lbl["id"]
+                    break
+
+            # Create label if not found
+            if not label_id:
+                new_lbl = service.users().labels().create(
+                    userId="me", body={"name": label_name}
+                ).execute()
+                label_id = new_lbl["id"]
+
+            service.users().messages().modify(
+                userId="me", id=message_id,
+                body={"addLabelIds": [label_id]},
+            ).execute()
+            return f"✅ Label **{label_name}** adicionada ao email `{message_id}`."
+        except Exception as e:
+            logger.error(f"Gmail add_label error for user {user_id}: {e}")
+            return f"❌ Erro ao adicionar label: {e}"
+
     # ============================================
     # Google Calendar
     # ============================================
@@ -465,6 +548,138 @@ class GoogleOAuthService:
             logger.error(f"Calendar search error for user {user_id}: {e}")
             return f"❌ Erro ao pesquisar Calendar: {e}"
 
+    async def calendar_create_event(
+        self,
+        user_id: str,
+        title: str,
+        start_time: str,
+        end_time: str,
+        description: str = "",
+        location: str = "",
+        attendees: str = "",
+        timezone: str = "America/Sao_Paulo",
+    ) -> str:
+        """
+        Create a Google Calendar event.
+
+        Args:
+            start_time: ISO 8601 datetime, e.g. '2026-02-20T14:00:00'
+            end_time: ISO 8601 datetime, e.g. '2026-02-20T15:00:00'
+            attendees: Comma-separated email addresses
+            timezone: IANA timezone (default: America/Sao_Paulo)
+
+        IMPORTANT: Agent must show event details and get user approval before calling.
+        """
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("calendar", "v3", credentials=creds)
+
+            event_body: dict = {
+                "summary": title,
+                "description": description,
+                "location": location,
+                "start": {"dateTime": start_time, "timeZone": timezone},
+                "end": {"dateTime": end_time, "timeZone": timezone},
+            }
+
+            if attendees:
+                event_body["attendees"] = [
+                    {"email": e.strip()} for e in attendees.split(",") if e.strip()
+                ]
+
+            result = service.events().insert(
+                calendarId="primary", body=event_body
+            ).execute()
+
+            event_id = result.get("id", "")
+            link = result.get("htmlLink", "")
+            logger.info(f"Calendar event created for user {user_id}: {title} ({event_id})")
+            return (
+                f"✅ Evento criado com sucesso!\n"
+                f"📅 **{title}**\n"
+                f"🕐 Início: {start_time}\n"
+                f"🕑 Fim: {end_time}\n"
+                f"🆔 ID: `{event_id}`\n"
+                f"🔗 {link}"
+            )
+        except Exception as e:
+            logger.error(f"Calendar create_event error for user {user_id}: {e}")
+            return f"❌ Erro ao criar evento: {e}"
+
+    async def calendar_update_event(
+        self,
+        user_id: str,
+        event_id: str,
+        title: str = "",
+        start_time: str = "",
+        end_time: str = "",
+        description: str = "",
+        location: str = "",
+        timezone: str = "America/Sao_Paulo",
+    ) -> str:
+        """
+        Update an existing Google Calendar event (partial update — only provided fields changed).
+
+        IMPORTANT: Agent must show changes and get user approval before calling.
+        """
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("calendar", "v3", credentials=creds)
+
+            # Fetch existing event to do a full update (PATCH requires same structure)
+            event = service.events().get(calendarId="primary", eventId=event_id).execute()
+
+            if title:
+                event["summary"] = title
+            if description:
+                event["description"] = description
+            if location:
+                event["location"] = location
+            if start_time:
+                event["start"] = {"dateTime": start_time, "timeZone": timezone}
+            if end_time:
+                event["end"] = {"dateTime": end_time, "timeZone": timezone}
+
+            result = service.events().update(
+                calendarId="primary", eventId=event_id, body=event
+            ).execute()
+
+            logger.info(f"Calendar event updated for user {user_id}: {event_id}")
+            return (
+                f"✅ Evento atualizado!\n"
+                f"📅 **{result.get('summary', event_id)}**\n"
+                f"🆔 ID: `{event_id}`\n"
+                f"🔗 {result.get('htmlLink', '')}"
+            )
+        except Exception as e:
+            logger.error(f"Calendar update_event error for user {user_id}: {e}")
+            return f"❌ Erro ao atualizar evento: {e}"
+
+    async def calendar_delete_event(self, user_id: str, event_id: str) -> str:
+        """
+        Delete a Google Calendar event by ID.
+
+        IMPORTANT: Agent must confirm with user before calling — action is irreversible.
+        """
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            service = build("calendar", "v3", credentials=creds)
+            service.events().delete(calendarId="primary", eventId=event_id).execute()
+            logger.info(f"Calendar event deleted for user {user_id}: {event_id}")
+            return f"✅ Evento `{event_id}` deletado com sucesso do Google Calendar."
+        except Exception as e:
+            logger.error(f"Calendar delete_event error for user {user_id}: {e}")
+            return f"❌ Erro ao deletar evento: {e}"
+
     # ============================================
     # Google Drive
     # ============================================
@@ -543,6 +758,179 @@ class GoogleOAuthService:
         except Exception as e:
             logger.error(f"Drive read error for user {user_id}: {e}")
             return f"❌ Erro ao ler arquivo do Drive: {e}"
+
+
+    async def drive_upload_text(
+        self,
+        user_id: str,
+        filename: str,
+        content: str,
+        folder_id: str = "",
+    ) -> str:
+        """
+        Upload a text file to Google Drive (creates as plain text or Google Doc).
+
+        IMPORTANT: Agent must show file name + content preview and get user approval before calling.
+        """
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+            from googleapiclient.http import MediaInMemoryUpload
+
+            service = build("drive", "v3", credentials=creds)
+
+            media = MediaInMemoryUpload(content.encode("utf-8"), mimetype="text/plain")
+            file_meta: dict = {"name": filename}
+            if folder_id:
+                file_meta["parents"] = [folder_id]
+
+            result = service.files().create(
+                body=file_meta, media_body=media, fields="id,name,webViewLink"
+            ).execute()
+
+            logger.info(f"Drive file uploaded for user {user_id}: {filename} (id={result.get('id')})")
+            return (
+                f"✅ Arquivo enviado para o Google Drive!\n"
+                f"📄 **{filename}**\n"
+                f"🆔 ID: `{result.get('id', '')}`\n"
+                f"🔗 {result.get('webViewLink', '')}"
+            )
+        except Exception as e:
+            logger.error(f"Drive upload_text error for user {user_id}: {e}")
+            return f"❌ Erro ao enviar arquivo para Drive: {e}"
+
+    async def drive_create_folder(
+        self,
+        user_id: str,
+        folder_name: str,
+        parent_id: str = "",
+    ) -> str:
+        """Create a folder in Google Drive."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("drive", "v3", credentials=creds)
+            file_meta: dict = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+            }
+            if parent_id:
+                file_meta["parents"] = [parent_id]
+
+            result = service.files().create(
+                body=file_meta, fields="id,name,webViewLink"
+            ).execute()
+
+            logger.info(f"Drive folder created for user {user_id}: {folder_name}")
+            return (
+                f"✅ Pasta criada no Google Drive!\n"
+                f"📁 **{folder_name}**\n"
+                f"🆔 ID: `{result.get('id', '')}`\n"
+                f"🔗 {result.get('webViewLink', '')}"
+            )
+        except Exception as e:
+            logger.error(f"Drive create_folder error for user {user_id}: {e}")
+            return f"❌ Erro ao criar pasta no Drive: {e}"
+
+    # ============================================
+    # Google Contacts (People API)
+    # ============================================
+
+    async def contacts_search(self, user_id: str, query: str, max_results: int = 10) -> str:
+        """Search Google Contacts by name, email or phone."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("people", "v1", credentials=creds)
+            results = service.people().searchContacts(
+                query=query,
+                readMask="names,emailAddresses,phoneNumbers,organizations",
+                pageSize=max_results,
+            ).execute()
+
+            contacts = results.get("results", [])
+            if not contacts:
+                return f"👤 Nenhum contato encontrado para '{query}'."
+
+            lines = [f"👤 **{len(contacts)} contato(s) encontrado(s) para '{query}':**\n"]
+            for item in contacts:
+                person = item.get("person", {})
+                names = person.get("names", [{}])
+                name = names[0].get("displayName", "Sem nome") if names else "Sem nome"
+
+                emails = person.get("emailAddresses", [])
+                email_str = ", ".join(e.get("value", "") for e in emails) if emails else ""
+
+                phones = person.get("phoneNumbers", [])
+                phone_str = ", ".join(p.get("value", "") for p in phones) if phones else ""
+
+                orgs = person.get("organizations", [])
+                org_str = orgs[0].get("name", "") if orgs else ""
+
+                line = f"- **{name}**"
+                if email_str:
+                    line += f"\n  📧 {email_str}"
+                if phone_str:
+                    line += f"\n  📞 {phone_str}"
+                if org_str:
+                    line += f"\n  🏢 {org_str}"
+                lines.append(line)
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Contacts search error for user {user_id}: {e}")
+            return f"❌ Erro ao buscar contatos: {e}"
+
+    async def contacts_list(self, user_id: str, max_results: int = 20) -> str:
+        """List Google Contacts (sorted by name)."""
+        creds = await self.get_credentials(user_id)
+        if not creds:
+            return _NOT_CONNECTED_MSG
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("people", "v1", credentials=creds)
+            results = service.people().connections().list(
+                resourceName="people/me",
+                pageSize=max_results,
+                personFields="names,emailAddresses,phoneNumbers",
+                sortOrder="FIRST_NAME_ASCENDING",
+            ).execute()
+
+            connections = results.get("connections", [])
+            if not connections:
+                return "👤 Nenhum contato encontrado na sua agenda Google."
+
+            lines = [f"👤 **{len(connections)} contato(s):**\n"]
+            for person in connections:
+                names = person.get("names", [{}])
+                name = names[0].get("displayName", "Sem nome") if names else "Sem nome"
+
+                emails = person.get("emailAddresses", [])
+                email_str = emails[0].get("value", "") if emails else ""
+
+                phones = person.get("phoneNumbers", [])
+                phone_str = phones[0].get("value", "") if phones else ""
+
+                line = f"- **{name}**"
+                if email_str:
+                    line += f" | {email_str}"
+                if phone_str:
+                    line += f" | {phone_str}"
+                lines.append(line)
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Contacts list error for user {user_id}: {e}")
+            return f"❌ Erro ao listar contatos: {e}"
 
 
 def _extract_email_body(payload: dict) -> str:

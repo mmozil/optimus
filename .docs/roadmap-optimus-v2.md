@@ -1876,11 +1876,68 @@ Agent pode ler arquivos, executar scripts
 6. [x] **Calendar**: validado em produção ✅ (acessou eventos com sucesso)
 
 7. [ ] **Agent E2E completo**: "envie e-mail para X" → draft → aprovação → gmail_send()
-   - ⚠️ **Requer reconexão Google** — scope `gmail.send` adicionado ao OAuth
+   - ⚠️ **Requer reconexão Google** — scopes expandidos na FASE 4B (gmail.modify, calendar, drive, contacts)
    - Ação: settings.html → Desconectar Google → Conectar Google → autorizar novos escopos
-   - Após reconexão: testar envio via chat
+   - Após reconexão: testar envio + mark_read + criar evento via chat
 
-8. [ ] **Drive E2E**: aguardando propagação da API Google Drive
+8. [ ] **Drive E2E**: aguardando propagação da API Google Drive (depois de reconectar OAuth)
+
+---
+
+### FASE 4B: Google Features Full Suite ✅ IMPLEMENTADO
+
+**Call path:**
+```
+ReAct loop → LLM escolhe tool (ex: calendar_create_event)
+  → mcp_tools._tool_calendar_create_event(title, start_time, end_time)
+    → google_oauth_service.calendar_create_event(user_id, ...)
+      → get_credentials(user_id) → refresh se expirado
+        → Calendar API → cria evento
+          → retorna confirmação com ID + link
+```
+
+**Novos Scopes adicionados** (requer 1 reconexão OAuth do usuário):
+- `gmail.modify` — marcar lido, arquivar, labels, lixo
+- `calendar` — criar, editar, deletar eventos (inclui readonly)
+- `drive` — upload, criar pastas (inclui readonly)
+- `contacts.readonly` — buscar contatos
+
+**Novos Métodos** (`src/core/google_oauth_service.py`):
+- Gmail modify: `gmail_mark_read()`, `gmail_archive()`, `gmail_trash()`, `gmail_add_label()`
+- Calendar write: `calendar_create_event()`, `calendar_update_event()`, `calendar_delete_event()`
+- Drive write: `drive_upload_text()`, `drive_create_folder()`
+- Google Contacts: `contacts_search()`, `contacts_list()`
+
+**Novos MCP Tools** (`src/skills/mcp_tools.py`) — 12 tools novos:
+- `gmail_mark_read`, `gmail_archive`, `gmail_trash`, `gmail_add_label`
+- `calendar_create_event` ⚠️, `calendar_update_event` ⚠️, `calendar_delete_event` ⚠️
+- `drive_upload_text` ⚠️, `drive_create_folder`
+- `contacts_search`, `contacts_list`
+- *(⚠️ = requires_approval=True)*
+
+**Novos Testes** (`tests/test_e2e.py` — `TestGoogleOAuthIntegration`):
+- `test_gmail_modify_scope_configured`
+- `test_calendar_write_scope_configured`
+- `test_drive_write_scope_configured`
+- `test_contacts_scope_configured`
+- `test_gmail_modify_methods_exist`
+- `test_calendar_write_methods_exist`
+- `test_drive_write_methods_exist`
+- `test_contacts_methods_exist`
+- `test_gmail_mark_read_without_tokens` — graceful fallback
+- `test_gmail_archive_without_tokens` — graceful fallback
+- `test_gmail_trash_without_tokens` — graceful fallback
+- `test_calendar_create_event_without_tokens` — graceful fallback
+- `test_calendar_delete_event_without_tokens` — graceful fallback
+- `test_drive_upload_text_without_tokens` — graceful fallback
+- `test_contacts_search_without_tokens` — graceful fallback
+- `test_all_google_fase4b_tools_registered` — 19 tools registrados
+- `test_destructive_google_tools_require_approval` — 6 tools com approval
+
+**Ação necessária para ativar:**
+1. Deploy do commit
+2. settings.html → Desconectar Google → Conectar Google → autorizar NOVOS escopos
+3. Testar: "marque este email como lido", "crie um evento", "crie uma pasta no Drive"
 
 ---
 
@@ -2023,6 +2080,7 @@ Optimus roda em sua máquina
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
 | **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
 | **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | Calendar ✅; gmail_send impl; aguarda reconexão OAuth + Drive propagação |
+| **FASE 4B** | 🟡 Impl ✅ / Prod ⚠️ | 12 novos tools (Gmail modify, Calendar write, Drive write, Contacts); requer reconexão OAuth |
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
 | **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
 | **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |

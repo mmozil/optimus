@@ -3895,7 +3895,7 @@ class TestGoogleOAuthIntegration:
         ]
 
         registered = mcp_tools.list_tools()
-        registered_names = [t["name"] for t in registered]
+        registered_names = [t.name for t in registered]
 
         for tool_name in expected_tools:
             assert tool_name in registered_names, \
@@ -3974,7 +3974,7 @@ class TestGoogleOAuthIntegration:
     def test_gmail_send_tool_registered(self):
         """gmail_send MCP tool must be registered in mcp_tools registry."""
         from src.skills.mcp_tools import mcp_tools
-        tool = mcp_tools.get_tool("gmail_send")
+        tool = mcp_tools.get("gmail_send")
         assert tool is not None, "gmail_send tool not registered in mcp_tools"
         assert tool.requires_approval is True, \
             "gmail_send must require approval (never auto-send)"
@@ -3993,6 +3993,177 @@ class TestGoogleOAuthIntegration:
         )
         assert "conectado" in result.lower() or "❌" in result or "⚠️" in result, \
             f"Expected not-connected message, got: {result}"
+
+    # ============================================
+    # FASE 4B: Google Features Full Suite
+    # ============================================
+
+    def test_gmail_modify_scope_configured(self):
+        """gmail.modify scope must be present in SCOPES list (required for mark_read, archive, labels)."""
+        from src.core.google_oauth_service import SCOPES
+        assert any("gmail.modify" in s for s in SCOPES), \
+            "gmail.modify scope missing — cannot mark read, archive, or add labels"
+
+    def test_calendar_write_scope_configured(self):
+        """calendar (write) scope must be present (required for create/update/delete events)."""
+        from src.core.google_oauth_service import SCOPES
+        # Accept either full 'calendar' or 'calendar.events'
+        assert any("googleapis.com/auth/calendar" in s and "readonly" not in s for s in SCOPES), \
+            "calendar write scope missing — cannot create/update/delete events"
+
+    def test_drive_write_scope_configured(self):
+        """drive (write) scope must be present (required for upload, create folder)."""
+        from src.core.google_oauth_service import SCOPES
+        assert any("googleapis.com/auth/drive" in s and "readonly" not in s for s in SCOPES), \
+            "drive write scope missing — cannot upload files or create folders"
+
+    def test_contacts_scope_configured(self):
+        """contacts.readonly scope must be present."""
+        from src.core.google_oauth_service import SCOPES
+        assert any("contacts" in s for s in SCOPES), \
+            "contacts.readonly scope missing — cannot search Google Contacts"
+
+    def test_gmail_modify_methods_exist(self):
+        """All gmail modify methods must be implemented on GoogleOAuthService."""
+        from src.core.google_oauth_service import GoogleOAuthService
+        svc = GoogleOAuthService()
+        for method in ("gmail_mark_read", "gmail_archive", "gmail_trash", "gmail_add_label"):
+            assert hasattr(svc, method), f"GoogleOAuthService.{method}() not implemented"
+
+    def test_calendar_write_methods_exist(self):
+        """All calendar write methods must be implemented on GoogleOAuthService."""
+        from src.core.google_oauth_service import GoogleOAuthService
+        svc = GoogleOAuthService()
+        for method in ("calendar_create_event", "calendar_update_event", "calendar_delete_event"):
+            assert hasattr(svc, method), f"GoogleOAuthService.{method}() not implemented"
+
+    def test_drive_write_methods_exist(self):
+        """All drive write methods must be implemented on GoogleOAuthService."""
+        from src.core.google_oauth_service import GoogleOAuthService
+        svc = GoogleOAuthService()
+        for method in ("drive_upload_text", "drive_create_folder"):
+            assert hasattr(svc, method), f"GoogleOAuthService.{method}() not implemented"
+
+    def test_contacts_methods_exist(self):
+        """Contacts methods must be implemented on GoogleOAuthService."""
+        from src.core.google_oauth_service import GoogleOAuthService
+        svc = GoogleOAuthService()
+        for method in ("contacts_search", "contacts_list"):
+            assert hasattr(svc, method), f"GoogleOAuthService.{method}() not implemented"
+
+    @pytest.mark.asyncio
+    async def test_gmail_mark_read_without_tokens(self):
+        """gmail_mark_read() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.gmail_mark_read(
+            user_id="00000000-0000-0000-0000-000000000099",
+            message_id="fake_message_id",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_gmail_archive_without_tokens(self):
+        """gmail_archive() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.gmail_archive(
+            user_id="00000000-0000-0000-0000-000000000099",
+            message_id="fake_message_id",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_gmail_trash_without_tokens(self):
+        """gmail_trash() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.gmail_trash(
+            user_id="00000000-0000-0000-0000-000000000099",
+            message_id="fake_message_id",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_calendar_create_event_without_tokens(self):
+        """calendar_create_event() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.calendar_create_event(
+            user_id="00000000-0000-0000-0000-000000000099",
+            title="Test Meeting",
+            start_time="2026-02-20T14:00:00",
+            end_time="2026-02-20T15:00:00",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_calendar_delete_event_without_tokens(self):
+        """calendar_delete_event() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.calendar_delete_event(
+            user_id="00000000-0000-0000-0000-000000000099",
+            event_id="fake_event_id",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_drive_upload_text_without_tokens(self):
+        """drive_upload_text() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.drive_upload_text(
+            user_id="00000000-0000-0000-0000-000000000099",
+            filename="test.txt",
+            content="Test content",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    @pytest.mark.asyncio
+    async def test_contacts_search_without_tokens(self):
+        """contacts_search() without connection returns graceful fallback."""
+        from src.core.google_oauth_service import google_oauth_service
+        result = await google_oauth_service.contacts_search(
+            user_id="00000000-0000-0000-0000-000000000099",
+            query="João",
+        )
+        assert "⚠️" in result or "conectado" in result.lower() or "❌" in result
+
+    def test_all_google_fase4b_tools_registered(self):
+        """All FASE 4B Google tools must be registered in mcp_tools."""
+        from src.skills.mcp_tools import mcp_tools
+
+        expected_tools = [
+            # FASE 4A (original)
+            "gmail_read", "gmail_get", "gmail_send",
+            "calendar_list", "calendar_search",
+            "drive_search", "drive_read",
+            # FASE 4B (new)
+            "gmail_mark_read", "gmail_archive", "gmail_trash", "gmail_add_label",
+            "calendar_create_event", "calendar_update_event", "calendar_delete_event",
+            "drive_upload_text", "drive_create_folder",
+            "contacts_search", "contacts_list",
+        ]
+
+        registered_names = [t.name for t in mcp_tools.list_tools()]
+
+        for tool_name in expected_tools:
+            assert tool_name in registered_names, \
+                f"MCP tool '{tool_name}' should be registered (FASE 4 Google integration)"
+
+    def test_destructive_google_tools_require_approval(self):
+        """Destructive Google tools must have requires_approval=True."""
+        from src.skills.mcp_tools import mcp_tools
+
+        approval_required = [
+            "gmail_send",
+            "gmail_trash",
+            "calendar_create_event",
+            "calendar_update_event",
+            "calendar_delete_event",
+            "drive_upload_text",
+        ]
+
+        for tool_name in approval_required:
+            tool = mcp_tools.get(tool_name)
+            assert tool is not None, f"Tool '{tool_name}' not found"
+            assert tool.requires_approval is True, \
+                f"Tool '{tool_name}' must have requires_approval=True"
 
 
 # ============================================
