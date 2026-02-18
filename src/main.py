@@ -263,6 +263,16 @@ async def register_page():
     """Serve the Register page."""
     return FileResponse("src/static/register.html")
 
+@app.get("/onboarding.html")
+async def onboarding_page():
+    """Serve the Onboarding page."""
+    return FileResponse("src/static/onboarding.html")
+
+@app.get("/settings.html")
+async def settings_page():
+    """Serve the Settings page."""
+    return FileResponse("src/static/settings.html")
+
 
 # ============================================
 # Health & Status (público)
