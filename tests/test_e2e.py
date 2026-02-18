@@ -1193,6 +1193,134 @@ class TestProactiveResearcherIntegration:
 
 
 # ============================================
+# FASE 0 #7 — ReflectionEngine Integration
+# ============================================
+class TestReflectionEngineIntegration:
+    """
+    REGRA DE OURO Checkpoint 2 — Tests that FAIL without #7:
+    - ReflectionEngine is triggered by CronScheduler weekly (every 168h)
+    - CRON_TRIGGERED(job_name="weekly_reflection") → analyze_recent()
+    - Report saved to workspace/memory/reflections/<agent>/<year-W<week>>.md
+    - reflection_handlers registered on EventBus
+    """
+
+    def test_reflection_engine_exists(self):
+        """Verify singleton exists and is properly initialized."""
+        from src.engine.reflection_engine import reflection_engine
+
+        assert reflection_engine is not None
+        assert hasattr(reflection_engine, "analyze_recent")
+        assert hasattr(reflection_engine, "save_report")
+
+    @pytest.mark.asyncio
+    async def test_reflection_handler_registered_on_eventbus(self):
+        """
+        Test that EventBus has reflection handler for CRON_TRIGGERED.
+        Validates that register_reflection_handlers() is called in main.py lifespan.
+        """
+        from src.engine.reflection_handlers import register_reflection_handlers
+        from src.core.events import event_bus, EventType
+
+        register_reflection_handlers()
+
+        handlers = event_bus._handlers.get(EventType.CRON_TRIGGERED.value, [])
+        assert len(handlers) > 0, \
+            "No handler for CRON_TRIGGERED! register_reflection_handlers() not called."
+
+    @pytest.mark.asyncio
+    async def test_reflection_cron_event_generates_report(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED(job_name="weekly_reflection") generates a report.
+
+        Call Path:
+          EventBus.emit(CRON_TRIGGERED, {job_name: "weekly_reflection"})
+            → on_reflection_cron_triggered(event)
+              → reflection_engine.analyze_recent(agent_name, days=7)
+                → report saved to workspace/memory/reflections/<agent>/<year-W<week>>.md
+        """
+        import asyncio
+        from datetime import datetime, timezone
+        from src.engine.reflection_handlers import register_reflection_handlers
+        from src.engine.reflection_engine import reflection_engine
+        from src.core.events import event_bus, EventType, Event
+
+        # Redirect reflection file writes to tmp_path
+        import src.engine.reflection_engine as re_module
+        monkeypatch.setattr(re_module, "REFLECTIONS_DIR", tmp_path)
+
+        register_reflection_handlers()
+
+        # Simulate CronScheduler firing the weekly_reflection job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "test_reflection_job",
+                "job_name": "weekly_reflection",
+                "payload": "Analyze agent performance and generate reflection report",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)  # Allow async handler to complete
+
+        # Report file must exist (format: <agent>/<year-W<week>>.md)
+        agent_dir = tmp_path / "optimus"
+        assert agent_dir.exists(), \
+            f"Agent directory not created at {agent_dir}! Handler did not save report."
+
+        # Find the week report file
+        week = datetime.now(timezone.utc).strftime("%Y-W%W")
+        report_file = agent_dir / f"{week}.md"
+
+        assert report_file.exists(), \
+            f"Reflection report not created at {report_file}! Handler did not save report."
+
+        content = report_file.read_text(encoding="utf-8")
+        assert "Reflection Report" in content, \
+            f"Report content missing expected header. Got: {content[:200]}"
+
+    @pytest.mark.asyncio
+    async def test_reflection_cron_ignores_other_jobs(self, tmp_path, monkeypatch):
+        """
+        Test that CRON_TRIGGERED events for other jobs are ignored.
+        Only job_name='weekly_reflection' triggers reflection analysis.
+        """
+        import asyncio
+        from datetime import datetime, timezone
+        from src.engine.reflection_handlers import register_reflection_handlers
+        from src.core.events import event_bus, EventType, Event
+
+        import src.engine.reflection_engine as re_module
+        monkeypatch.setattr(re_module, "REFLECTIONS_DIR", tmp_path)
+
+        register_reflection_handlers()
+
+        # Fire a different cron job
+        await event_bus.emit(Event(
+            type=EventType.CRON_TRIGGERED,
+            source="cron_scheduler",
+            data={
+                "job_id": "other_job",
+                "job_name": "some_other_job",
+                "payload": "Do something else",
+                "session_target": "main",
+                "channel": "",
+                "run_count": 1,
+            },
+        ))
+
+        await asyncio.sleep(0.1)
+
+        # No report directory should be created
+        agent_dir = tmp_path / "optimus"
+        assert not agent_dir.exists(), \
+            "Reflection report created for a non-reflection job! Handler must filter by job_name."
+
+
+# ============================================
 # FASE 0 #8: WorkingMemory Integration
 # ============================================
 class TestWorkingMemoryIntegration:
