@@ -299,8 +299,88 @@ class BaseAgent:
         return "\n".join(parts)
 
     async def think(self, query: str, context: dict | None = None) -> dict:
-        """Process with enhanced thinking (ToT-ready). Override in subclasses."""
+        """
+        Process with enhanced thinking using Tree-of-Thought for complex queries.
+
+        FASE 0 #1: Integrates tot_service for deep analysis.
+        - Simple queries → process() normal
+        - Complex queries → tot_service.deep_think() → 3 strategies + synthesis
+        """
+        # FASE 0 #1: Detect complexity
+        if self._is_complex_query(query):
+            logger.info(f"Agent '{self.name}' detected complex query — using ToT deep thinking")
+
+            from src.engine.tot_service import tot_service
+
+            # Build context for ToT
+            tot_context = ""
+            if context:
+                if context.get("working_memory"):
+                    tot_context += f"## Memória de Trabalho\n{context['working_memory']}\n\n"
+                if context.get("task"):
+                    tot_context += f"## Task Atual\n{context['task']}\n\n"
+
+            # Deep ToT analysis (3 strategies: CONSERVATIVE, CREATIVE, ANALYTICAL)
+            tot_result = await tot_service.deep_think(
+                query=query,
+                context=tot_context,
+                agent_soul=self.config.soul_md,
+            )
+
+            logger.info(
+                f"Agent '{self.name}' ToT complete",
+                extra={"props": {
+                    "agent": self.name,
+                    "confidence": tot_result["confidence"],
+                    "best_strategy": tot_result["best_strategy"],
+                    "model": tot_result["model"],
+                }}
+            )
+
+            # Return enriched response with ToT meta-analysis
+            return {
+                "content": tot_result["synthesis"],
+                "agent": self.name,
+                "model": tot_result["model"],
+                "rate_limited": False,
+                "usage": {"prompt_tokens": 0, "completion_tokens": tot_result["total_tokens"]},
+                "tot_meta": {
+                    "confidence": tot_result["confidence"],
+                    "thinking_level": tot_result["thinking_level"],
+                    "best_strategy": tot_result["best_strategy"],
+                    "hypotheses_count": len(tot_result["hypotheses"]),
+                },
+            }
+
+        # Simple query → use normal processing
         return await self.process(query, context)
+
+    def _is_complex_query(self, query: str) -> bool:
+        """
+        Detect if query requires deep Tree-of-Thought analysis.
+
+        Triggers:
+        - Keywords: analise, compare, avalie, decida, planeje, etc.
+        - Long queries (> 200 chars)
+        """
+        complex_keywords = [
+            "analise", "analisar", "compare", "comparar", "avalie", "avaliar",
+            "decida", "decidir", "planeje", "planejar", "estratégia", "estratégico",
+            "prós e contras", "trade-off", "escolha", "escolher",
+            "recomende", "recomendar", "sugira", "sugerir", "sugestão",
+            "arquitetura", "design", "desenho", "estrutura",
+            "vantagens e desvantagens", "melhor opção", "qual escolher",
+        ]
+
+        query_lower = query.lower()
+
+        # Check keywords
+        has_keyword = any(kw in query_lower for kw in complex_keywords)
+
+        # Check length (long queries often need deep analysis)
+        is_long = len(query) > 200
+
+        return has_keyword or is_long
 
     def __repr__(self) -> str:
         return f"<Agent name='{self.name}' role='{self.role}' level='{self.level}'>"
