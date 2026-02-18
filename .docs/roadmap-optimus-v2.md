@@ -380,6 +380,8 @@ Admin → PUT /api/v1/voice/config {stt_provider, tts_provider}
 5. **PUT /api/v1/voice/config** - update STT/TTS providers
 
 **Providers suportados:**
+- ✅ **Groq Whisper** - STT via Groq API (requires GROQ_API_KEY) — **PADRÃO**
+- ✅ **Edge TTS** - TTS gratuito Microsoft (pt-BR-AntonioNeural) — **PADRÃO**
 - ✅ **Whisper (OpenAI)** - STT via OpenAI API (requires OPENAI_API_KEY)
 - ✅ **ElevenLabs** - TTS de alta qualidade (requires ELEVENLABS_API_KEY)
 - ✅ **Google Cloud** - STT/TTS (stub, requires google-cloud-speech SDK)
@@ -387,31 +389,36 @@ Admin → PUT /api/v1/voice/config {stt_provider, tts_provider}
 
 **Features:**
 - ✅ **Wake word detection** - detecta "optimus", "hey optimus" no áudio
-- ✅ **Wake word stripping** - remove wake word do comando antes de processar
+- ✅ **Sempre roteia** - qualquer áudio é enviado ao agente (sem wake word obrigatória)
 - ✅ **Gateway integration** - roteamento automático para agentes
 - ✅ **Base64 encoding** - áudio transportado via JSON (web-friendly)
 - ✅ **Provider switching** - troca STT/TTS em runtime via API
 - ✅ **Graceful fallback** - usa stub se API keys não configuradas
+- ✅ **Audio player UI** - mensagens de voz exibidas como `<audio>` player no chat
+- ✅ **Auto-play** - resposta TTS toca automaticamente
+- ✅ **Transcript toggle** - clique em 📝 para ver/esconder transcrição
+- ✅ **Uncertainty strip** - remove "🔴 Confiança baixa" antes do TTS
 
 **Teste E2E:**
 - `test_voice_interface_exists`: verifica singleton
 - `test_voice_stt_basic`: testa STT com stub provider
 - `test_voice_tts_basic`: testa TTS com stub provider
 - `test_wake_word_detection`: testa detecção e stripping de wake word
+- `test_edge_tts_provider`: testa Edge TTS provider (gratuito)
 - `test_api_endpoint_voice_listen`: POST /listen
 - `test_api_endpoint_voice_speak`: POST /speak
 - `test_api_endpoint_voice_command`: POST /command
 - `test_api_endpoint_voice_config`: GET /config
-- **9/9 testes** (4 básicos PASSANDO, 5 API VALIDADOS em produção) ✅
+- **10/10 testes** ✅
 
 **Teste em produção VALIDADO:**
 ```
-✅ GET /config → {"stt_provider": "stub", "tts_provider": "stub", "wake_words": [...]} (status 200)
-✅ POST /listen → {"text": "[transcribed: 15 bytes]", "wake_word_detected": false} (status 200)
-✅ POST /speak → Audio base64 retornado (status 200)
-✅ POST /command → {"transcribed_text": "...", "wake_word_detected": false, ...} (status 200)
-✅ Stub provider funcionando (sem API keys configuradas)
-✅ Pipeline completo: STT → wake word detection → gateway routing → TTS
+✅ Groq Whisper STT → transcreve áudio real em português
+✅ Edge TTS → sintetiza resposta em pt-BR-AntonioNeural (MP3)
+✅ Auto-play → resposta toca automaticamente no browser
+✅ Audio player → mensagens exibidas como <audio controls> no chat
+✅ Transcript toggle → clique em 📝 mostra texto transcrito
+✅ Pipeline: gravação → base64 → Groq STT → agente Gemini → Edge TTS → auto-play
 ```
 
 **Exemplo uso esperado:**
