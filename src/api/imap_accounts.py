@@ -12,10 +12,10 @@ Call path:
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from src.infra.auth_middleware import CurrentUser
+from src.infra.auth_middleware import CurrentUser, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ async def list_providers():
 
 
 @router.get("/accounts")
-async def list_accounts(current_user: CurrentUser):
+async def list_accounts(current_user: CurrentUser = Depends(get_current_user)):
     """List all IMAP/SMTP accounts for the current user (no passwords)."""
     from src.core.imap_service import imap_service
     accounts = await imap_service.list_accounts(str(current_user.id))
@@ -66,7 +66,7 @@ async def list_accounts(current_user: CurrentUser):
 
 
 @router.post("/accounts")
-async def add_account(req: AddAccountRequest, current_user: CurrentUser):
+async def add_account(req: AddAccountRequest, current_user: CurrentUser = Depends(get_current_user)):
     """
     Add (or update) an IMAP/SMTP email account.
     Password is encrypted with Fernet before storage.
@@ -98,7 +98,7 @@ async def add_account(req: AddAccountRequest, current_user: CurrentUser):
 
 
 @router.delete("/accounts/{email:path}")
-async def remove_account(email: str, current_user: CurrentUser):
+async def remove_account(email: str, current_user: CurrentUser = Depends(get_current_user)):
     """Remove an IMAP/SMTP account."""
     from src.core.imap_service import imap_service
     ok = await imap_service.remove_account(str(current_user.id), email)
@@ -108,7 +108,7 @@ async def remove_account(email: str, current_user: CurrentUser):
 
 
 @router.post("/accounts/test")
-async def test_connection(req: TestConnectionRequest, current_user: CurrentUser):
+async def test_connection(req: TestConnectionRequest, current_user: CurrentUser = Depends(get_current_user)):
     """Test IMAP connection for a configured account."""
     from src.core.imap_service import imap_service
     result = await imap_service.test_connection(str(current_user.id), req.email)
