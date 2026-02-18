@@ -74,7 +74,7 @@
 |---|--------|---------------------|--------|
 | 1 | `tot_service` | Agent.think() ou ReAct deep mode | [ ] |
 | 2 | `uncertainty_quantifier` | ReAct pós-resposta (calibração) | [ ] |
-| 3 | `intent_classifier` | Gateway ou Agent routing | [ ] |
+| 3 | `intent_classifier` | Gateway ou Agent routing | [x] |
 | 4 | `intent_predictor` | Proactive research / cron jobs | [ ] |
 | 5 | `autonomous_executor` | ReAct (high confidence tasks) | [ ] |
 | 6 | `proactive_researcher` | Cron job (3x/dia) | [ ] |
@@ -458,6 +458,66 @@ Agent sees WORKING.md scratchpad in system prompt
 - ✅ Validado em https://optimus.tier.finance/
 - ✅ Agent demonstrou awareness do conteúdo do WORKING.md
 - ✅ Logs confirmam: `working=XXXc` no bootstrap
+
+---
+
+### ✅ #3 IntentClassifier — CONCLUÍDO
+
+**Call Path:**
+```
+POST /api/v1/chat/message
+    ↓
+gateway.route_message() [gateway.py:111]
+    ↓ (após chat_commands check)
+intent_classifier.classify(message) [gateway.py:167]
+    ↓
+IntentResult(intent="code", confidence=0.75, suggested_agent="friday", thinking_level="standard")
+    ↓
+context["intent_classification"] = intent_result [gateway.py:196]
+    ↓
+trace_event("intent_classified", {...}) [gateway.py:199] → Analytics
+    ↓
+Agent.process(context) — agent vê intent no contexto
+```
+
+**Arquivos modificados:**
+- `src/core/gateway.py` linha 167 (intent_classifier.classify() call in route_message)
+- `src/core/gateway.py` linha 196 (add intent_result to context)
+- `src/core/gateway.py` linhas 199-204 (trace_event for analytics)
+- `src/core/gateway.py` linhas 320-334 (same integration in stream_route_message)
+
+**Teste E2E:**
+- `tests/test_e2e.py` classe `TestIntentClassifierIntegration`
+- Testa: intent_classifier API ready, classificação correta (code/research/urgent/planning), IntentResult structure
+- **4/4 testes passando** ✅
+
+**Intents disponíveis:**
+```
+code → friday (standard thinking)
+research → fury (deep thinking)
+analysis → optimus (deep thinking)
+planning → optimus (standard thinking)
+creative → optimus (deep thinking)
+urgent → friday (quick thinking)
+content → optimus (standard thinking)
+general → optimus (standard thinking - fallback)
+```
+
+**Impacto para o usuário:**
+- **Analytics/Observability:** Sistema agora rastreia que tipos de mensagens users enviam (distribuição de intents)
+- **Context enrichment:** Agent vê intent classification no contexto (futuro: adaptar resposta baseado em intent)
+- **Preparação multi-agent:** suggested_agent field pronto para quando FASE 3 (User Creates Agents) for implementada
+- **Adaptive thinking:** thinking_level (quick/standard/deep) disponível para ajustar profundidade de raciocínio
+
+**Decisão estratégica:**
+- ✅ intent_classifier integrado para analytics
+- ❌ Multi-agent routing NÃO ativado (agents pré-definidos = código morto)
+- 🎯 Foco: FASE 0 módulos fundamentais → FASE 3 (User Creates Agents) vem depois
+
+**Testado em produção:**
+- ✅ Validado em https://optimus.tier.finance/
+- ✅ trace_event("intent_classified") registrado em logs
+- ✅ Diferentes intents classificados corretamente (code, research, planning, urgent)
 
 **Definição de "Pronto":**
 - [ ] 28/28 módulos têm call path documentado
