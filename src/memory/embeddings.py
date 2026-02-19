@@ -58,14 +58,13 @@ class EmbeddingService:
             result = _genai_client.models.embed_content(
                 model=self.model,
                 contents=text,
-                config={
-                    "task_type": task_type,
-                    "output_dimensionality": self.dimensions,  # trunca 3072→768
-                },
             )
-            embedding = result.embeddings[0].values
+            embedding = list(result.embeddings[0].values)
+            # Truncate to target dimensions for schema compatibility (vector(768))
+            if len(embedding) > self.dimensions:
+                embedding = embedding[:self.dimensions]
             logger.debug(f"Embedding generated: {len(text)} chars → {len(embedding)} dims")
-            return list(embedding)
+            return embedding
 
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
@@ -90,13 +89,12 @@ class EmbeddingService:
                 result = _genai_client.models.embed_content(
                     model=self.model,
                     contents=batch,
-                    config={
-                        "task_type": task_type,
-                        "output_dimensionality": self.dimensions,
-                    },
                 )
                 for emb in result.embeddings:
-                    all_embeddings.append(list(emb.values))
+                    vals = list(emb.values)
+                    if len(vals) > self.dimensions:
+                        vals = vals[:self.dimensions]
+                    all_embeddings.append(vals)
             except Exception as e:
                 logger.error(f"Batch embedding failed at index {i}: {e}")
                 all_embeddings.extend([[] for _ in batch])
