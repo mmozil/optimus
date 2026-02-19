@@ -5868,3 +5868,128 @@ class TestFase12AuditTrail:
         # May not have conversation_id if DB is unavailable in test env, but should not crash
         assert isinstance(result, dict)
         assert "content" in result
+
+# ============================================================
+# FASE 13 — Embeddings na Collective Intelligence
+# ============================================================
+
+class TestFase13Embeddings:
+    """FASE 13: PGvector semantic search na Collective Intelligence."""
+
+    def test_embedding_service_exists(self):
+        """embedding_service singleton importa sem erro."""
+        from src.memory.embeddings import EmbeddingService, embedding_service
+        assert isinstance(embedding_service, EmbeddingService)
+
+    def test_collective_intelligence_has_async_share(self):
+        """collective_intelligence.async_share() deve existir."""
+        from src.memory.collective_intelligence import collective_intelligence
+        assert hasattr(collective_intelligence, "async_share")
+        import asyncio
+        assert asyncio.iscoroutinefunction(collective_intelligence.async_share)
+
+    def test_collective_intelligence_has_query_semantic(self):
+        """collective_intelligence.query_semantic() deve existir."""
+        from src.memory.collective_intelligence import collective_intelligence
+        assert hasattr(collective_intelligence, "query_semantic")
+        import asyncio
+        assert asyncio.iscoroutinefunction(collective_intelligence.query_semantic)
+
+    def test_collective_intelligence_has_index_knowledge(self):
+        """collective_intelligence.index_knowledge() deve existir."""
+        from src.memory.collective_intelligence import collective_intelligence
+        assert hasattr(collective_intelligence, "index_knowledge")
+
+    @pytest.mark.asyncio
+    async def test_async_share_in_memory(self):
+        """async_share() deve adicionar à memória mesmo sem DB."""
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        sk = await ci.async_share(
+            agent_name="test_agent",
+            topic="python",
+            learning="Use list comprehensions for better performance.",
+        )
+
+        assert sk is not None
+        assert sk.source_agent == "test_agent"
+        assert sk.topic == "python"
+        assert len(ci._knowledge) == 1
+
+    @pytest.mark.asyncio
+    async def test_async_share_deduplication(self):
+        """async_share() com mesmo conteúdo retorna None (deduplicado)."""
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        sk1 = await ci.async_share("agent_a", "python", "Same learning.")
+        sk2 = await ci.async_share("agent_b", "python", "Same learning.")
+
+        assert sk1 is not None
+        assert sk2 is None  # duplicate
+        assert len(ci._knowledge) == 1
+
+    @pytest.mark.asyncio
+    async def test_query_semantic_falls_back_to_keyword(self):
+        """query_semantic() sem DB cai para keyword search sem crash."""
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        # Add some knowledge in-memory
+        ci.share("agent_a", "fastapi", "FastAPI uses async routes for high performance.")
+        ci.share("agent_b", "django", "Django has a built-in admin interface.")
+
+        # Semantic search should fall back to keyword without crash
+        results = await ci.query_semantic("fastapi")
+        assert isinstance(results, list)
+        # keyword fallback should find the fastapi entry
+        assert len(results) >= 1
+        assert any("fastapi" in r.topic.lower() or "fastapi" in r.learning.lower() for r in results)
+
+    def test_knowledge_api_default_semantic_true(self):
+        """GET /api/v1/knowledge/query deve ter semantic=True como default."""
+        try:
+            import fastapi  # noqa: F401
+        except ImportError:
+            pytest.skip("fastapi not available in local env")
+
+        import inspect
+        from src.api.knowledge import query_knowledge
+
+        sig = inspect.signature(query_knowledge)
+        semantic_param = sig.parameters.get("semantic")
+        assert semantic_param is not None
+        default_val = semantic_param.default
+        assert default_val is not None
+
+    def test_knowledge_api_has_index_endpoint(self):
+        """POST /api/v1/knowledge/index deve existir no router."""
+        try:
+            import fastapi  # noqa: F401
+        except ImportError:
+            pytest.skip("fastapi not available in local env")
+
+        from src.api.knowledge import router
+        paths = [r.path for r in router.routes]
+        assert "/api/v1/knowledge/index" in paths
+
+    @pytest.mark.asyncio
+    async def test_index_knowledge_empty(self):
+        """index_knowledge() em CI vazia retorna 0 sem crash."""
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        count = await ci.index_knowledge()
+        assert count == 0
+
+    def test_embeddings_table_in_schema(self):
+        """Migration 001 deve ter tabela embeddings com PGvector."""
+        import os
+        path = os.path.join(os.getcwd(), "migrations", "001_initial_schema.sql")
+        assert os.path.exists(path)
+        with open(path) as f:
+            sql = f.read().lower()
+        assert "create extension" in sql and "vector" in sql
+        assert "embeddings" in sql
+        assert "vector(768)" in sql

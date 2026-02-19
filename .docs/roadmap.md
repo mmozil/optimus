@@ -72,6 +72,7 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] Context Awareness (hora/dia/saudação no prompt)
 - [x] Intent Routing (smart agent routing por intent)
 - [x] Audit Trail (react_steps persistidos em audit_log → painel debug no frontend)
+- [x] Embeddings Collective Intelligence (PGvector coseno, semantic=True por padrão, batch index)
 
 ---
 
@@ -129,19 +130,23 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 13 — Embeddings na Collective Intelligence
+## FASE 13 — Embeddings na Collective Intelligence ✅ CONCLUÍDA (2026-02-19)
 
 **Objetivo:** Substituir busca por substring por busca semântica (PGvector) no knowledge sharing.
-**Por quê:** `collective_intelligence.py` usa `in` (substring) para buscar conhecimento. Com >100 entries, precisão cai drasticamente.
+**Por quê:** `collective_intelligence.py` usava `in` (substring) para buscar. Com >100 entries, precisão cai drasticamente.
 **Ref:** `agent-claude.md` seção "Embeddings"
 
-- [ ] **13.1** Gerar embedding (768d) ao salvar knowledge entry
-  - Call path: `collective_intelligence.share_knowledge()` → `embedding_service.embed()` → INSERT com vector
-- [ ] **13.2** Busca por similaridade coseno ao consultar
-  - Call path: `collective_intelligence.get_relevant_knowledge()` → `SELECT ... ORDER BY embedding <=> query_vec LIMIT 5`
-- [ ] **13.3** Migrar entries existentes (batch embedding)
-- [ ] **13.4** Testes E2E: compartilhar knowledge + buscar semanticamente
-- [ ] **13.5** Testar em produção
+- [x] **13.1** Embedding ao salvar knowledge entry
+  - Call path: `collective_intelligence.async_share()` → `embedding_service.embed_text()` → `store_embedding()` → PGvector
+  - Já chamado desde FASE 11: `gateway._auto_share_learning()` usa `async_share()`
+- [x] **13.2** Busca por similaridade coseno (padrão agora)
+  - `query_semantic()` usa `embedding_service.semantic_search()` → `SELECT ... ORDER BY embedding <=> query_vec`
+  - **`semantic=True` agora é o DEFAULT** em `GET /api/v1/knowledge/query`
+  - Fallback automático para keyword se PGvector indisponível
+- [x] **13.3** Batch migration de entries existentes
+  - `POST /api/v1/knowledge/index` → `collective_intelligence.index_knowledge()`
+- [x] **13.4** Testes E2E: `TestFase13Embeddings` (9 passed, 2 skipped sem fastapi local)
+- [ ] **13.5** Testar em produção (https://optimus.tier.finance)
 
 ---
 

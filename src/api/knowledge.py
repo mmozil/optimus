@@ -91,13 +91,14 @@ async def share_knowledge(request: ShareKnowledgeRequest) -> Any:
 async def query_knowledge(
     topic: str = Query(..., description="Topic to search for"),
     agent: str = Query("", description="Requesting agent (for usage tracking)"),
-    semantic: bool = Query(False, description="Use semantic search (PGvector)"),
+    semantic: bool = Query(True, description="Use semantic search (PGvector); falls back to keyword if unavailable"),
 ) -> list[SharedKnowledgeResponse]:
     """
     Query shared knowledge by topic.
 
-    - Uses keyword search by default
-    - Set semantic=true for PGvector semantic search (falls back to keyword if unavailable)
+    FASE 13: Semantic search (PGvector cosine similarity) is now the DEFAULT.
+    Falls back automatically to keyword search if embeddings service is unavailable.
+    Set semantic=false to force keyword-only search.
     """
     if semantic:
         results = await collective_intelligence.query_semantic(topic, requesting_agent=agent)
@@ -107,6 +108,28 @@ async def query_knowledge(
     logger.info(f"Knowledge query: topic='{topic}', results={len(results)}, semantic={semantic}")
 
     return [SharedKnowledgeResponse.from_shared_knowledge(sk) for sk in results]
+
+
+@router.post("/index")
+async def index_knowledge_to_pgvector() -> dict:
+    """
+    FASE 13: Batch-index all in-memory knowledge entries to PGvector.
+
+    Use this endpoint once to migrate existing knowledge entries that were
+    shared before PGvector persistence was added (i.e., via sync share()).
+    Call path: POST /api/v1/knowledge/index → collective_intelligence.index_knowledge()
+    """
+    try:
+        count = await collective_intelligence.index_knowledge()
+        logger.info(f"FASE 13: Batch indexed {count} knowledge entries to PGvector")
+        return {
+            "status": "success",
+            "indexed": count,
+            "message": f"{count} knowledge entries indexadas no PGvector.",
+        }
+    except Exception as e:
+        logger.error(f"FASE 13: Batch index failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Indexação falhou: {e}")
 
 
 @router.get("/stats", response_model=KnowledgeStatsResponse)
