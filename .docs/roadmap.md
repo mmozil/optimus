@@ -175,17 +175,23 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 15 — Contradiction Detection
+## FASE 15 — Contradiction Detection ✅ CONCLUÍDA
 
 **Objetivo:** Detectar quando novo conhecimento contradiz conhecimento existente.
 **Por quê:** Sem detecção, agente pode ter informações conflitantes e dar respostas inconsistentes.
 **Ref:** `agent-claude.md` seção "Contradiction Detection"
 
-- [ ] **15.1** Ao salvar novo knowledge, buscar top-5 similares (coseno > 0.8)
-- [ ] **15.2** Usar LLM para classificar: `complementary | update | contradiction`
-- [ ] **15.3** Se contradiction: notificar usuário, pedir resolução antes de salvar
-- [ ] **15.4** Testes E2E
-- [ ] **15.5** Testar em produção
+- [x] **15.1** Ao salvar novo knowledge, buscar top-5 similares (coseno >= 0.8)
+  - `contradiction_service._find_similar()` → `embedding_service.semantic_search(threshold=0.8)`
+- [x] **15.2** LLM classifica relação: `complementary | update | contradiction`
+  - Prompt para `LLM_FALLBACK_MODEL` (Gemini Flash) → parse `CLASSIFICACAO | explicacao`
+  - Graceful fallback: se LLM falhar → retorna `None` (nao bloqueia o save)
+  - Implementado em `src/core/contradiction_service.py`
+- [x] **15.3** Se contradiction: HTTP 409 com detalhes; `force=True` bypassa
+  - Call path: `async_share(force=False)` → `contradiction_service.check()` → `raise ContradictionDetected` → `knowledge.py` → HTTP 409
+  - `POST /api/v1/knowledge/share?force=true` para salvar mesmo assim
+- [x] **15.4** Testes E2E — 14/14 passando (`TestFase15ContradictionDetection`)
+- [ ] **15.5** Testar em producao (deploy automatico via push)
 
 ---
 

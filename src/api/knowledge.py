@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from src.core.contradiction_service import ContradictionDetected
 from src.memory.collective_intelligence import SharedKnowledge, collective_intelligence
 
 logger = logging.getLogger(__name__)
@@ -66,25 +67,52 @@ class KnowledgeStatsResponse(BaseModel):
 
 
 @router.post("/share", response_model=SharedKnowledgeResponse | dict)
-async def share_knowledge(request: ShareKnowledgeRequest) -> Any:
+async def share_knowledge(
+    request: ShareKnowledgeRequest,
+    force: bool = Query(False, description="Se true, ignora detecção de contradição e salva mesmo assim"),
+) -> Any:
     """
     Share a learning to the collective intelligence.
 
+    FASE 15: Detecta contradições com conhecimento existente antes de salvar.
+    - Se contradição detectada → HTTP 409 com detalhes (existing, new, explanation).
+    - Use ?force=true para salvar mesmo assim.
+
     Returns the SharedKnowledge if new, or {"duplicate": true} if already exists.
     """
-    # FASE 11: use async_share so learning is persisted to PGvector embeddings table
-    sk = await collective_intelligence.async_share(
-        agent_name=request.agent,
-        topic=request.topic,
-        learning=request.learning,
-    )
+    try:
+        # FASE 11: use async_share so learning is persisted to PGvector embeddings table
+        # FASE 15: contradiction check happens inside async_share (unless force=True)
+        sk = await collective_intelligence.async_share(
+            agent_name=request.agent,
+            topic=request.topic,
+            learning=request.learning,
+            force=force,
+        )
 
-    if sk is None:
-        return {"duplicate": True, "message": "Learning already exists (duplicate content)"}
+        if sk is None:
+            return {"duplicate": True, "message": "Learning already exists (duplicate content)"}
 
-    logger.info(f"Knowledge shared via API: {request.agent} → {request.topic}")
+        logger.info(f"Knowledge shared via API: {request.agent} → {request.topic}")
+        return SharedKnowledgeResponse.from_shared_knowledge(sk)
 
-    return SharedKnowledgeResponse.from_shared_knowledge(sk)
+    except ContradictionDetected as exc:
+        r = exc.result
+        logger.warning(
+            f"FASE 15: API rejecting contradictory knowledge from '{request.agent}' "
+            f"on '{request.topic}' — {r.explanation[:80]}"
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "contradiction",
+                "existing": r.existing_content[:300],
+                "new": r.new_content[:300],
+                "similarity": round(r.similarity, 3),
+                "explanation": r.explanation,
+                "hint": "Use ?force=true para salvar mesmo assim",
+            },
+        )
 
 
 @router.get("/query", response_model=list[SharedKnowledgeResponse])

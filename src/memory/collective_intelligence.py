@@ -64,13 +64,52 @@ class CollectiveIntelligence:
         logger.info(f"Collective: '{agent_name}' shared learning on '{topic}'")
         return sk
 
-    async def async_share(self, agent_name: str, topic: str, learning: str) -> SharedKnowledge | None:
+    async def async_share(
+        self,
+        agent_name: str,
+        topic: str,
+        learning: str,
+        force: bool = False,
+    ) -> SharedKnowledge | None:
         """
         Share a learning + persist to PGvector embeddings table (FASE 11 fix).
 
-        In-memory deduplication → DB embedding → semantic search ready.
+        FASE 15: Before saving, checks for contradictions with existing knowledge.
+        If a contradiction is detected, raises ContradictionDetected (unless force=True).
+
+        Args:
+            force: If True, skip contradiction check and save regardless.
+
+        In-memory deduplication → contradiction check → DB embedding → semantic search ready.
         Falls back gracefully if embeddings service is unavailable.
         """
+        new_text = f"[{topic}] {learning}"
+
+        # FASE 15: Contradiction check (before adding to memory)
+        if not force:
+            try:
+                from src.core.contradiction_service import (
+                    ContradictionDetected,
+                    ContradictionType,
+                    contradiction_service,
+                )
+                result = await contradiction_service.check(new_text)
+                if result and result.contradiction_type == ContradictionType.CONTRADICTION:
+                    logger.warning(
+                        f"FASE 15: Contradiction detected — '{agent_name}' on '{topic}' "
+                        f"(similarity={result.similarity:.2f}): {result.explanation[:80]}"
+                    )
+                    raise ContradictionDetected(result)
+                elif result and result.contradiction_type == ContradictionType.UPDATE:
+                    logger.info(
+                        f"FASE 15: Update detected — '{agent_name}' on '{topic}' "
+                        f"(similarity={result.similarity:.2f}): {result.explanation[:80]}"
+                    )
+            except ContradictionDetected:
+                raise  # re-raise so API can return HTTP 409
+            except Exception as e:
+                logger.debug(f"FASE 15: contradiction check skipped: {e}")
+
         sk = self.share(agent_name, topic, learning)
         if sk is None:
             return None  # duplicate

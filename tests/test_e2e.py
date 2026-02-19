@@ -6171,3 +6171,208 @@ class TestFase14TemporalDecay:
         assert "_schedule_decay_archiving" in content
         assert "decay_archiving" in content
         assert "register_decay_handlers" in content
+
+
+class TestFase15ContradictionDetection:
+    """FASE 15: Contradiction Detection — testes E2E."""
+
+    # ------------------------------------------------------------------
+    # 1. Imports e estrutura
+    # ------------------------------------------------------------------
+
+    def test_contradiction_service_importable(self):
+        """contradiction_service singleton deve importar sem erro."""
+        from src.core.contradiction_service import (
+            ContradictionService,
+            contradiction_service,
+        )
+        assert isinstance(contradiction_service, ContradictionService)
+
+    def test_contradiction_type_enum_values(self):
+        """ContradictionType deve ter os 3 valores esperados."""
+        from src.core.contradiction_service import ContradictionType
+        assert ContradictionType.COMPLEMENTARY == "complementary"
+        assert ContradictionType.UPDATE == "update"
+        assert ContradictionType.CONTRADICTION == "contradiction"
+
+    def test_contradiction_detected_is_exception(self):
+        """ContradictionDetected deve ser subclasse de Exception."""
+        from src.core.contradiction_service import ContradictionDetected
+        assert issubclass(ContradictionDetected, Exception)
+
+    def test_contradiction_result_dataclass(self):
+        """ContradictionResult deve ser instanciável com todos os campos."""
+        from src.core.contradiction_service import ContradictionResult, ContradictionType
+        r = ContradictionResult(
+            contradiction_type=ContradictionType.CONTRADICTION,
+            existing_content="A é verdadeiro",
+            new_content="A é falso",
+            similarity=0.92,
+            confidence=0.92,
+            explanation="Afirmações opostas",
+        )
+        assert r.contradiction_type == ContradictionType.CONTRADICTION
+        assert r.similarity == 0.92
+
+    # ------------------------------------------------------------------
+    # 2. check() graceful fallback (sem DB)
+    # ------------------------------------------------------------------
+
+    async def test_check_returns_none_when_no_db(self):
+        """check() deve retornar None graciosamente se DB indisponível."""
+        from src.core.contradiction_service import ContradictionService
+        svc = ContradictionService()
+        # _find_similar will fail (no DB in test env) → graceful None
+        result = await svc.check("Python é uma linguagem de programação interpretada")
+        assert result is None
+
+    async def test_check_returns_none_for_empty_similar(self):
+        """_find_similar vazio → check() retorna None (nada para comparar)."""
+        from src.core.contradiction_service import ContradictionService
+        from unittest.mock import AsyncMock, patch
+
+        svc = ContradictionService()
+        with patch.object(svc, "_find_similar", new=AsyncMock(return_value=[])):
+            result = await svc.check("qualquer texto")
+        assert result is None
+
+    async def test_check_classify_called_when_similar_found(self):
+        """Quando _find_similar retorna resultado, _classify deve ser chamado."""
+        from src.core.contradiction_service import (
+            ContradictionResult,
+            ContradictionService,
+            ContradictionType,
+        )
+        from unittest.mock import AsyncMock, patch
+
+        svc = ContradictionService()
+        mock_entry = {
+            "content": "Python é lento",
+            "final_score": 0.85,
+            "similarity": 0.85,
+        }
+        expected = ContradictionResult(
+            contradiction_type=ContradictionType.CONTRADICTION,
+            existing_content="Python é lento",
+            new_content="Python é rápido",
+            similarity=0.85,
+            confidence=0.85,
+            explanation="Opostos diretos",
+        )
+        with patch.object(svc, "_find_similar", new=AsyncMock(return_value=[mock_entry])):
+            with patch.object(svc, "_classify", new=AsyncMock(return_value=expected)) as mock_classify:
+                result = await svc.check("Python é rápido")
+
+        mock_classify.assert_called_once()
+        assert result == expected
+
+    # ------------------------------------------------------------------
+    # 3. ContradictionDetected exception flow
+    # ------------------------------------------------------------------
+
+    def test_contradiction_detected_carries_result(self):
+        """ContradictionDetected deve carregar o ContradictionResult."""
+        from src.core.contradiction_service import (
+            ContradictionDetected,
+            ContradictionResult,
+            ContradictionType,
+        )
+        r = ContradictionResult(
+            contradiction_type=ContradictionType.CONTRADICTION,
+            existing_content="X=1",
+            new_content="X=2",
+            similarity=0.9,
+            confidence=0.9,
+            explanation="Valores diferentes",
+        )
+        exc = ContradictionDetected(r)
+        assert exc.result is r
+        assert "Contradiction detected" in str(exc)
+
+    # ------------------------------------------------------------------
+    # 4. collective_intelligence.async_share() integração
+    # ------------------------------------------------------------------
+
+    def test_async_share_accepts_force_param(self):
+        """async_share deve aceitar parâmetro force=True sem erro de assinatura."""
+        import inspect
+        from src.memory.collective_intelligence import CollectiveIntelligence
+        sig = inspect.signature(CollectiveIntelligence.async_share)
+        assert "force" in sig.parameters
+
+    async def test_async_share_with_force_true_skips_contradiction_check(self):
+        """force=True deve salvar sem chamar contradiction_service.check()."""
+        from src.core.contradiction_service import contradiction_service
+        from src.memory.collective_intelligence import CollectiveIntelligence
+        from unittest.mock import AsyncMock, patch
+
+        ci = CollectiveIntelligence()
+
+        # Mock: PGvector persist silently fails (no DB) — ok for this test
+        with patch.object(contradiction_service, "check", new=AsyncMock()) as mock_check:
+            with patch("src.memory.collective_intelligence.CollectiveIntelligence._persist_to_pgvector",
+                       new=AsyncMock(), create=True):
+                try:
+                    await ci.async_share("agent_test", "topic_test", "force test learning", force=True)
+                except Exception:
+                    pass  # PGvector may fail in test env — that's ok
+
+        # force=True → check() should NOT have been called
+        mock_check.assert_not_called()
+
+    async def test_async_share_contradiction_raises_exception(self):
+        """Se contradiction detectada, async_share deve re-raise ContradictionDetected."""
+        from src.core.contradiction_service import (
+            ContradictionDetected,
+            ContradictionResult,
+            ContradictionType,
+            contradiction_service,
+        )
+        from src.memory.collective_intelligence import CollectiveIntelligence
+        from unittest.mock import AsyncMock, patch
+
+        ci = CollectiveIntelligence()
+        mock_result = ContradictionResult(
+            contradiction_type=ContradictionType.CONTRADICTION,
+            existing_content="A=1",
+            new_content="A=2",
+            similarity=0.9,
+            confidence=0.9,
+            explanation="Contradição direta",
+        )
+
+        with patch.object(contradiction_service, "check", new=AsyncMock(return_value=mock_result)):
+            import pytest
+            with pytest.raises(ContradictionDetected):
+                await ci.async_share("agent", "topic", "A é igual a 2", force=False)
+
+    # ------------------------------------------------------------------
+    # 5. knowledge.py API
+    # ------------------------------------------------------------------
+
+    def test_knowledge_api_share_has_force_param(self):
+        """POST /api/v1/knowledge/share deve aceitar query param ?force."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "knowledge.py")
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+        assert "force" in source
+        assert "ContradictionDetected" in source
+
+    def test_knowledge_api_returns_409_on_contradiction(self):
+        """Endpoint deve tratar ContradictionDetected e retornar 409."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "knowledge.py")
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+        assert "409" in source
+        assert "contradiction" in source.lower()
+
+    def test_contradiction_imported_in_knowledge_api(self):
+        """ContradictionDetected deve ser importado em src/api/knowledge.py."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "knowledge.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "ContradictionDetected" in content
+        assert "contradiction_service" in content or "force" in content
