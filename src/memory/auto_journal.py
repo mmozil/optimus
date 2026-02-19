@@ -24,6 +24,12 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "preferências": [
         "prefiro", "gosto", "quero", "sempre uso", "favorite",
         "prefer", "like", "want", "always use", "my default",
+        # Informações pessoais explícitas (fruta preferida, cor favorita, etc.)
+        "preferida", "preferido", "favorita", "favorito",
+        "minha cor", "meu time", "minha comida", "minha fruta",
+        "meu nome", "me chamo", "meu apelido",
+        "gosto de", "não gosto", "odeio", "adoro",
+        "moro em", "trabalho em", "sou de",
     ],
     "erros": [
         "erro", "bug", "falha", "fix", "corrigir", "traceback",
@@ -149,6 +155,12 @@ class AutoJournal:
         relevance = self._classify_relevance(query, response)
         category = self._detect_category(query, response)
         learning = self._extract_learning(query, response, category)
+
+        # Preferências e decisões pessoais são SEMPRE high relevance
+        # (ex: "minha fruta preferida é a goiaba" seria "low" sem essa regra)
+        if category in ("preferências", "decisões") and relevance != "high":
+            relevance = "high"
+            logger.debug(f"Auto-journal: upgrading to high (category={category})")
 
         # Deduplication
         content_hash = self._compute_hash(learning)

@@ -4,12 +4,11 @@ Curated knowledge persisted to file system AND synced to PostgreSQL (FASE 6).
 
 DB sync: enables cross-agent queries, semantic search, and container-restart recovery.
 Call path:
-  add_learning() → file append + DB INSERT (background, non-blocking)
+  add_learning() → file append + DB INSERT (await, síncrono — garante persistência)
   search_local() → file keyword search + DB full-text search (fallback)
   load()         → file → DB fallback (cold start)
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,14 +83,12 @@ class LongTermMemory:
 
         logger.info(f"Learning added for {agent_name}: {category}")
 
-        # FASE 6: sync to DB in background (non-blocking)
+        # FASE 6: sync to DB — await diretamente para garantir persistência
+        # (asyncio.create_task era fire-and-forget: dados perdidos se container restartava antes)
         try:
-            asyncio.create_task(
-                self._insert_to_db(agent_name, category, learning, source)
-            )
-        except RuntimeError:
-            # No running event loop (e.g., test/sync context) — skip background task
-            pass
+            await self._insert_to_db(agent_name, category, learning, source)
+        except Exception as e:
+            logger.warning(f"[LongTermMemory] DB sync failed (data still in file): {e}")
 
     async def search_local(self, agent_name: str, query: str) -> list[str]:
         """Keyword search in memory — file first, DB fallback."""
