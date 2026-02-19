@@ -499,6 +499,13 @@
             <!-- Textarea -->
             <textarea id="chat-input" rows="1" placeholder="Mensagem..."></textarea>
 
+            <!-- Stop Audio -->
+            <button class="icon-btn" id="stop-audio-btn" title="Parar áudio" style="display:none; color: #e74c3c;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                </svg>
+            </button>
+
             <!-- Mic -->
             <button class="icon-btn" id="mic-btn" title="Gravar mensagem de voz">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -541,6 +548,7 @@
         const chatInput     = document.getElementById('chat-input');
         const sendBtn       = document.getElementById('send-btn');
         const micBtn        = document.getElementById('mic-btn');
+        const stopAudioBtn  = document.getElementById('stop-audio-btn');
         const inputBox      = document.getElementById('input-box');
         const welcome       = document.getElementById('welcome');
         const agentSelect   = document.getElementById('agent-select');
@@ -825,6 +833,18 @@
         // ── TTS ──────────────────────────────────────────────────────
         let currentAudio = null;
 
+        function updateStopBtn(playing) {
+            stopAudioBtn.style.display = playing ? 'flex' : 'none';
+        }
+
+        stopAudioBtn.addEventListener('click', () => {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+            updateStopBtn(false);
+        });
+
         async function speak(text) {
             try {
                 const resp = await fetch(`${API_URL}/api/v1/audio/tts`, {
@@ -997,17 +1017,27 @@
                 // Show user audio message with transcript below
                 addAudioMessage(userAudioUrl, transcript, true);
 
-                // Show agent response as audio (+ text fallback)
-                if (data.response_audio_base64) {
-                    const agentAudioUrl = 'data:audio/mp3;base64,' + data.response_audio_base64;
-                    addAudioMessage(agentAudioUrl, data.response || '', false);
-                    // Auto-play agent response
-                    if (currentAudio) { currentAudio.pause(); }
-                    currentAudio = new Audio(agentAudioUrl);
-                    currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
-                } else if (data.response) {
-                    // Fallback: text response if TTS not available
+                // Show agent response — text first, audio player available but NOT auto-played
+                if (data.response) {
                     addMessage(data.response, false);
+                }
+                if (data.response_audio_base64) {
+                    // Show audio player — user can click play manually, or press ▶ to listen
+                    const agentAudioUrl = 'data:audio/mp3;base64,' + data.response_audio_base64;
+                    if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
+                    currentAudio = new Audio(agentAudioUrl);
+                    currentAudio.onended = () => updateStopBtn(false);
+                    // Add a small play-audio button instead of auto-playing
+                    const playHint = document.createElement('div');
+                    playHint.style.cssText = 'font-size:12px;color:#888;margin-top:4px;cursor:pointer;';
+                    playHint.textContent = '🔊 Clique para ouvir a resposta em áudio';
+                    playHint.onclick = () => {
+                        currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
+                        updateStopBtn(true);
+                        playHint.remove();
+                    };
+                    const lastMsg = chatContainer.lastElementChild?.querySelector('.msg-content');
+                    if (lastMsg) lastMsg.appendChild(playHint);
                 }
 
             } catch (e) {
