@@ -615,11 +615,6 @@
         <div class="header-right">
             <select id="agent-select" class="agent-select">
                 <option value="optimus">Optimus</option>
-                <option value="friday">Friday · Dev</option>
-                <option value="fury">Fury · Pesquisa</option>
-                <option value="analyst">Shuri · Análise</option>
-                <option value="writer">Loki · Escrita</option>
-                <option value="guardian">Vision · Guardião</option>
             </select>
             <a href="/agents.html" class="btn-settings">🤖<span class="btn-label"> Agentes</span></a>
             <a href="/settings.html" class="btn-settings">⚙<span class="btn-label"> Config</span></a>
@@ -726,7 +721,7 @@
 
         document.getElementById('logout-btn').addEventListener('click', auth.logout);
 
-        // ── Load custom agents into dropdown ─────────────────────────
+        // ── Load agents into dropdown (system + custom from DB) ──────
         (async () => {
             try {
                 const resp = await fetch('/api/v1/agents', {
@@ -734,18 +729,30 @@
                 });
                 if (!resp.ok) return;
                 const agents = await resp.json();
-                const custom = agents.filter(a => !a.system);
-                if (custom.length === 0) return;
-                const sep = document.createElement('option');
-                sep.disabled = true;
-                sep.textContent = '── Meus Agentes ──';
-                agentSelect.appendChild(sep);
-                custom.forEach(a => {
+
+                // System agents (except optimus — already hardcoded)
+                const sysAgents = agents.filter(a => a.system && a.slug !== 'optimus');
+                sysAgents.forEach(a => {
                     const opt = document.createElement('option');
                     opt.value = a.slug;
-                    opt.textContent = a.display_name + ' · Custom';
+                    opt.textContent = a.display_name;
                     agentSelect.appendChild(opt);
                 });
+
+                // User-created agents (separator only if there are any)
+                const custom = agents.filter(a => !a.system);
+                if (custom.length > 0) {
+                    const sep = document.createElement('option');
+                    sep.disabled = true;
+                    sep.textContent = '── Meus Agentes ──';
+                    agentSelect.appendChild(sep);
+                    custom.forEach(a => {
+                        const opt = document.createElement('option');
+                        opt.value = a.slug;
+                        opt.textContent = a.display_name;
+                        agentSelect.appendChild(opt);
+                    });
+                }
             } catch (_) {}
         })();
 

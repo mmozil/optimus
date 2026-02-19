@@ -66,18 +66,15 @@ class Gateway:
         if self._initialized:
             return
 
-        from src.agents.developer import FridayAgent
-        from src.agents.researcher import FuryAgent
-        from src.agents.analyst import AnalystAgent
-        from src.agents.writer import WriterAgent
-        from src.agents.guardian import GuardianAgent
         from src.infra.redis_client import AgentRateLimiter, redis_client
 
         # Set up shared rate limiter
         rate_limiter = AgentRateLimiter(redis_client)
         AgentFactory.set_rate_limiter(rate_limiter)
 
-        # Create initial squad
+        # Default agent — only Optimus starts by default.
+        # Specialized agents (developer, researcher, analyst, writer, guardian)
+        # are created on demand when the user adds them via the Agents page.
         AgentFactory.create(
             name="optimus",
             role="Lead Orchestrator",
@@ -87,61 +84,6 @@ class Gateway:
             max_tokens=8192,
             temperature=0.7,
             agent_class=OptimusAgent,
-        )
-
-        AgentFactory.create(
-            name="friday",
-            role="Developer",
-            level="specialist",
-            model="gemini-2.5-flash",
-            model_chain="default",
-            max_tokens=4096,
-            temperature=0.3,
-            agent_class=FridayAgent,
-        )
-
-        AgentFactory.create(
-            name="fury",
-            role="Researcher",
-            level="specialist",
-            model="gemini-2.5-flash",
-            model_chain="default",
-            max_tokens=4096,
-            temperature=0.5,
-            agent_class=FuryAgent,
-        )
-
-        AgentFactory.create(
-            name="analyst",
-            role="Product Analyst",
-            level="specialist",
-            model="gemini-2.5-flash",
-            model_chain="default",
-            max_tokens=4096,
-            temperature=0.3,
-            agent_class=AnalystAgent,
-        )
-
-        AgentFactory.create(
-            name="writer",
-            role="Content Writer",
-            level="specialist",
-            model="gemini-2.5-flash",
-            model_chain="default",
-            max_tokens=4096,
-            temperature=0.8,
-            agent_class=WriterAgent,
-        )
-
-        AgentFactory.create(
-            name="guardian",
-            role="QA/Security Guardian",
-            level="specialist",
-            model="gemini-2.5-flash",
-            model_chain="default",
-            max_tokens=4096,
-            temperature=0.2,
-            agent_class=GuardianAgent,
         )
 
         self._initialized = True
