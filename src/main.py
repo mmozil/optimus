@@ -930,6 +930,114 @@ async def search_knowledge(
     return {"status": "success", "data": results}
 
 
+# ============================================
+# Memory: Reflection Reports
+# ============================================
+@app.get("/api/v1/memory/reflections")
+async def list_reflections(
+    agent: str = "optimus",
+    user: CurrentUser = Depends(get_current_user),
+):
+    """List all weekly reflection report files for an agent."""
+    from pathlib import Path
+    import re
+    reflections_dir = Path("workspace/memory/reflections") / agent
+    if not reflections_dir.exists():
+        return {"status": "success", "data": []}
+    reports = []
+    for f in sorted(reflections_dir.glob("*.md"), reverse=True):
+        content = f.read_text(encoding="utf-8")
+        # Extract period from first lines
+        period_match = re.search(r"\*\*Period:\*\* (.+)", content)
+        period = period_match.group(1) if period_match else f.stem
+        reports.append({
+            "filename": f.name,
+            "week": f.stem,
+            "period": period,
+            "content": content,
+        })
+    return {"status": "success", "data": reports}
+
+
+@app.post("/api/v1/memory/reflections/trigger")
+async def trigger_reflection(
+    agent: str = "optimus",
+    days: int = 7,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Trigger an immediate reflection analysis (on demand)."""
+    from src.engine.reflection_engine import reflection_engine
+    try:
+        report = await reflection_engine.analyze_recent(agent_name=agent, days=days)
+        path = await reflection_engine.save_report(report)
+        return {
+            "status": "success",
+            "data": {
+                "week": path.stem,
+                "total_interactions": report.total_interactions,
+                "topics": [{"topic": t.topic, "count": t.count} for t in report.topics],
+                "gaps": [{"topic": g.topic, "failure_count": g.failure_count, "suggestion": g.suggestion} for g in report.gaps],
+                "suggestions": report.suggestions,
+                "content": report.to_markdown(),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Agents: Soul Editor
+# ============================================
+class SoulUpdateRequest(BaseModel):
+    soul_md: str
+
+
+@app.get("/api/v1/agents/{agent_name}/soul")
+async def get_agent_soul(
+    agent_name: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Get the current soul_md for a system agent."""
+    from src.infra.supabase_client import get_async_session
+    from sqlalchemy import text as sql_text
+    async with get_async_session() as session:
+        result = await session.execute(
+            sql_text("SELECT soul_md, role FROM agents WHERE name = :name"),
+            {"name": agent_name},
+        )
+        row = result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    return {"status": "success", "data": {"agent": agent_name, "soul_md": row[0] or "", "role": row[1]}}
+
+
+@app.patch("/api/v1/agents/{agent_name}/soul")
+async def update_agent_soul(
+    agent_name: str,
+    request: SoulUpdateRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update the soul_md for a system agent and reload it in memory."""
+    from src.infra.supabase_client import get_async_session
+    from sqlalchemy import text as sql_text
+    # Update in DB
+    async with get_async_session() as session:
+        result = await session.execute(
+            sql_text("UPDATE agents SET soul_md = :soul WHERE name = :name RETURNING name"),
+            {"soul": request.soul_md, "name": agent_name},
+        )
+        updated = result.fetchone()
+        await session.commit()
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    # Reload in-memory agent config
+    from src.core.agent_factory import AgentFactory
+    agent = AgentFactory.get(agent_name)
+    if agent:
+        agent.config.soul_md = request.soul_md
+    return {"status": "success", "data": {"agent": agent_name, "reloaded": agent is not None}}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

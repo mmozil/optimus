@@ -166,6 +166,28 @@
     }
 
     .copy-btn:hover { color: #fff; border-color: #555; }
+
+    /* Reflection cards */
+    .reflection-card {
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .reflection-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: #111;
+      user-select: none;
+    }
+    .reflection-header:hover { background: #1a1a1a; }
+    .reflection-week { font-weight: 600; font-size: .85rem; color: #e0e0e0; }
+    .reflection-period { font-size: .78rem; color: #737373; flex: 1; }
+    .reflection-toggle { font-size: .75rem; color: #555; }
+    .reflection-body { padding: 0 14px 14px; background: #0d0d0d; }
   </style>
 </head>
 <body>
@@ -375,6 +397,18 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- Reflexão Semanal -->
+    <div class="section">
+      <div class="section-title">🧠 Reflexão Semanal</div>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Análise automática de padrões das últimas interações — tópicos frequentes, lacunas de conhecimento e sugestões. Roda todo domingo (7 dias).
+      </p>
+      <button class="btn" id="btn-reflect-now" onclick="triggerReflection()" style="width:fit-content;margin-bottom:20px;background:#1a1a1a;color:#e0e0e0;border:1px solid #333;">
+        ⚡ Gerar Agora
+      </button>
+      <div id="reflection-list"></div>
     </div>
 
     <!-- API Key -->
@@ -816,6 +850,74 @@
         showError('Erro ao testar: ' + e.message);
       }
     }
+
+    // ── Reflexão Semanal ──────────────────────────────────────
+    async function loadReflections() {
+      const wrap = document.getElementById('reflection-list');
+      wrap.innerHTML = '<p style="color:#737373;font-size:.85rem">Carregando...</p>';
+      try {
+        const resp = await fetch('/api/v1/memory/reflections?agent=optimus', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await resp.json();
+        const reports = data.data || [];
+        if (reports.length === 0) {
+          wrap.innerHTML = '<p style="color:#737373;font-size:.85rem">Nenhum relatório ainda. A primeira reflexão roda após 7 dias de uso, ou clique em "Gerar Agora".</p>';
+          return;
+        }
+        // Show latest by default
+        wrap.innerHTML = reports.map((r, i) => `
+          <div class="reflection-card${i === 0 ? ' active' : ''}" data-index="${i}" onclick="toggleReflection(${i})">
+            <div class="reflection-header">
+              <span class="reflection-week">📅 ${r.week}</span>
+              <span class="reflection-period">${r.period}</span>
+              <span class="reflection-toggle">${i === 0 ? '▲' : '▼'}</span>
+            </div>
+            <div class="reflection-body" id="reflection-body-${i}" style="display:${i === 0 ? 'block' : 'none'}">
+              <pre style="white-space:pre-wrap;font-size:.82rem;color:#c9c9c9;margin:0.75rem 0 0">${escapeHtml(r.content)}</pre>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        wrap.innerHTML = `<p style="color:#ef4444;font-size:.85rem">Erro: ${e.message}</p>`;
+      }
+    }
+
+    function toggleReflection(i) {
+      const body = document.getElementById(`reflection-body-${i}`);
+      const card = document.querySelector(`.reflection-card[data-index="${i}"]`);
+      const toggle = card.querySelector('.reflection-toggle');
+      const open = body.style.display === 'block';
+      body.style.display = open ? 'none' : 'block';
+      toggle.textContent = open ? '▼' : '▲';
+    }
+
+    async function triggerReflection() {
+      const btn = document.getElementById('btn-reflect-now');
+      btn.disabled = true;
+      btn.textContent = 'Gerando...';
+      try {
+        const resp = await fetch('/api/v1/memory/reflections/trigger?agent=optimus', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        showSuccess('Relatório de reflexão gerado com sucesso!');
+        await loadReflections();
+      } catch (e) {
+        showError('Erro ao gerar reflexão: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Gerar Agora';
+      }
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // init
+    loadReflections();
   </script>
 </body>
 </html>
