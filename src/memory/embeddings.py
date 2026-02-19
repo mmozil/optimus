@@ -17,10 +17,9 @@ logger = logging.getLogger(__name__)
 # Try new google-genai SDK (google-genai package)
 try:
     from google import genai as _google_genai
-    # text-embedding-004 requires API v1 (not v1beta which is the SDK default)
+    # gemini-embedding-001 is available on v1beta (SDK default) — no http_options needed
     _genai_client = _google_genai.Client(
         api_key=settings.GOOGLE_API_KEY,
-        http_options={"api_version": "v1"},
     ) if settings.GOOGLE_API_KEY else None
     GENAI_AVAILABLE = _genai_client is not None
 except Exception:
