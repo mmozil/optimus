@@ -18,6 +18,7 @@ Call Path:
 
 import base64
 import logging
+import re
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 
@@ -263,6 +264,30 @@ class GoogleOAuthService:
     # Gmail
     # ============================================
 
+    def _preprocess_gmail_query(self, query: str) -> str:
+        """
+        Preprocess Gmail query to handle time-based filters not natively supported.
+        Converts 'after:YYYY/MM/DD HH:MM' to Unix timestamp form 'after:UNIX'.
+        """
+        if not query:
+            return "in:inbox"
+        # Handle 'after:YYYY/MM/DD HH:MM' or 'after:YYYY-MM-DD HH:MM'
+        m = re.search(r'after:(\d{4}[/-]\d{2}[/-]\d{2})\s+(\d{2}):(\d{2})', query)
+        if m:
+            date_str = m.group(1).replace('-', '/')
+            hour, minute = int(m.group(2)), int(m.group(3))
+            try:
+                from datetime import datetime, timezone, timedelta
+                # Assume BRT (UTC-3)
+                dt = datetime.strptime(date_str, "%Y/%m/%d").replace(
+                    hour=hour, minute=minute, tzinfo=timezone(timedelta(hours=-3))
+                )
+                unix_ts = int(dt.timestamp())
+                query = query[:m.start()] + f"after:{unix_ts}" + query[m.end():]
+            except Exception:
+                pass
+        return query
+
     async def gmail_list(self, user_id: str, query: str = "", max_results: int = 10) -> str:
         """List emails matching Gmail query string."""
         creds = await self.get_credentials(user_id)
@@ -273,9 +298,10 @@ class GoogleOAuthService:
             from googleapiclient.discovery import build
             service = build("gmail", "v1", credentials=creds)
 
+            processed_query = self._preprocess_gmail_query(query)
             results = service.users().messages().list(
                 userId="me",
-                q=query or "in:inbox",
+                q=processed_query,
                 maxResults=max_results,
             ).execute()
 

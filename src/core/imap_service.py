@@ -379,53 +379,23 @@ class ImapService:
             for msg_id in reversed(ids_to_fetch):
                 try:
                     mid_str = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
-                    _, msg_data = await imap.fetch(
-                        mid_str,
-                        "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
-                    )
-                    # aioimaplib fetch response varies by server:
-                    # Format 1 (separate): [b'N (BODY... {size}', b'From: ...\r\n...', b')']
-                    # Format 2 (combined): [b'N (BODY... {size}\r\nFrom: ...\r\n\r\n)', b')']
-                    # IMPORTANT: always try to extract AFTER {size}\r\n FIRST,
-                    # before doing a plain content search (to avoid IMAP metadata prefix).
+                    # Use RFC822.HEADER — most compatible across all IMAP servers.
+                    # Returns all message headers, parsed with email.message_from_bytes.
+                    _, msg_data = await imap.fetch(mid_str, "(RFC822.HEADER)")
+
                     raw_header = b""
-                    _HEADER_MARKERS = (b"from:", b"subject:", b"date:", b"to:")
                     for part in msg_data:
                         if not isinstance(part, bytes) or not part.strip():
                             continue
-                        # Case B FIRST: extract after literal {size}\r\n marker
-                        # This handles Format 2 where metadata and headers are in the same part
+                        # Extract content after {size}\r\n literal (handles combined responses)
                         m = re.search(rb"\{\d+\}\r\n([\s\S]+)", part)
                         if m:
-                            candidate = m.group(1).rstrip(b" )\r\n")
-                            if candidate and any(h in candidate.lower() for h in _HEADER_MARKERS):
-                                raw_header = candidate
-                                break
-                        # Case A: part is pure header content (Format 1 — separate item)
-                        # Only use if part does NOT contain {size} (not IMAP metadata)
-                        elif b"{" not in part:
-                            if any(h in part.lower() for h in _HEADER_MARKERS):
-                                raw_header = part
-                                break
-                    # Case C: nothing matched — fallback to full RFC822.HEADER fetch
-                    if not raw_header:
-                        try:
-                            _, hdr_data = await imap.fetch(mid_str, "(RFC822.HEADER)")
-                            for hpart in hdr_data:
-                                if not isinstance(hpart, bytes) or not hpart.strip():
-                                    continue
-                                # Same strategy: extract after literal first
-                                m2 = re.search(rb"\{\d+\}\r\n([\s\S]+)", hpart)
-                                if m2:
-                                    candidate = m2.group(1).rstrip(b" )\r\n")
-                                    if any(h in candidate.lower() for h in _HEADER_MARKERS):
-                                        raw_header = candidate
-                                        break
-                                elif b"{" not in hpart and any(h in hpart.lower() for h in _HEADER_MARKERS):
-                                    raw_header = hpart
-                                    break
-                        except Exception:
-                            pass
+                            raw_header = m.group(1).rstrip(b" )\r\n")
+                            break
+                        # Pure content part (no literal marker)
+                        if b"{" not in part and len(part) > 10:
+                            raw_header = part
+                            break
 
                     msg = message_from_bytes(raw_header)
                     subject = _decode_header_value(msg.get("Subject", "(sem assunto)"))

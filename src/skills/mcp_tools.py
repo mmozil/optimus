@@ -382,11 +382,13 @@ class MCPToolRegistry:
                 "Search and list emails from the Gmail account connected via Google OAuth. "
                 "ONLY use this tool for Gmail/Google accounts (@gmail.com or Google Workspace). "
                 "For any other provider (Outlook, corporate IMAP, Yahoo, etc.) use email_read instead. "
-                "Use Gmail query syntax (e.g. 'is:unread', 'from:boss@company.com', 'newer_than:3d')."
+                "Query syntax: 'is:unread', 'from:boss@company.com', 'newer_than:3d', 'after:2026/02/19'. "
+                "For time-of-day filter (e.g. after 14h today), use: 'after:YYYY/MM/DD HH:MM' "
+                "— example: 'after:2026/02/19 14:00'. The system converts to Unix timestamp automatically."
             ),
             category="google",
             parameters={
-                "query": {"type": "string", "required": True, "description": "Gmail search query (e.g. 'is:unread', 'subject:meeting', 'newer_than:1d')"},
+                "query": {"type": "string", "required": True, "description": "Gmail search query. For date+time: 'after:2026/02/19 14:00'. For unread: 'is:unread after:2026/02/19'."},
                 "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
             },
             handler=self._tool_gmail_read,
