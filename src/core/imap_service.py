@@ -384,18 +384,31 @@ class ImapService:
                     _, msg_data = await imap.fetch(mid_str, "(RFC822.HEADER)")
 
                     raw_header = b""
+                    # Pattern A: combined — {size}\r\n<headers> in same bytes object
                     for part in msg_data:
-                        if not isinstance(part, bytes) or not part.strip():
+                        if not isinstance(part, bytes):
                             continue
-                        # Extract content after {size}\r\n literal (handles combined responses)
                         m = re.search(rb"\{\d+\}\r\n([\s\S]+)", part)
                         if m:
                             raw_header = m.group(1).rstrip(b" )\r\n")
                             break
-                        # Pure content part (no literal marker)
-                        if b"{" not in part and len(part) > 10:
+                    if not raw_header:
+                        # Pattern B: separate — skip IMAP metadata line, take header block
+                        for part in msg_data:
+                            if not isinstance(part, bytes) or len(part) < 20:
+                                continue
+                            # Skip IMAP metadata line "N (RFC822.HEADER {SIZE}"
+                            if re.match(rb'^\d+ \(', part):
+                                continue
+                            # Skip closing paren line
+                            if part.strip() in (b')', b')\r\n'):
+                                continue
                             raw_header = part
                             break
+                    logger.debug(
+                        f"IMAP header parse: msg_data parts={len(msg_data)}, "
+                        f"raw_header[:80]={raw_header[:80]!r}"
+                    )
 
                     msg = message_from_bytes(raw_header)
                     subject = _decode_header_value(msg.get("Subject", "(sem assunto)"))
@@ -562,6 +575,15 @@ class ImapService:
         m = re.search(r'\bsubject:([^\s:]+(?:\s+[^\s:]+)*?)(?=\s+\w+:|$)', query, re.I)
         if m:
             parts.append(f'SUBJECT "{m.group(1).strip()}"')
+
+        # after:YYYY/MM/DD or after:YYYY-MM-DD (Gmail-style date filter → IMAP SINCE)
+        m = re.search(r'\bafter:(\d{4})[/-](\d{2})[/-](\d{2})\b', query, re.I)
+        if m:
+            try:
+                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                parts.append(f'SINCE {dt.strftime("%d-%b-%Y")}')
+            except ValueError:
+                pass
 
         # newer_than:Nd / Nh / Nw
         m = re.search(r'\bnewer_than:(\d+)([dhw])\b', query, re.I)
