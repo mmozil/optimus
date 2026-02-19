@@ -4762,3 +4762,169 @@ class TestVPSAndPWAIntegration:
             "README must document environment variable configuration"
         assert "PWA" in content or "instalar no celular" in content.lower(), \
             "README must document PWA mobile installation"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FASE 8 — Apple iCloud Integration (Calendar, Reminders, Contacts)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestAppleICloudIntegration:
+    """
+    FASE 8 — E2E tests for Apple iCloud services via CalDAV / CardDAV.
+
+    REGRA DE OURO Checkpoint 2: These tests FAIL without the implementation.
+
+    Call paths tested:
+      Calendar:  apple_calendar_list(days_ahead) → apple_service._caldav_client(user_id)
+                   → caldav.DAVClient(ICLOUD_CALDAV_URL) → principal().calendars()
+                   → date_search(start, end) → formatted events list
+      Reminders: apple_reminders_list() → same CalDAV client → VTODO components
+      Contacts:  apple_contacts_search(query) → apple_service._contacts_client(user_id)
+                   → CardDAV REPORT → vCard objects → filter/format
+      REST:      POST /api/v1/apple/credentials → save_credentials()
+                 GET  /api/v1/apple/status      → {connected, apple_id}
+                 GET  /api/v1/apple/test        → live connection test
+                 DELETE /api/v1/apple/credentials → remove
+    """
+
+    def test_apple_service_exists(self):
+        """
+        AppleService singleton must be importable and initialized.
+
+        Without this: all apple_* MCP tools crash on import.
+        """
+        from src.core.apple_service import apple_service, AppleService
+        assert apple_service is not None, "apple_service singleton should exist"
+        assert isinstance(apple_service, AppleService)
+
+    def test_apple_service_methods_exist(self):
+        """All required methods must be present on AppleService."""
+        from src.core.apple_service import AppleService
+        required = [
+            "save_credentials", "get_credentials", "remove_credentials",
+            "test_connection",
+            "calendar_list", "calendar_search", "calendar_create_event",
+            "reminders_list", "reminders_create",
+            "contacts_search", "contacts_list",
+        ]
+        svc = AppleService()
+        for method in required:
+            assert hasattr(svc, method), \
+                f"AppleService.{method}() not implemented — FASE 8 incomplete"
+
+    def test_icloud_constants_defined(self):
+        """CalDAV and CardDAV URLs must be defined."""
+        from src.core import apple_service as m
+        assert hasattr(m, "ICLOUD_CALDAV_URL"), \
+            "ICLOUD_CALDAV_URL not defined in apple_service module"
+        assert hasattr(m, "ICLOUD_CARDDAV_URL"), \
+            "ICLOUD_CARDDAV_URL not defined in apple_service module"
+        assert "caldav.icloud.com" in m.ICLOUD_CALDAV_URL, \
+            "ICLOUD_CALDAV_URL must point to caldav.icloud.com"
+        assert "contacts.icloud.com" in m.ICLOUD_CARDDAV_URL, \
+            "ICLOUD_CARDDAV_URL must point to contacts.icloud.com"
+
+    def test_calendar_without_credentials_graceful(self):
+        """calendar_list() without credentials must return friendly message, not crash."""
+        import asyncio
+        from src.core.apple_service import apple_service
+        result = asyncio.get_event_loop().run_until_complete(
+            apple_service.calendar_list("00000000-0000-0000-0000-000000000099")
+        )
+        assert isinstance(result, str), "calendar_list must return str"
+        assert "iCloud" in result or "configurado" in result or "⚠️" in result, \
+            f"Expected graceful 'not configured' message, got: {result[:100]}"
+
+    def test_reminders_without_credentials_graceful(self):
+        """reminders_list() without credentials must return friendly message."""
+        import asyncio
+        from src.core.apple_service import apple_service
+        result = asyncio.get_event_loop().run_until_complete(
+            apple_service.reminders_list("00000000-0000-0000-0000-000000000099")
+        )
+        assert isinstance(result, str)
+        assert "iCloud" in result or "configurado" in result or "⚠️" in result
+
+    def test_contacts_without_credentials_graceful(self):
+        """contacts_search() without credentials must return friendly message."""
+        import asyncio
+        from src.core.apple_service import apple_service
+        result = asyncio.get_event_loop().run_until_complete(
+            apple_service.contacts_search("00000000-0000-0000-0000-000000000099", "João")
+        )
+        assert isinstance(result, str)
+        assert "iCloud" in result or "configurado" in result or "⚠️" in result
+
+    def test_icloud_mcp_tools_registered(self):
+        """All 7 Apple MCP tools must be registered in mcp_tools."""
+        try:
+            from src.skills.mcp_tools import mcp_tools
+        except ModuleNotFoundError as e:
+            pytest.skip(f"Dependency not installed: {e}")
+
+        expected = [
+            "apple_calendar_list",
+            "apple_calendar_search",
+            "apple_calendar_create",
+            "apple_reminders_list",
+            "apple_reminders_create",
+            "apple_contacts_search",
+            "apple_contacts_list",
+        ]
+        registered = [t.name for t in mcp_tools.list_tools()]
+        for tool in expected:
+            assert tool in registered, \
+                f"MCP tool '{tool}' not registered — FASE 8 incomplete"
+
+    def test_icloud_api_endpoints_exist(self):
+        """Apple iCloud API endpoints must exist and respond."""
+        try:
+            from fastapi.testclient import TestClient
+            from src.main import app
+        except ModuleNotFoundError as e:
+            pytest.skip(f"fastapi not installed: {e}")
+
+        client = TestClient(app)
+
+        # Status endpoint requires auth
+        resp = client.get("/api/v1/apple/status")
+        assert resp.status_code in [200, 401, 403], \
+            f"GET /api/v1/apple/status should exist, got {resp.status_code}"
+
+        # Credentials endpoints require auth
+        resp = client.post("/api/v1/apple/credentials",
+                           json={"apple_id": "test@icloud.com", "app_password": "xxxx-xxxx-xxxx-xxxx"})
+        assert resp.status_code in [200, 201, 401, 403, 422], \
+            f"POST /api/v1/apple/credentials should exist, got {resp.status_code}"
+
+    def test_migration_020_exists(self):
+        """Migration 020_apple_credentials.sql must exist with correct table."""
+        from pathlib import Path
+        migration = Path(__file__).parent.parent / "migrations" / "020_apple_credentials.sql"
+        assert migration.exists(), \
+            "migrations/020_apple_credentials.sql not found — DB schema not created"
+        content = migration.read_text()
+        assert "apple_credentials" in content, \
+            "apple_credentials table missing from migration 020"
+        assert "app_password_encrypted" in content, \
+            "app_password_encrypted missing — passwords must be encrypted"
+        assert "apple_id" in content, \
+            "apple_id column missing from apple_credentials"
+
+    def test_icloud_preset_in_imap_service(self):
+        """
+        PROVIDER_PRESETS must include 'icloud' preset.
+
+        This allows users to add morais.marcelos@me.com as an IMAP account
+        without manually typing the server settings.
+        """
+        from src.core.imap_service import PROVIDER_PRESETS
+        assert "icloud" in PROVIDER_PRESETS, \
+            "'icloud' preset missing from PROVIDER_PRESETS — user must type hosts manually"
+        icloud = PROVIDER_PRESETS["icloud"]
+        assert "imap.mail.me.com" in icloud["imap_host"], \
+            "iCloud IMAP host must be imap.mail.me.com"
+        assert "smtp.mail.me.com" in icloud["smtp_host"], \
+            "iCloud SMTP host must be smtp.mail.me.com"
+        assert icloud["imap_port"] == 993, "iCloud IMAP port must be 993"
+        assert icloud["smtp_port"] == 587, "iCloud SMTP port must be 587"

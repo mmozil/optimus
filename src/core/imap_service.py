@@ -83,6 +83,13 @@ PROVIDER_PRESETS: dict[str, dict] = {
         "smtp_host": "smtp.terra.com.br",
         "smtp_port": 587,
     },
+    "icloud": {
+        "label": "iCloud Mail (me.com / icloud.com / mac.com)",
+        "imap_host": "imap.mail.me.com",
+        "imap_port": 993,
+        "smtp_host": "smtp.mail.me.com",
+        "smtp_port": 587,
+    },
     "custom": {
         "label": "Personalizado (IMAP/SMTP próprio)",
         "imap_host": "",

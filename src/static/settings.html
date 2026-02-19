@@ -325,6 +325,58 @@
       </button>
     </div>
 
+    <!-- Apple iCloud (FASE 8) -->
+    <div class="section">
+      <div class="section-title"> Apple iCloud</div>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">
+        Conecte sua conta Apple para acessar <strong>Calendar, Reminders e Contacts</strong> via iCloud.
+        Para iCloud Mail, use a seção "Emails (IMAP/SMTP)" acima com o preset iCloud.<br><br>
+        ⚠️ Use uma <strong>App-Specific Password</strong> — <em>não</em> sua senha Apple ID normal.<br>
+        <a href="https://appleid.apple.com" target="_blank" style="color:#3b82f6;text-decoration:none;">
+          Gerar em appleid.apple.com → Segurança → Senhas específicas para apps ↗
+        </a>
+      </p>
+
+      <!-- Status conectado -->
+      <div id="apple-loading" style="font-size:13px;color:#666;">Verificando...</div>
+      <div id="apple-connected" style="display:none;background:#0d1f0d;border:1px solid #1a3a1a;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <span style="color:#4ade80;font-weight:600;">✅ Conectado:</span>
+            <span id="apple-id-display" style="color:#e0e0e0;margin-left:8px;font-size:13px;"></span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn" onclick="testAppleConnection()" style="font-size:12px;padding:6px 12px;background:#1e3a1e;">
+              🔄 Testar
+            </button>
+            <button class="btn" onclick="removeAppleCredentials()" style="font-size:12px;padding:6px 12px;background:#3a1e1e;color:#f87171;">
+              🗑 Desconectar
+            </button>
+          </div>
+        </div>
+        <div id="apple-test-result" style="font-size:12px;color:#aaa;margin-top:8px;display:none;"></div>
+      </div>
+
+      <!-- Formulário de conexão -->
+      <div id="apple-disconnected" style="display:none;">
+        <div style="display:grid;gap:12px;">
+          <div>
+            <label style="font-size:12px;color:#aaa;display:block;margin-bottom:4px;">Apple ID (email)</label>
+            <input type="email" id="apple-id-input" placeholder="seu@icloud.com"
+              style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:12px;color:#aaa;display:block;margin-bottom:4px;">App-Specific Password</label>
+            <input type="password" id="apple-password-input" placeholder="xxxx-xxxx-xxxx-xxxx"
+              style="width:100%;background:#0d0d0d;border:1px solid #333;border-radius:6px;padding:8px;color:#e0e0e0;font-size:13px;box-sizing:border-box;">
+          </div>
+          <button class="btn" onclick="saveAppleCredentials()" style="width:fit-content;">
+            🍎 Salvar e Testar Conexão
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- API Key -->
     <div class="section">
       <div class="section-title">API Key</div>
@@ -537,6 +589,7 @@
     loadApiKey();
     loadGoogleStatus();
     loadImapAccounts();
+    loadAppleStatus();
 
     // ============================================
     // IMAP/SMTP Email Accounts (FASE 4C)
@@ -653,6 +706,93 @@
         } else {
           showError('Erro ao remover conta.');
         }
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    // ============================================
+    // Apple iCloud (FASE 8)
+    // ============================================
+
+    async function loadAppleStatus() {
+      try {
+        const resp = await fetch('/api/v1/apple/status', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        document.getElementById('apple-loading').style.display = 'none';
+        if (!resp.ok) { document.getElementById('apple-disconnected').style.display = 'block'; return; }
+        const data = await resp.json();
+        if (data.connected) {
+          document.getElementById('apple-id-display').textContent = data.apple_id;
+          document.getElementById('apple-connected').style.display = 'block';
+        } else {
+          document.getElementById('apple-disconnected').style.display = 'block';
+        }
+      } catch (e) {
+        document.getElementById('apple-loading').style.display = 'none';
+        document.getElementById('apple-disconnected').style.display = 'block';
+      }
+    }
+
+    async function saveAppleCredentials() {
+      const apple_id = document.getElementById('apple-id-input').value.trim();
+      const app_password = document.getElementById('apple-password-input').value.trim();
+      if (!apple_id || !app_password) { showError('Preencha Apple ID e App-Specific Password.'); return; }
+      try {
+        const resp = await fetch('/api/v1/apple/credentials', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apple_id, app_password }),
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.detail || 'Erro'); }
+        showSuccess('iCloud configurado! Testando conexão...');
+        // Refresh status
+        document.getElementById('apple-disconnected').style.display = 'none';
+        document.getElementById('apple-id-display').textContent = apple_id;
+        document.getElementById('apple-connected').style.display = 'block';
+        // Live test
+        await testAppleConnection();
+      } catch (e) {
+        showError('Erro: ' + e.message);
+      }
+    }
+
+    async function testAppleConnection() {
+      const resultEl = document.getElementById('apple-test-result');
+      resultEl.style.display = 'block';
+      resultEl.textContent = '🔄 Testando conexão CalDAV...';
+      try {
+        const resp = await fetch('/api/v1/apple/test', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          resultEl.textContent = `✅ Conectado! ${data.calendars_count} calendário(s) encontrado(s).`;
+          resultEl.style.color = '#4ade80';
+        } else {
+          resultEl.textContent = `❌ Falha: ${data.error}`;
+          resultEl.style.color = '#f87171';
+        }
+      } catch (e) {
+        resultEl.textContent = '❌ Erro de rede: ' + e.message;
+        resultEl.style.color = '#f87171';
+      }
+    }
+
+    async function removeAppleCredentials() {
+      if (!confirm('Remover conta Apple iCloud?')) return;
+      try {
+        const resp = await fetch('/api/v1/apple/credentials', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) throw new Error('Erro ao remover');
+        document.getElementById('apple-connected').style.display = 'none';
+        document.getElementById('apple-disconnected').style.display = 'block';
+        document.getElementById('apple-id-input').value = '';
+        document.getElementById('apple-password-input').value = '';
+        showSuccess('Conta Apple iCloud removida.');
       } catch (e) {
         showError(e.message);
       }

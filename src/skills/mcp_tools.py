@@ -706,6 +706,108 @@ class MCPToolRegistry:
             handler=self._tool_email_accounts_overview,
         ))
 
+        # --- Apple iCloud Tools (FASE 8) ---
+        self.register(MCPTool(
+            name="apple_calendar_list",
+            description=(
+                "List upcoming events from iCloud Calendar (Apple). "
+                "Use for @me.com, @icloud.com or @mac.com Apple accounts. "
+                "Requires iCloud configured in /settings.html → Apple iCloud. "
+                "Example: 'meus eventos essa semana no iCloud' → days_ahead=7."
+            ),
+            category="calendar",
+            parameters={
+                "days_ahead": {"type": "integer", "description": "Days to look ahead (default: 7)"},
+            },
+            handler=self._tool_apple_calendar_list,
+        ))
+
+        self.register(MCPTool(
+            name="apple_calendar_search",
+            description=(
+                "Search events by text in iCloud Calendar (Apple). "
+                "Searches title and description across all calendars."
+            ),
+            category="calendar",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Text to search in event title/description"},
+            },
+            handler=self._tool_apple_calendar_search,
+        ))
+
+        self.register(MCPTool(
+            name="apple_calendar_create",
+            description=(
+                "Create a new event in iCloud Calendar (Apple). "
+                "ALWAYS show the event details to the user and get confirmation before calling. "
+                "start/end must be ISO 8601 format: '2026-02-20T14:00:00'."
+            ),
+            category="calendar",
+            parameters={
+                "title": {"type": "string", "required": True, "description": "Event title"},
+                "start": {"type": "string", "required": True, "description": "Start datetime ISO 8601 (e.g. '2026-02-20T14:00:00')"},
+                "end": {"type": "string", "required": True, "description": "End datetime ISO 8601 (e.g. '2026-02-20T15:00:00')"},
+                "notes": {"type": "string", "description": "Event notes/description (optional)"},
+                "calendar_name": {"type": "string", "description": "Target calendar name (empty = default)"},
+            },
+            handler=self._tool_apple_calendar_create,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="apple_reminders_list",
+            description=(
+                "List reminders from iCloud Reminders app (Apple). "
+                "Returns pending reminders by default. Use completed=true to include done items."
+            ),
+            category="tasks",
+            parameters={
+                "completed": {"type": "boolean", "description": "Include completed reminders (default: false)"},
+            },
+            handler=self._tool_apple_reminders_list,
+        ))
+
+        self.register(MCPTool(
+            name="apple_reminders_create",
+            description=(
+                "Create a new reminder in iCloud Reminders (Apple). "
+                "ALWAYS confirm with the user before creating."
+            ),
+            category="tasks",
+            parameters={
+                "title": {"type": "string", "required": True, "description": "Reminder title"},
+                "due_date": {"type": "string", "description": "Due date ISO 8601 (e.g. '2026-02-20T09:00:00'), optional"},
+            },
+            handler=self._tool_apple_reminders_create,
+            requires_approval=True,
+        ))
+
+        self.register(MCPTool(
+            name="apple_contacts_search",
+            description=(
+                "Search contacts in iCloud Contacts (Apple). "
+                "Searches by name, email, phone number, or company."
+            ),
+            category="contacts",
+            parameters={
+                "query": {"type": "string", "required": True, "description": "Name, email, phone, or company to search"},
+            },
+            handler=self._tool_apple_contacts_search,
+        ))
+
+        self.register(MCPTool(
+            name="apple_contacts_list",
+            description=(
+                "List contacts from iCloud Contacts (Apple). "
+                "Returns up to 'limit' contacts alphabetically."
+            ),
+            category="contacts",
+            parameters={
+                "limit": {"type": "integer", "description": "Max contacts to return (default: 20)"},
+            },
+            handler=self._tool_apple_contacts_list,
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -1397,6 +1499,47 @@ class MCPToolRegistry:
             "- NUNCA misture os dois sistemas"
         )
         return "\n".join(lines)
+
+    # ──────────────────────────────────────────
+    # Apple iCloud Handlers (FASE 8)
+    # ──────────────────────────────────────────
+
+    async def _tool_apple_calendar_list(self, days_ahead: int = 7) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.calendar_list(self._current_user_id(), days_ahead=days_ahead)
+
+    async def _tool_apple_calendar_search(self, query: str) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.calendar_search(self._current_user_id(), query)
+
+    async def _tool_apple_calendar_create(
+        self,
+        title: str,
+        start: str,
+        end: str,
+        notes: str = "",
+        calendar_name: str = "",
+    ) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.calendar_create_event(
+            self._current_user_id(), title, start, end, notes, calendar_name
+        )
+
+    async def _tool_apple_reminders_list(self, completed: bool = False) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.reminders_list(self._current_user_id(), completed=completed)
+
+    async def _tool_apple_reminders_create(self, title: str, due_date: str = "") -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.reminders_create(self._current_user_id(), title, due_date)
+
+    async def _tool_apple_contacts_search(self, query: str) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.contacts_search(self._current_user_id(), query)
+
+    async def _tool_apple_contacts_list(self, limit: int = 20) -> str:
+        from src.core.apple_service import apple_service
+        return await apple_service.contacts_list(self._current_user_id(), limit=limit)
 
     def _current_user_id(self) -> str:
         """Get current user_id from execution context (set by ReAct loop)."""

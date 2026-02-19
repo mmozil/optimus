@@ -2164,6 +2164,85 @@ Optimus roda em sua máquina (localhost:8000)
 
 ---
 
+## FASE 8 — Apple iCloud Integration
+
+> **Protocolos abertos: CalDAV + CardDAV + IMAP/SMTP**
+
+### O que a Apple disponibiliza
+
+| Serviço | Protocolo | URL | Status |
+|---------|-----------|-----|--------|
+| iCloud Mail | IMAP/SMTP | imap.mail.me.com:993 | ✅ via preset iCloud (FASE 4C) |
+| iCloud Calendar | CalDAV | caldav.icloud.com | ✅ FASE 8 |
+| iCloud Reminders | CalDAV (VTODO) | caldav.icloud.com | ✅ FASE 8 |
+| iCloud Contacts | CardDAV | contacts.icloud.com | ✅ FASE 8 |
+| iCloud Drive | — | Sem API pública | ❌ Não disponível |
+| iCloud Notes | — | Sem API pública | ❌ Não disponível |
+
+### Autenticação
+- **Apple ID** (email: @icloud.com, @me.com ou @mac.com)
+- **App-Specific Password** — gerar em appleid.apple.com → Segurança → Senhas específicas para apps
+- **Não** usar senha normal do Apple ID
+
+### Call Path
+```
+# Calendar / Reminders:
+apple_calendar_list(days_ahead=7)
+  → mcp_tools._tool_apple_calendar_list()
+    → apple_service.calendar_list(user_id)
+      → apple_service._get_credentials(user_id)
+        → SELECT FROM apple_credentials WHERE user_id = ?
+          → (apple_id, decrypt(app_password_encrypted))
+      → caldav.DAVClient(ICLOUD_CALDAV_URL, apple_id, app_password)
+        → client.principal().calendars()
+          → cal.date_search(start=now, end=now+7d, expand=True)
+            → [VEVENT] → formatted string
+
+# Contacts:
+apple_contacts_search(query)
+  → apple_service.contacts_search(user_id, query)
+    → apple_service._fetch_contacts_raw(apple_id, app_password)
+      → httpx PROPFIND caldav.icloud.com (discovery)
+      → httpx REPORT caldav.icloud.com (fetch vCards)
+        → parse vCard blocks → filter by query → formatted list
+```
+
+### Arquivos criados/modificados
+- `migrations/020_apple_credentials.sql`: tabela `apple_credentials` (user_id, apple_id, app_password_encrypted)
+- `src/core/apple_service.py`: CalDAV + CardDAV service com Fernet encryption
+- `src/api/apple_api.py`: 4 endpoints REST (POST/GET/DELETE credentials + GET test)
+- `src/skills/mcp_tools.py`: 7 tools Apple + 7 handlers
+- `src/main.py`: registra apple_router
+- `src/static/settings.html`: seção "Apple iCloud" com form + status + test
+- `src/core/imap_service.py`: preset `icloud` adicionado (imap.mail.me.com:993)
+- `requirements.txt`: caldav>=1.3.9, vobject>=0.9.6
+- `tests/test_e2e.py`: `TestAppleICloudIntegration` (10 testes)
+
+### MCP Tools (7)
+| Tool | Descrição |
+|------|-----------|
+| `apple_calendar_list` | Lista eventos futuros (todos calendários) |
+| `apple_calendar_search` | Busca eventos por texto |
+| `apple_calendar_create` | Cria evento (requer aprovação) |
+| `apple_reminders_list` | Lista reminders pendentes |
+| `apple_reminders_create` | Cria reminder (requer aprovação) |
+| `apple_contacts_search` | Busca contatos por nome/email/telefone |
+| `apple_contacts_list` | Lista contatos |
+
+### E2E Tests (TestAppleICloudIntegration — 10 testes)
+- `test_apple_service_exists`
+- `test_apple_service_methods`
+- `test_icloud_constants_defined`
+- `test_calendar_without_credentials_graceful`
+- `test_reminders_without_credentials_graceful`
+- `test_contacts_without_credentials_graceful`
+- `test_icloud_mcp_tools_registered`
+- `test_icloud_api_endpoints_exist`
+- `test_migration_020_exists`
+- `test_icloud_preset_in_imap_service`
+
+---
+
 ## Matriz Final: "PRONTO" significa...
 
 | Item | Status | Prova |
@@ -2179,6 +2258,7 @@ Optimus roda em sua máquina (localhost:8000)
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
 | **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
 | **FASE 7** | 🟡 Impl ✅ / VPS ⚠️ | README VPS + UI responsiva + PWA (falta testar em VPS real e celular) |
+| **FASE 8** | 🟡 Impl ✅ / Prod ⚠️ | Apple iCloud: Calendar + Reminders + Contacts (CalDAV/CardDAV) + 7 MCP tools; aguarda configuração de credenciais |
 
 ### ✅ #13-15 Telegram + WhatsApp + Slack Channels — CONCLUÍDO
 

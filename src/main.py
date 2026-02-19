@@ -909,6 +909,10 @@ app.include_router(oauth_google_router)
 from src.api.imap_accounts import router as imap_router
 app.include_router(imap_router)
 
+# FASE 8: Apple iCloud (CalDAV/CardDAV)
+from src.api.apple_api import router as apple_router
+app.include_router(apple_router)
+
 
 class SearchRequest(BaseModel):
     query: str
