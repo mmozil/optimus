@@ -383,37 +383,47 @@ class ImapService:
                         mid_str,
                         "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
                     )
-                    # aioimaplib response can vary by server. Strategy:
-                    # 1. Look for part containing header fields (case-insensitive)
-                    # 2. Extract content after {size}\r\n literal marker
-                    # 3. Fallback: concatenate all non-metadata parts
+                    # aioimaplib fetch response varies by server:
+                    # Format 1 (separate): [b'N (BODY... {size}', b'From: ...\r\n...', b')']
+                    # Format 2 (combined): [b'N (BODY... {size}\r\nFrom: ...\r\n\r\n)', b')']
+                    # IMPORTANT: always try to extract AFTER {size}\r\n FIRST,
+                    # before doing a plain content search (to avoid IMAP metadata prefix).
                     raw_header = b""
                     _HEADER_MARKERS = (b"from:", b"subject:", b"date:", b"to:")
                     for part in msg_data:
                         if not isinstance(part, bytes) or not part.strip():
                             continue
-                        part_lower = part.lower()
-                        # Case A: part IS the header content (case-insensitive)
-                        if any(h in part_lower for h in _HEADER_MARKERS):
-                            raw_header = part
-                            break
-                        # Case B: header embedded after literal {size}\r\n
-                        m = re.search(rb"\{\d+\}\r\n(.+)", part, re.DOTALL)
+                        # Case B FIRST: extract after literal {size}\r\n marker
+                        # This handles Format 2 where metadata and headers are in the same part
+                        m = re.search(rb"\{\d+\}\r\n([\s\S]+)", part)
                         if m:
-                            candidate = m.group(1)
-                            if any(h in candidate.lower() for h in _HEADER_MARKERS):
+                            candidate = m.group(1).rstrip(b" )\r\n")
+                            if candidate and any(h in candidate.lower() for h in _HEADER_MARKERS):
                                 raw_header = candidate
                                 break
-                    # Case C: nothing matched — try RFC822.HEADER as fallback
+                        # Case A: part is pure header content (Format 1 — separate item)
+                        # Only use if part does NOT contain {size} (not IMAP metadata)
+                        elif b"{" not in part:
+                            if any(h in part.lower() for h in _HEADER_MARKERS):
+                                raw_header = part
+                                break
+                    # Case C: nothing matched — fallback to full RFC822.HEADER fetch
                     if not raw_header:
                         try:
                             _, hdr_data = await imap.fetch(mid_str, "(RFC822.HEADER)")
                             for hpart in hdr_data:
-                                if isinstance(hpart, bytes) and len(hpart) > 20:
-                                    hpart_lower = hpart.lower()
-                                    if any(h in hpart_lower for h in _HEADER_MARKERS):
-                                        raw_header = hpart
+                                if not isinstance(hpart, bytes) or not hpart.strip():
+                                    continue
+                                # Same strategy: extract after literal first
+                                m2 = re.search(rb"\{\d+\}\r\n([\s\S]+)", hpart)
+                                if m2:
+                                    candidate = m2.group(1).rstrip(b" )\r\n")
+                                    if any(h in candidate.lower() for h in _HEADER_MARKERS):
+                                        raw_header = candidate
                                         break
+                                elif b"{" not in hpart and any(h in hpart.lower() for h in _HEADER_MARKERS):
+                                    raw_header = hpart
+                                    break
                         except Exception:
                             pass
 
