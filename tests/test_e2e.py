@@ -4576,3 +4576,189 @@ class TestImapIntegration:
         # svc2 must be able to decrypt what svc1 encrypted (same JWT_SECRET → same key)
         decrypted = svc2._decrypt(encrypted)
         assert decrypted == password, "Encryption key must be deterministic from JWT_SECRET"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FASE 7 — VPS + App Mobile (PWA)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestVPSAndPWAIntegration:
+    """
+    FASE 7 — E2E tests for VPS self-host readiness and PWA mobile support.
+
+    REGRA DE OURO Checkpoint 2: These tests FAIL if the FASE 7 deliverables
+    are not present.
+
+    Call paths tested:
+      Docker: docker-compose.yml → postgres (pgvector) + redis + app (Dockerfile)
+      PWA: index.html → <link rel="manifest"> → manifest.json + service-worker.js
+      Responsive: index.html CSS → @media (max-width: 600px) present
+      README: README.md → VPS setup sections present
+    """
+
+    def test_dockerfile_exists_and_valid(self):
+        """
+        Dockerfile must exist and contain key production instructions.
+
+        Without this: docker compose up --build fails immediately.
+        """
+        from pathlib import Path
+        dockerfile = Path(__file__).parent.parent / "Dockerfile"
+        assert dockerfile.exists(), "Dockerfile not found — docker compose up --build will fail"
+        content = dockerfile.read_text()
+        assert "FROM" in content, "Dockerfile must have a FROM instruction"
+        assert "uvicorn" in content.lower() or "CMD" in content, \
+            "Dockerfile must start uvicorn (CMD/ENTRYPOINT)"
+
+    def test_docker_compose_production_exists(self):
+        """
+        docker-compose.yml must exist with app, postgres, redis services.
+
+        Without this: self-host on VPS has no compose file.
+        """
+        from pathlib import Path
+        compose = Path(__file__).parent.parent / "docker-compose.yml"
+        assert compose.exists(), "docker-compose.yml not found"
+        content = compose.read_text()
+        assert "postgres" in content, "docker-compose.yml must include postgres service"
+        assert "redis" in content, "docker-compose.yml must include redis service"
+        assert "pgvector" in content or "pgvector/pgvector" in content, \
+            "docker-compose.yml must use pgvector image (PGvector required)"
+        assert "DATABASE_URL" in content or "POSTGRES_PASSWORD" in content, \
+            "docker-compose.yml must configure database connection"
+
+    def test_docker_compose_dev_exists(self):
+        """
+        docker-compose.dev.yml must exist for local development.
+
+        Without this: Quick Start in README will fail.
+        """
+        from pathlib import Path
+        compose = Path(__file__).parent.parent / "docker-compose.dev.yml"
+        assert compose.exists(), "docker-compose.dev.yml not found — dev setup broken"
+
+    def test_env_example_exists_with_required_vars(self):
+        """
+        .env.example must exist and contain required variable names.
+
+        Without this: developer has no template to configure the app.
+        """
+        from pathlib import Path
+        env_example = Path(__file__).parent.parent / ".env.example"
+        assert env_example.exists(), ".env.example not found — new developers can't configure app"
+        content = env_example.read_text()
+        required_vars = ["JWT_SECRET", "DATABASE_URL", "GOOGLE_API_KEY"]
+        for var in required_vars:
+            assert var in content, \
+                f".env.example missing '{var}' — required variable not documented"
+
+    def test_pwa_manifest_exists_and_valid(self):
+        """
+        manifest.json must exist with required PWA fields.
+
+        Without this: browser won't offer "Add to Home Screen" install prompt.
+
+        Call path: index.html <link rel="manifest" href="/static/manifest.json">
+                    → browser fetches manifest → validates for PWA installability
+        """
+        import json
+        from pathlib import Path
+        manifest_path = Path(__file__).parent.parent / "src" / "static" / "manifest.json"
+        assert manifest_path.exists(), "src/static/manifest.json not found — PWA won't install"
+        manifest = json.loads(manifest_path.read_text())
+        assert "name" in manifest, "manifest.json must have 'name'"
+        assert "short_name" in manifest, "manifest.json must have 'short_name'"
+        assert "start_url" in manifest, "manifest.json must have 'start_url'"
+        assert "display" in manifest, "manifest.json must have 'display'"
+        assert manifest.get("display") == "standalone", \
+            "manifest.json display must be 'standalone' for app-like experience"
+        assert "icons" in manifest and len(manifest["icons"]) >= 1, \
+            "manifest.json must have at least one icon"
+
+    def test_service_worker_exists_and_valid(self):
+        """
+        service-worker.js must exist and implement install + fetch handlers.
+
+        Without this: PWA won't cache assets — offline mode broken.
+
+        Call path: index.html → navigator.serviceWorker.register('/static/service-worker.js')
+                    → SW intercepts fetch → caches responses
+        """
+        from pathlib import Path
+        sw = Path(__file__).parent.parent / "src" / "static" / "service-worker.js"
+        assert sw.exists(), "src/static/service-worker.js not found — PWA offline won't work"
+        content = sw.read_text()
+        assert "install" in content, "service-worker.js must handle 'install' event"
+        assert "fetch" in content, "service-worker.js must handle 'fetch' event"
+        assert "caches" in content, "service-worker.js must use Cache API"
+
+    def test_manifest_linked_in_index(self):
+        """
+        index.html must link manifest.json and register the service worker.
+
+        Without this: PWA install prompt never appears.
+        """
+        from pathlib import Path
+        index = Path(__file__).parent.parent / "src" / "static" / "index.html"
+        assert index.exists(), "src/static/index.html not found"
+        content = index.read_text()
+        assert 'rel="manifest"' in content, \
+            "index.html must have <link rel=\"manifest\"> for PWA installability"
+        assert "serviceWorker.register" in content or "service-worker.js" in content, \
+            "index.html must register service worker for PWA caching"
+
+    def test_mobile_responsive_css_present(self):
+        """
+        index.html must contain @media queries for mobile breakpoints.
+
+        Without this: UI overflows on small screens — header buttons are unclickable.
+
+        Call path: Browser renders index.html → CSS @media (max-width: 600px) →
+                    .btn-label { display: none } → only emojis visible in header
+        """
+        from pathlib import Path
+        index = Path(__file__).parent.parent / "src" / "static" / "index.html"
+        content = index.read_text()
+        assert "@media" in content, \
+            "index.html missing @media queries — UI not responsive for mobile"
+        assert "max-width: 600px" in content or "max-width:600px" in content, \
+            "index.html missing 600px breakpoint — mobile layout not implemented"
+        assert "btn-label" in content, \
+            "index.html must have .btn-label class for mobile header label hiding"
+
+    def test_viewport_meta_in_all_pages(self):
+        """
+        All HTML pages must have viewport meta tag for mobile rendering.
+
+        Without this: page renders at desktop scale on mobile — unusable.
+        """
+        from pathlib import Path
+        static_dir = Path(__file__).parent.parent / "src" / "static"
+        html_files = list(static_dir.glob("*.html"))
+        assert len(html_files) > 0, "No HTML files found in src/static/"
+        missing = []
+        for html_file in html_files:
+            content = html_file.read_text()
+            if 'name="viewport"' not in content:
+                missing.append(html_file.name)
+        assert not missing, \
+            f"Missing viewport meta tag in: {', '.join(missing)} — mobile rendering broken"
+
+    def test_readme_has_vps_setup_guide(self):
+        """
+        README.md must document VPS self-host setup (Docker, env vars, Nginx).
+
+        Without this: developers can't self-host the platform.
+        """
+        from pathlib import Path
+        readme = Path(__file__).parent.parent / "README.md"
+        assert readme.exists(), "README.md not found"
+        content = readme.read_text()
+        assert "docker compose" in content.lower() or "docker-compose" in content.lower(), \
+            "README missing docker compose instructions for VPS setup"
+        assert "nginx" in content.lower() or "reverse proxy" in content.lower(), \
+            "README missing Nginx/reverse proxy setup for production"
+        assert "JWT_SECRET" in content or ".env" in content, \
+            "README must document environment variable configuration"
+        assert "PWA" in content or "instalar no celular" in content.lower(), \
+            "README must document PWA mobile installation"
