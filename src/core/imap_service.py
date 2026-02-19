@@ -378,23 +378,33 @@ class ImapService:
 
             for msg_id in reversed(ids_to_fetch):
                 try:
+                    mid_str = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
                     _, msg_data = await imap.fetch(
-                        msg_id.decode() if isinstance(msg_id, bytes) else msg_id,
-                        "(BODY[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
+                        mid_str,
+                        "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
                     )
-                    # msg_data structure: [b'... (BODY...)\r\n', b'header_content', b')']
+                    # aioimaplib can return headers in different ways:
+                    # Case A: [b'1 (BODY... {n}', b'From: ...\r\n...', b')']
+                    # Case B: [b'1 (BODY... {n}\r\nFrom: ...\r\n...', b')']
                     raw_header = b""
                     for part in msg_data:
-                        if isinstance(part, bytes) and part not in (b")", b""):
-                            if b"BODY" not in part and part.strip():
-                                raw_header += part
+                        if not isinstance(part, bytes) or not part.strip() or part == b")":
+                            continue
+                        # Case A: part is the header content directly
+                        if any(h in part for h in (b"From:", b"Subject:", b"Date:", b"To:")):
+                            raw_header = part
+                            break
+                        # Case B: header embedded after {size}\r\n
+                        m = re.search(rb"\{\d+\}\r\n(.+)", part, re.DOTALL)
+                        if m:
+                            raw_header = m.group(1)
+                            break
 
                     msg = message_from_bytes(raw_header)
                     subject = _decode_header_value(msg.get("Subject", "(sem assunto)"))
                     sender = _decode_header_value(msg.get("From", "Desconhecido"))
                     date = msg.get("Date", "")[:30]
 
-                    mid_str = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
                     lines.append(
                         f"- **{subject}**\n"
                         f"  De: {sender}\n"
