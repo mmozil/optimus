@@ -258,6 +258,23 @@ class Gateway:
                 context["pending_reminders"] = reminders
                 logger.info(f"Gateway: injecting {len(reminders)} pending reminder(s) into context")
 
+            # 5c. FASE 21: RAG context enrichment for research/analysis intents
+            # Only enriches when intent suggests it's needed — avoids latency on every request
+            if intent_result.intent in ("research", "analysis") and len(message) > 20:
+                try:
+                    from src.infra.supabase_client import get_async_session
+                    from src.memory.rag import rag_pipeline
+                    async with get_async_session() as _rag_db:
+                        _rag_ctx = await rag_pipeline.augment_prompt(_rag_db, message)
+                        if _rag_ctx:
+                            context["rag_context"] = _rag_ctx
+                            logger.info(
+                                f"FASE 21: RAG context injected ({len(_rag_ctx)} chars)",
+                                extra={"props": {"intent": intent_result.intent, "rag_chars": len(_rag_ctx)}},
+                            )
+                except Exception as _rag_e:
+                    logger.debug(f"FASE 21: RAG enrichment skipped: {_rag_e}")
+
             # 6. Planning Engine: detect complex tasks and propose a plan
             from src.engine.planning_engine import planning_engine
             if not target_agent and await planning_engine.should_plan(message, context):
@@ -280,6 +297,19 @@ class Gateway:
                     },
                 }
 
+            # FASE 21: Smart intent-based routing — use specialist agent when confidence > 0.5
+            # intent_classifier already runs above; use suggested_agent if available
+            context["thinking_level"] = intent_result.thinking_level
+            if not target_agent and intent_result.confidence > 0.5 and intent_result.suggested_agent != "optimus":
+                _specialist = intent_result.suggested_agent
+                if AgentFactory.get(_specialist):
+                    agent_name = _specialist
+                    logger.info(
+                        f"FASE 21: Intent routing '{intent_result.intent}' "
+                        f"({intent_result.confidence:.0%}) → agent '{agent_name}'",
+                        extra={"props": {"intent": intent_result.intent, "routed_to": agent_name}},
+                    )
+
             # 7. Process
             if target_agent:
                 agent = AgentFactory.get(target_agent)
@@ -295,11 +325,14 @@ class Gateway:
                 # FASE 0 #1: Use think() instead of process() to enable ToT for complex queries
                 result = await agent.think(message, context)
             else:
-                optimus = AgentFactory.get("optimus")
-                if not optimus:
+                # Use agent_name (may have been overridden by smart routing above)
+                _agent = AgentFactory.get(agent_name)
+                if not _agent:
+                    _agent = AgentFactory.get("optimus")
+                if not _agent:
                     return {"content": "❌ Optimus não inicializado.", "agent": "gateway", "model": "none"}
                 # FASE 0 #1: Use think() instead of process() to enable ToT for complex queries
-                result = await optimus.think(message, context)
+                result = await _agent.think(message, context)
 
             # FASE 0 #2: Apply 🔴 uncertainty warning if calibrated confidence is low
             # Format: "\n\n---\n\n🔴 ..." so TTS can strip it (split on "\n---\n")
@@ -318,6 +351,26 @@ class Gateway:
                 message=message,
                 response=result["content"],
             ))
+
+            # FASE 21: Intent Predictor — add suggestion chips if patterns exist for this user
+            try:
+                from src.engine.intent_predictor import PATTERNS_DIR, UserPattern, intent_predictor
+                import json as _json_pred
+                _patterns_file = PATTERNS_DIR / f"{target_agent or 'optimus'}.json"
+                if _patterns_file.exists():
+                    _raw_patterns = _json_pred.loads(_patterns_file.read_text(encoding="utf-8"))
+                    _patterns = [UserPattern(**p) for p in _raw_patterns]
+                    if _patterns:
+                        _predictions = intent_predictor.predict_next(_patterns)
+                        if _predictions:
+                            result = dict(result)
+                            result["suggestions"] = [
+                                {"text": p.suggested_message, "confidence": p.confidence, "action": p.action}
+                                for p in _predictions[:3]
+                            ]
+                            logger.debug(f"FASE 21: {len(_predictions)} suggestion chips added to response")
+            except Exception as _e_pred:
+                logger.debug(f"FASE 21: Intent predictor suggestions skipped: {_e_pred}")
 
             if span:
                 span.set_attribute("response.agent", result.get("agent", ""))

@@ -227,36 +227,49 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 21 — Limpeza de Código Morto
+## FASE 21 — Integração de Módulos Órfãos ✅ PARCIAL
 
-**Objetivo:** Remover ou integrar módulos órfãos restantes.
-**Por quê:** 54% do codebase é código morto (28 de 52 módulos). Manutenção é impossível assim.
+**Objetivo:** Integrar módulos que existiam mas não eram chamados no fluxo real.
+**Análise (2026-02-19):** Diagnóstico inicial estava errado — nenhum módulo deve ser deletado. Todos têm valor, precisavam apenas ser conectados.
 
-### Decisão por módulo:
+### Diagnóstico real por módulo:
 
-| Módulo | Ação | Motivo |
-|--------|------|--------|
-| `intent_classifier.py` | DELETE | Substituído por planning_engine |
-| `intent_predictor.py` | DELETE | Stub Jarvis, nunca usado |
-| `autonomous_executor.py` | DELETE | Nunca chamado, conceito absorvido pelo ReAct loop |
-| `reflection_engine.py` | INTEGRAR | Conectar ao cron semanal, output para collective_intelligence |
-| `working_memory.py` | INTEGRAR | Injetar no session context como scratchpad |
-| `rag.py` | DELETE | Funcionalidade coberta por knowledge_tool |
-| `mcp_plugin.py` | MANTER | Infra para futuros plugins, mas documentar que pasta está vazia |
-| `skills_discovery.py` | JÁ INTEGRADO | Conectado via `/api/v1/skills` |
-| `tools_manifest.py` | INTEGRAR | Gerar TOOLS.md no startup, servir via endpoint |
-| `webchat.py` | DELETE | UI usa API direto, canal desnecessário |
-| `voice_interface.py` | DELETE | STT/TTS real é pelo audio_service.py |
-| `cron_scheduler.py` | INTEGRAR | Registrar jobs do cron_jobs_native |
-| `context_awareness.py` | INTEGRAR | Fuso horário + greeting no session bootstrap |
-| `confirmation_service.py` | INTEGRAR | Human-in-the-loop para ações destrutivas |
-| `security.py` | INTEGRAR | Enforcement real no gateway (não apenas import) |
-| `performance.py` | JÁ INTEGRADO | Conectado ao gateway |
+| Módulo | Status Real | Integração | Próxima Ação |
+|--------|-------------|-----------|--------------|
+| `intent_classifier.py` | ✅ Integrado 100% | gateway.py:191 + smart routing FASE 21 | Nenhuma |
+| `intent_predictor.py` | ✅ Integrado 80% | gateway.py: prediction chips na resposta | Frontend renderizar suggestions |
+| `autonomous_executor.py` | ✅ Integrado 100% | react_loop.py:277-303 | Nenhuma |
+| `rag.py` | ✅ Integrado 80% | gateway.py: auto-context para research/analysis | Auto-ingest de uploads |
+| `webchat.py` | ✅ Integrado 100% | main.py:227, APIs 583-642 | Nenhuma |
+| `voice_interface.py` | ✅ Integrado 100% | api/voice.py (todos endpoints) | Nenhuma |
+| `reflection_engine.py` | ⚠️ 0% | Nunca chamado | INTEGRAR: cron semanal |
+| `working_memory.py` | ⚠️ 0% | Nunca chamado | INTEGRAR: session context |
+| `tools_manifest.py` | ⚠️ 0% | Nunca chamado | INTEGRAR: startup |
+| `cron_scheduler.py` | ⚠️ 0% | Framework sem jobs | INTEGRAR: registrar jobs |
+| `context_awareness.py` | ⚠️ 0% | Nunca chamado | INTEGRAR: session bootstrap |
+| `security.py` | ⚠️ 20% | Import mas sem enforcement | INTEGRAR: gateway |
 
-- [ ] **21.1** Deletar módulos marcados DELETE
-- [ ] **21.2** Integrar módulos marcados INTEGRAR (seguindo Regra de Ouro para cada um)
-- [ ] **21.3** Atualizar imports em todo o projeto
-- [ ] **21.4** Verificar que testes existentes continuam passando
+### O que foi integrado nesta sessão (2026-02-19):
+- [x] **21.1** `intent_classifier.py` — Smart routing: quando confidence > 0.5, mensagens de code → `friday`, research → `fury`
+  - Call path: `gateway.route_message()` linha ~283 → `AgentFactory.get(suggested_agent)`
+- [x] **21.2** `intent_predictor.py` — Suggestion chips: padrões aprendidos viram sugestões proativas na resposta
+  - Call path: `gateway.route_message()` linha ~340 → `predict_next()` → `result["suggestions"]`
+- [x] **21.3** `rag.py` — RAG auto-context: queries de research/analysis enriquecem contexto automaticamente
+  - Call path: `gateway.route_message()` linha ~261 → `rag_pipeline.augment_prompt()` → `context["rag_context"]`
+  - Renderizado pelo `react_loop.py` em `_build_user_content()`
+
+### Pendente:
+- [ ] **21.4** `reflection_engine.py` — Conectar ao cron semanal
+  - Call path: `cron_scheduler` (semanal) → `reflection_engine.analyze_week()` → `collective_intelligence.share()`
+- [ ] **21.5** `working_memory.py` — Injetar no session context
+  - Call path: `session_bootstrap.load_context()` → carregar `WORKING.md` do agent → `context["working_memory"]`
+- [ ] **21.6** `tools_manifest.py` — Gerar TOOLS.md no startup
+  - Call path: `main.py lifespan startup` → `tools_manifest.generate()` → salvar em `workspace/TOOLS.md`
+- [ ] **21.7** `context_awareness.py` — Fuso horário + greeting no bootstrap
+  - Call path: `gateway.route_message()` → `context_awareness.get_context()` → injetar em context
+- [ ] **21.8** `security.py` — Enforcement real no gateway
+  - Call path: `gateway.route_message()` → `security.check_permission(user, action)` → bloquear se negado
+- [ ] **21.9** Frontend: renderizar `suggestions` do intent predictor como chips clicáveis
 
 ---
 
