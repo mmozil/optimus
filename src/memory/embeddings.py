@@ -101,17 +101,21 @@ class EmbeddingService:
         """Store an embedding in the database."""
         from sqlalchemy import text
 
+        if not embedding:
+            logger.warning("store_embedding skipped: empty embedding vector")
+            return
+
         try:
             await db_session.execute(
                 text("""
                     INSERT INTO embeddings (content, embedding, source_type, source_id, agent_id, metadata)
-                    VALUES (:content, :embedding, :source_type, :source_id,
+                    VALUES (:content, CAST(:embedding AS vector), :source_type, :source_id,
                             (SELECT id FROM agents WHERE name = :agent_name),
                             :metadata)
                 """),
                 {
                     "content": content,
-                    "embedding": str(embedding),  # PGvector accepts string format
+                    "embedding": str(embedding),  # '[0.1, -0.2, ...]' → cast to vector
                     "source_type": source_type,
                     "source_id": source_id,
                     "agent_name": agent_id or "",
@@ -146,7 +150,14 @@ class EmbeddingService:
 
         from sqlalchemy import text
 
+        # Guard: empty embedding means API failed — skip DB query
+        if not query_embedding:
+            logger.warning("Semantic search skipped: empty query embedding")
+            return []
+
         # Build query with optional source filter
+        # NOTE: explicit ::vector cast required — PGvector <=> operator does not
+        # auto-cast text parameters, causing silent failure without it.
         where_clause = ""
         params = {"query_embedding": str(query_embedding), "threshold": threshold, "limit": limit}
 
@@ -156,9 +167,9 @@ class EmbeddingService:
 
         sql = text(f"""
             SELECT content, source_type, source_id, metadata,
-                   1 - (embedding <=> :query_embedding) as similarity
+                   1 - (embedding <=> CAST(:query_embedding AS vector)) as similarity
             FROM embeddings
-            WHERE 1 - (embedding <=> :query_embedding) > :threshold
+            WHERE 1 - (embedding <=> CAST(:query_embedding AS vector)) > :threshold
             {where_clause}
             ORDER BY similarity DESC
             LIMIT :limit
