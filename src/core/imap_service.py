@@ -603,6 +603,26 @@ class ImapService:
             before = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%d-%b-%Y")
             parts.append(f"BEFORE {before}")
 
+        # before:YYYY/MM/DD or before:YYYY-MM-DD → IMAP BEFORE
+        m = re.search(r'\bbefore:(\d{4})[/-](\d{2})[/-](\d{2})\b', query, re.I)
+        if m:
+            try:
+                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                parts.append(f'BEFORE {dt.strftime("%d-%b-%Y")}')
+            except ValueError:
+                pass
+
+        # cc:email
+        m = re.search(r'\bcc:(\S+)', query, re.I)
+        if m:
+            parts.append(f'CC "{m.group(1)}"')
+
+        # has:attachment
+        if re.search(r'\bhas:attachment\b', query, re.I):
+            # IMAP doesn't have a native "has attachment" filter,
+            # but searching for Content-Disposition in body works for most servers
+            parts.append('TEXT "Content-Disposition"')
+
         # Fallback: treat as TEXT search
         if not parts:
             safe = query.replace('"', '').strip()

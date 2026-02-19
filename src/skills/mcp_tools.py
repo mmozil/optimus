@@ -380,15 +380,21 @@ class MCPToolRegistry:
             name="gmail_read",
             description=(
                 "Search and list emails from the Gmail account connected via Google OAuth. "
-                "ONLY use this tool for Gmail/Google accounts (@gmail.com or Google Workspace). "
-                "For any other provider (Outlook, corporate IMAP, Yahoo, etc.) use email_read instead. "
-                "Query syntax: 'is:unread', 'from:boss@company.com', 'newer_than:3d', 'after:2026/02/19'. "
-                "For time-of-day filter (e.g. after 14h today), use: 'after:YYYY/MM/DD HH:MM' "
-                "— example: 'after:2026/02/19 14:00'. The system converts to Unix timestamp automatically."
+                "ONLY for Gmail/Google accounts (@gmail.com or Google Workspace). "
+                "For Outlook, corporate, Yahoo, etc. use email_read instead. "
+                "Common queries: "
+                "'' (empty) = inbox, "
+                "'is:unread' = unread only, "
+                "'is:unread newer_than:1d' = unread today, "
+                "'newer_than:1d' = all from today, "
+                "'from:boss@co.com' = from specific sender, "
+                "'after:2026/02/18' = after date, "
+                "'after:2026/02/18 14:00' = after date+time (auto-converts to timestamp). "
+                "Combine freely: 'is:unread from:alice newer_than:3d'."
             ),
             category="google",
             parameters={
-                "query": {"type": "string", "required": True, "description": "Gmail search query. For date+time: 'after:2026/02/19 14:00'. For unread: 'is:unread after:2026/02/19'."},
+                "query": {"type": "string", "description": "Gmail search query. Empty string = show inbox. Examples: 'is:unread', 'newer_than:1d', 'from:boss@co.com after:2026/02/18'."},
                 "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
             },
             handler=self._tool_gmail_read,
@@ -406,7 +412,7 @@ class MCPToolRegistry:
 
         self.register(MCPTool(
             name="calendar_list",
-            description="List upcoming Google Calendar events for the next N days. Returns event title, start time and location.",
+            description="List upcoming Google Calendar events for the next N days. Returns event title, start/end time, location. Use days_ahead=1 for today only, days_ahead=7 for this week.",
             category="google",
             parameters={
                 "days_ahead": {"type": "integer", "description": "Number of days ahead to check (default: 7)"},
@@ -437,7 +443,7 @@ class MCPToolRegistry:
 
         self.register(MCPTool(
             name="drive_read",
-            description="Read the text content of a Google Drive file (Google Docs, Sheets, or other files). Returns up to 4000 chars of content.",
+            description="Read the text content of a Google Drive file (Google Docs, Sheets, or other files). Returns up to 4000 chars of content (truncated for large files).",
             category="google",
             parameters={
                 "file_id": {"type": "string", "required": True, "description": "Google Drive file ID (from drive_search results)"},
@@ -619,16 +625,22 @@ class MCPToolRegistry:
             name="email_read",
             description=(
                 "Read emails via IMAP from a configured account (Outlook, Office 365, Yahoo, corporate, etc.). "
-                "Use this when the user mentions a specific email address that is NOT Gmail "
-                "(e.g. 'marcelo@tier.finance', 'user@outlook.com', 'user@empresa.com.br'). "
-                "IMPORTANT: If the user mentions a specific email address, pass it as account_email. "
-                "Call email_list_accounts first if unsure which accounts are configured. "
-                "Query syntax: 'is:unread', 'from:boss@co.com', 'subject:meeting', 'newer_than:3d', or empty for last 10."
+                "ONLY for NON-Gmail accounts. For Gmail use gmail_read instead. "
+                "IMPORTANT: Always pass account_email with the specific address. "
+                "Common queries: "
+                "'' (empty) = last 10 emails, "
+                "'is:unread' = unread only, "
+                "'newer_than:1d' = emails from today, "
+                "'from:boss@co.com' = from specific sender, "
+                "'subject:reunião' = by subject, "
+                "'after:2026/02/18' = after date, "
+                "'is:unread newer_than:3d' = combine filters. "
+                "Also: 'before:2026/02/15', 'cc:user@co.com', 'has:attachment'."
             ),
             category="email",
             parameters={
-                "query": {"type": "string", "description": "Email search query (empty = last 10 emails)"},
-                "account_email": {"type": "string", "description": "Specific email account to use (e.g. 'marcelo@tier.finance'). Empty = first configured IMAP account."},
+                "query": {"type": "string", "description": "IMAP search query. Empty = last 10 emails. Examples: 'is:unread', 'newer_than:1d', 'from:boss@co.com'."},
+                "account_email": {"type": "string", "description": "Specific email account to use (e.g. 'marcelo@tier.finance'). ALWAYS provide this when the user specifies an address."},
                 "max_results": {"type": "integer", "description": "Max emails to return (default: 10)"},
             },
             handler=self._tool_email_read,
@@ -1143,7 +1155,7 @@ class MCPToolRegistry:
     # Google Workspace Handlers (FASE 4)
     # ============================================
 
-    async def _tool_gmail_read(self, query: str, max_results: int = 10) -> str:
+    async def _tool_gmail_read(self, query: str = "", max_results: int = 10) -> str:
         """List Gmail emails matching query."""
         from src.core.google_oauth_service import google_oauth_service
         user_id = self._current_user_id()
