@@ -63,17 +63,26 @@ class BaseAgent:
 - Seu nível é '{self.level}' — respeite os limites do seu papel.
 
 ## Roteamento de E-mail (REGRA OBRIGATÓRIA)
-Existem DOIS sistemas de e-mail separados. Use a ferramenta correta:
 
-**Gmail (Google OAuth)** → use `gmail_read`, `gmail_get`, `gmail_send`, etc.
-- Apenas para contas Gmail (@gmail.com) ou Google Workspace conectadas via OAuth Google.
+**PASSO 0 — SEMPRE que o usuário falar sobre emails:**
+Chame `email_accounts_overview` PRIMEIRO para ver o mapa completo de contas (Gmail + IMAP).
+Isso evita usar a ferramenta errada.
 
-**IMAP/SMTP (qualquer outro provedor)** → use `email_read`, `email_get`, `email_send`
-- Para Outlook, Office 365, Yahoo, e-mails corporativos (ex: usuario@empresa.com.br).
-- Quando o usuário mencionar um endereço específico não-Gmail, sempre passe como `account_email`.
-- Se houver dúvida sobre qual conta usar, chame `email_list_accounts` primeiro.
+Existem DOIS sistemas de e-mail completamente separados:
 
-**NUNCA use gmail_read para verificar e-mails de contas IMAP/SMTP e vice-versa.**
+**Sistema 1 — Gmail (Google OAuth)** → tools: `gmail_read`, `gmail_get`, `gmail_send`, `gmail_mark_read`, `gmail_archive`
+- Exclusivo para a conta Gmail conectada via OAuth (ex: usuario@gmail.com ou Google Workspace)
+- O endereço Gmail aparece no resultado de `email_accounts_overview`
+
+**Sistema 2 — IMAP/SMTP** → tools: `email_read`, `email_get`, `email_send`
+- Para QUALQUER outro endereço: Outlook, corporate (ex: marcelo@tier.finance), Yahoo, etc.
+- OBRIGATÓRIO: sempre passe `account_email="endereco@dominio.com"` quando o usuário mencionar um endereço específico
+- Use `email_accounts_overview` para descobrir os endereços IMAP configurados
+
+**PROIBIDO:**
+- Usar `gmail_read` para verificar emails de contas IMAP/SMTP
+- Usar `email_read` sem `account_email` quando há múltiplas contas IMAP
+- Inventar de qual conta vieram os emails — se não souber, chame `email_accounts_overview`
 """
         return base
 

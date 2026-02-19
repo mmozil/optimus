@@ -671,11 +671,25 @@ class MCPToolRegistry:
                 "List all IMAP/SMTP email accounts configured by the user (Outlook, corporate, Yahoo, etc.). "
                 "Call this first whenever the user asks 'which email?' or mentions a specific address "
                 "and you need to confirm it is configured as an IMAP account. "
-                "Note: Gmail via Google OAuth is a SEPARATE system — it does NOT appear here."
+                "Note: Gmail via Google OAuth is a SEPARATE system — it does NOT appear here. "
+                "Use email_accounts_overview to see ALL accounts (Gmail + IMAP) at once."
             ),
             category="email",
             parameters={},
             handler=self._tool_email_list_accounts,
+        ))
+
+        self.register(MCPTool(
+            name="email_accounts_overview",
+            description=(
+                "ALWAYS call this first when the user asks about emails or wants to know which accounts are configured. "
+                "Returns a complete map of ALL email accounts: Gmail (Google OAuth) AND IMAP/SMTP accounts. "
+                "Shows which tool to use for each account. "
+                "Use this to decide whether to call gmail_read/gmail_send or email_read/email_send."
+            ),
+            category="email",
+            parameters={},
+            handler=self._tool_email_accounts_overview,
         ))
 
         # --- Code Execution Tools ---
@@ -1299,13 +1313,75 @@ class MCPToolRegistry:
         user_id = self._current_user_id()
         accounts = await imap_service.list_accounts(user_id)
         if not accounts:
-            return "📭 Nenhuma conta de email IMAP configurada. Acesse /settings.html → Emails (IMAP/SMTP)."
-        lines = [f"📧 **{len(accounts)} conta(s) de email configurada(s):**\n"]
+            return (
+                "📭 Nenhuma conta de email IMAP/SMTP configurada.\n"
+                "Acesse /settings.html → Emails (IMAP/SMTP) para adicionar.\n"
+                "⚠️ Lembre: Gmail (Google OAuth) é um sistema separado — use gmail_read para Gmail."
+            )
+        lines = [f"📮 **{len(accounts)} conta(s) IMAP/SMTP configurada(s):**\n"]
         for acc in accounts:
             lines.append(
-                f"- **{acc['display_name']}** ({acc['email']})\n"
-                f"  Provedor: {acc['provider']} | IMAP: {acc['imap_host']}:{acc['imap_port']}"
+                f"- **{acc['email']}** ({acc['provider']})\n"
+                f"  IMAP: {acc['imap_host']}:{acc['imap_port']} | "
+                f"Use: email_read com account_email=\"{acc['email']}\""
             )
+        lines.append("\n⚠️ Gmail (Google OAuth) é sistema separado — use gmail_read para Gmail.")
+        return "\n".join(lines)
+
+    async def _tool_email_accounts_overview(self) -> str:
+        """Return a complete map of ALL email accounts (Gmail + IMAP) with routing instructions."""
+        from src.core.imap_service import imap_service
+        from src.core.google_oauth_service import google_oauth_service
+        user_id = self._current_user_id()
+
+        lines = ["# 📧 MAPA COMPLETO DE CONTAS DE EMAIL\n"]
+
+        # --- Gmail (Google OAuth) ---
+        try:
+            g_status = await google_oauth_service.get_connection_status(user_id)
+            if g_status.get("connected") and g_status.get("google_email"):
+                gmail_addr = g_status["google_email"]
+                lines.append(
+                    f"## 🔵 GMAIL (Google OAuth)\n"
+                    f"- Conta: **{gmail_addr}**\n"
+                    f"- Para ler: `gmail_read` (query='is:unread', 'from:x', etc.)\n"
+                    f"- Para enviar: `gmail_send`\n"
+                    f"- Outras ações: gmail_mark_read, gmail_archive, gmail_trash\n"
+                )
+            else:
+                lines.append(
+                    "## 🔵 GMAIL (Google OAuth)\n"
+                    "- ❌ Não conectado. Acesse /settings.html → Google para conectar.\n"
+                )
+        except Exception:
+            lines.append("## 🔵 GMAIL (Google OAuth)\n- ⚠️ Status indisponível.\n")
+
+        # --- IMAP/SMTP accounts ---
+        try:
+            imap_accounts = await imap_service.list_accounts(user_id)
+            if imap_accounts:
+                lines.append(f"## 📮 IMAP/SMTP ({len(imap_accounts)} conta(s))")
+                for acc in imap_accounts:
+                    lines.append(
+                        f"- Conta: **{acc['email']}** ({acc['provider']})\n"
+                        f"  IMAP: {acc['imap_host']}:{acc['imap_port']}\n"
+                        f"  Para ler: `email_read` com `account_email=\"{acc['email']}\"`\n"
+                        f"  Para enviar: `email_send` com `from_account=\"{acc['email']}\"`"
+                    )
+            else:
+                lines.append(
+                    "## 📮 IMAP/SMTP\n"
+                    "- ❌ Nenhuma conta configurada. Acesse /settings.html → Emails (IMAP/SMTP).\n"
+                )
+        except Exception:
+            lines.append("## 📮 IMAP/SMTP\n- ⚠️ Status indisponível.\n")
+
+        lines.append(
+            "\n## ⚠️ REGRA DE ROTEAMENTO\n"
+            "- Gmail → SEMPRE use `gmail_*` tools\n"
+            "- Qualquer outro endereço → SEMPRE use `email_*` tools com `account_email=` correto\n"
+            "- NUNCA misture os dois sistemas"
+        )
         return "\n".join(lines)
 
     def _current_user_id(self) -> str:
