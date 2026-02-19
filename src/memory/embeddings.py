@@ -2,35 +2,41 @@
 Agent Optimus — Embedding Service.
 Generates embeddings using Gemini Text Embedding 004.
 Handles batching, caching, and storage in PGvector.
+
+FASE 13 fix: migrado de google-generativeai (descontinuado)
+para google-genai (novo SDK) — API client-based.
 """
 
 import logging
 from typing import Any
 
-# Optional dependency - gracefully degrade if not available
-try:
-    import google.generativeai as genai
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
-    genai = None
-
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Try new google-genai SDK (google-genai package)
+try:
+    from google import genai as _google_genai
+    _genai_client = _google_genai.Client(api_key=settings.GOOGLE_API_KEY) if settings.GOOGLE_API_KEY else None
+    GENAI_AVAILABLE = _genai_client is not None
+except Exception:
+    _genai_client = None
+    GENAI_AVAILABLE = False
+
+if not GENAI_AVAILABLE:
+    logger.warning("EmbeddingService: google-genai client unavailable — embeddings disabled")
 
 
 class EmbeddingService:
     """
     Generates and manages text embeddings.
     Uses Gemini Text Embedding 004 (768 dimensions).
+    Uses the new google-genai SDK (google-genai package).
     """
 
     def __init__(self):
-        if GENAI_AVAILABLE and settings.GOOGLE_API_KEY:
-            genai.configure(api_key=settings.GOOGLE_API_KEY)
-        self.model = settings.EMBEDDING_MODEL
-        self.dimensions = settings.EMBEDDING_DIMENSIONS
+        self.model = settings.EMBEDDING_MODEL      # "text-embedding-004"
+        self.dimensions = settings.EMBEDDING_DIMENSIONS  # 768
 
     async def embed_text(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
         """
@@ -40,24 +46,23 @@ class EmbeddingService:
             text: Text to embed
             task_type: RETRIEVAL_DOCUMENT | RETRIEVAL_QUERY | SEMANTIC_SIMILARITY
         """
-        if not GENAI_AVAILABLE:
-            logger.warning("google.generativeai not available, returning empty embedding")
+        if not GENAI_AVAILABLE or not _genai_client:
+            logger.warning("embed_text skipped: google-genai client not available")
             return []
 
         try:
-            result = genai.embed_content(
-                model=f"models/{self.model}",
-                content=text,
-                task_type=task_type,
+            result = _genai_client.models.embed_content(
+                model=self.model,
+                contents=text,
+                config={"task_type": task_type},
             )
-            embedding = result["embedding"]
-
+            embedding = result.embeddings[0].values
             logger.debug(f"Embedding generated: {len(text)} chars → {len(embedding)} dims")
-            return embedding
+            return list(embedding)
 
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
-            raise
+            return []
 
     async def embed_batch(
         self,
@@ -66,25 +71,25 @@ class EmbeddingService:
         batch_size: int = 100,
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts in batches."""
-        if not GENAI_AVAILABLE:
-            logger.warning("google.generativeai not available, returning empty embeddings")
+        if not GENAI_AVAILABLE or not _genai_client:
+            logger.warning("embed_batch skipped: google-genai client not available")
             return [[] for _ in texts]
 
-        all_embeddings = []
+        all_embeddings: list[list[float]] = []
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             try:
-                result = genai.embed_content(
-                    model=f"models/{self.model}",
-                    content=batch,
-                    task_type=task_type,
+                result = _genai_client.models.embed_content(
+                    model=self.model,
+                    contents=batch,
+                    config={"task_type": task_type},
                 )
-                all_embeddings.extend(result["embedding"])
+                for emb in result.embeddings:
+                    all_embeddings.append(list(emb.values))
             except Exception as e:
                 logger.error(f"Batch embedding failed at index {i}: {e}")
-                # Fill failed batch with None
-                all_embeddings.extend([None] * len(batch))
+                all_embeddings.extend([[] for _ in batch])
 
         return all_embeddings
 
@@ -99,11 +104,11 @@ class EmbeddingService:
         metadata: dict | None = None,
     ):
         """Store an embedding in the database."""
-        from sqlalchemy import text
-
         if not embedding:
             logger.warning("store_embedding skipped: empty embedding vector")
             return
+
+        from sqlalchemy import text
 
         try:
             await db_session.execute(
@@ -148,18 +153,17 @@ class EmbeddingService:
         # Generate query embedding
         query_embedding = await self.embed_text(query, task_type="RETRIEVAL_QUERY")
 
-        from sqlalchemy import text
-
         # Guard: empty embedding means API failed — skip DB query
         if not query_embedding:
             logger.warning("Semantic search skipped: empty query embedding")
             return []
 
-        # Build query with optional source filter
-        # NOTE: explicit ::vector cast required — PGvector <=> operator does not
+        from sqlalchemy import text
+
+        # NOTE: explicit CAST required — PGvector <=> operator does not
         # auto-cast text parameters, causing silent failure without it.
         where_clause = ""
-        params = {"query_embedding": str(query_embedding), "threshold": threshold, "limit": limit}
+        params: dict = {"query_embedding": str(query_embedding), "threshold": threshold, "limit": limit}
 
         if source_type:
             where_clause = "AND source_type = :source_type"
