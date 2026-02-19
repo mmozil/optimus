@@ -223,7 +223,7 @@ async def debug_pgvector() -> dict:
                 from src.core.config import settings as _s
                 result["genai_version"] = getattr(_g, "__version__", "unknown")
                 result["has_api_key"] = bool(_s.GOOGLE_API_KEY)
-                _direct_client = _g.Client(api_key=_s.GOOGLE_API_KEY)
+                _direct_client = _g.Client(api_key=_s.GOOGLE_API_KEY, http_options={"api_version": "v1"})
                 _direct_result = _direct_client.models.embed_content(
                     model="text-embedding-004",
                     contents="test",
