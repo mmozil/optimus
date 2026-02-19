@@ -3,6 +3,7 @@ Agent Optimus — Gateway (Control Plane).
 Routes messages to agents, manages sessions, handles orchestration.
 """
 
+import asyncio
 import base64
 import logging
 from typing import Any
@@ -12,6 +13,49 @@ from src.agents.optimus import OptimusAgent
 from src.core.agent_factory import AgentFactory
 
 logger = logging.getLogger(__name__)
+
+# Minimum response length to be worth sharing as a learning
+_MIN_LEARNING_LEN = 150
+# Max chars to store as the learning snippet
+_MAX_LEARNING_LEN = 500
+# Max chars for the topic label (derived from user message)
+_MAX_TOPIC_LEN = 80
+
+# Short messages that are not worth auto-sharing
+_SKIP_PREFIXES = ("/", "ok", "sim", "não", "nao", "obrigado", "thanks", "oi", "olá", "hello", "ok!")
+
+
+def _should_auto_share(message: str, response: str) -> bool:
+    """Decide if a response is substantive enough to auto-share as a learning."""
+    msg_lower = message.strip().lower()
+    if any(msg_lower.startswith(p) for p in _SKIP_PREFIXES):
+        return False
+    if len(response.strip()) < _MIN_LEARNING_LEN:
+        return False
+    return True
+
+
+async def _auto_share_learning(agent_name: str, message: str, response: str) -> None:
+    """
+    Auto-share a learning to CollectiveIntelligence after a substantive response.
+
+    Fire-and-forget: called via asyncio.create_task(), never blocks the main response.
+    Topic  = first N chars of the user message (what was asked).
+    Learning = first N chars of the agent response (what was answered).
+    """
+    if not _should_auto_share(message, response):
+        return
+    try:
+        from src.memory.collective_intelligence import collective_intelligence
+        topic = message.strip()[:_MAX_TOPIC_LEN]
+        learning = response.strip()[:_MAX_LEARNING_LEN]
+        await collective_intelligence.async_share(
+            agent_name=agent_name,
+            topic=topic,
+            learning=learning,
+        )
+    except Exception as e:
+        logger.debug(f"Auto-share learning skipped: {e}")
 
 
 async def _enrich_attachment_with_inline_data(att: dict) -> dict:
@@ -261,6 +305,13 @@ class Gateway:
             await session_manager.add_message(conv["id"], "user", message)
             await session_manager.add_message(conv["id"], "assistant", result["content"])
 
+            # 9. Auto-share learning to CollectiveIntelligence (fire-and-forget)
+            asyncio.create_task(_auto_share_learning(
+                agent_name=result.get("agent", target_agent or "optimus"),
+                message=message,
+                response=result["content"],
+            ))
+
             if span:
                 span.set_attribute("response.agent", result.get("agent", ""))
                 span.set_attribute("response.model", result.get("model", ""))
@@ -401,8 +452,16 @@ class Gateway:
             yield chunk
 
         # 6. Save to History
+        full_response = "".join(full_content)
         await session_manager.add_message(conv["id"], "user", message)
-        await session_manager.add_message(conv["id"], "assistant", "".join(full_content))
+        await session_manager.add_message(conv["id"], "assistant", full_response)
+
+        # 7. Auto-share learning to CollectiveIntelligence (fire-and-forget)
+        asyncio.create_task(_auto_share_learning(
+            agent_name=target_agent or "optimus",
+            message=message,
+            response=full_response,
+        ))
 
     async def get_agent_status(self) -> list[dict]:
         """Get status of all agents."""
