@@ -2149,6 +2149,18 @@ Optimus roda em sua máquina (localhost:8000)
   - Welcome screen: fontes menores
   - Audio player: `width: 100%` em mobile
   - Touch targets: `icon-btn` 38×38px em mobile
+- `.env.example`: adicionado `JWT_SECRET` (era ausente)
+- `tests/test_e2e.py`: `TestVPSAndPWAIntegration` (10 testes — Regra de Ouro checkpoint 2)
+  - `test_dockerfile_exists_and_valid`
+  - `test_docker_compose_production_exists`
+  - `test_docker_compose_dev_exists`
+  - `test_env_example_exists_with_required_vars`
+  - `test_pwa_manifest_exists_and_valid`
+  - `test_service_worker_exists_and_valid`
+  - `test_manifest_linked_in_index`
+  - `test_mobile_responsive_css_present`
+  - `test_viewport_meta_in_all_pages`
+  - `test_readme_has_vps_setup_guide`
 
 ---
 
