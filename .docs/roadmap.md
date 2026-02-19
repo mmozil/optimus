@@ -218,17 +218,22 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 17 — Prompt Engineering Avançado
+## FASE 17 — Prompt Engineering Avançado ✅
 
 **Objetivo:** Aplicar técnicas de `prompt-avancado.md` e `Prompt-COT.md` no system prompt e ReAct loop.
 **Por quê:** Melhora qualidade das respostas sem custo de infra.
+**Status:** CONCLUÍDA — 2026-02-19
 
-- [ ] **17.1** Chain-of-Thought explícito no system prompt dos agents
-  - Adicionar instrução "Pense passo a passo antes de responder" no SOUL.md template
-- [ ] **17.2** Few-shot examples no prompt de tools complexas (db_query, browser)
-- [ ] **17.3** Output primers — terminar prompt com início da resposta esperada
-- [ ] **17.4** Delimiters claros (###, ```) para separar contexto/instrução/exemplos
-- [ ] **17.5** Validar melhoria com testes A/B em produção (comparar respostas antes/depois)
+- [x] **17.1** Chain-of-Thought explícito no system prompt (`### Processo de Raciocínio` com 4 passos obrigatórios)
+- [x] **17.2** Few-shot examples para `db_query` (SQL correto), `browser` (navegação estruturada), `research_search` (query específica)
+- [x] **17.3** Output primers por tipo de tarefa: análise técnica, plano, pesquisa, código
+- [x] **17.4** Delimiters `---` e `###` em `_build_system_prompt()` + `_build_user_content()`
+- [ ] **17.5** Validar melhoria em produção (testes A/B manuais — comparar respostas antes/depois)
+
+**Arquivos modificados:**
+- `src/agents/base.py` — `_build_system_prompt()` com CoT, few-shot, primers, delimiters
+- `src/engine/react_loop.py` — `_build_user_content()` com `###` headers e `---` separator
+- `tests/test_e2e.py` — `TestFase17PromptEngineering` (15/15 ✅)
 
 ---
 

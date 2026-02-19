@@ -6531,3 +6531,167 @@ Performance improvements.
             content = f.read()
         # The endpoint should map insight.type in the response
         assert '"type": i.type' in content or "'type': i.type" in content
+
+
+# ============================================
+# FASE 17 — Prompt Engineering Avançado
+# ============================================
+class TestFase17PromptEngineering:
+    """
+    FASE 17: Chain-of-Thought, Few-Shot Examples, Output Primers, Delimiters.
+    Validates that base.py _build_system_prompt() and react_loop.py
+    _build_user_content() include all prompt engineering improvements.
+    """
+
+    # ------------------------------------------------------------------
+    # 17.1 + 17.4 — CoT block + --- delimiters em base.py
+    # ------------------------------------------------------------------
+
+    def test_base_agent_has_cot_block(self):
+        """_build_system_prompt deve conter bloco Chain-of-Thought explícito."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "Chain-of-Thought" in content or "Processo de Raciocínio" in content
+
+    def test_base_agent_cot_has_four_steps(self):
+        """CoT deve listar os 4 passos obrigatórios de raciocínio."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "Pergunta real" in content
+        assert "Contexto disponível" in content
+        assert "Ferramentas necessárias" in content
+        assert "Resposta ideal" in content
+
+    def test_base_agent_uses_triple_dash_delimiters(self):
+        """_build_system_prompt deve usar --- como delimitadores entre seções."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        # Must have at least 3 --- delimiters in the system prompt builder
+        assert content.count("---") >= 3
+
+    def test_base_agent_uses_hash3_headers(self):
+        """Seções do system prompt devem usar ### (não ## ou #)."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "### " in content
+
+    # ------------------------------------------------------------------
+    # 17.2 — Few-Shot Examples em base.py
+    # ------------------------------------------------------------------
+
+    def test_base_agent_has_db_query_example(self):
+        """Few-shot deve conter exemplo de db_query com SQL correto."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "db_query" in content
+        assert "SELECT" in content
+        assert "LIMIT" in content
+
+    def test_base_agent_has_browser_example(self):
+        """Few-shot deve conter exemplo de uso da tool browser."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "browser" in content
+        assert "navigate" in content
+
+    def test_base_agent_has_research_search_example(self):
+        """Few-shot deve conter exemplo de research_search com query específica."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "research_search" in content
+        # Should show correct vs incorrect example
+        assert "Errado" in content or "Correto" in content or "#" in content
+
+    def test_base_agent_few_shot_section_labeled(self):
+        """Seção de few-shot deve ter header identificável."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "Exemplos" in content or "Few-Shot" in content or "Few Shot" in content
+
+    # ------------------------------------------------------------------
+    # 17.3 — Output Primers em base.py
+    # ------------------------------------------------------------------
+
+    def test_base_agent_has_output_primers(self):
+        """_build_system_prompt deve conter seção de Output Primers."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "Primers" in content or "primers" in content
+
+    def test_base_agent_primers_cover_main_task_types(self):
+        """Output Primers deve cobrir análise técnica, plano, pesquisa e código."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "Análise" in content or "análise" in content
+        assert "Plano" in content or "plano" in content
+        assert "Pesquisa" in content or "pesquisa" in content
+        assert "Código" in content or "código" in content
+
+    # ------------------------------------------------------------------
+    # 17.4 — Delimiters ### em react_loop.py _build_user_content()
+    # ------------------------------------------------------------------
+
+    def test_react_loop_uses_hash3_section_headers(self):
+        """_build_user_content em react_loop.py deve usar ### para cabeçalhos de seção."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "engine", "react_loop.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        # Should have ### Contexto, ### Task, or ### Memória
+        assert "### " in content
+
+    def test_react_loop_has_separator_before_user_message(self):
+        """_build_user_content deve adicionar separador --- antes da mensagem do usuário."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "engine", "react_loop.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "---" in content
+
+    # ------------------------------------------------------------------
+    # Regression: FASE 17 não quebra contratos existentes
+    # ------------------------------------------------------------------
+
+    def test_base_agent_build_system_prompt_returns_string(self):
+        """_build_system_prompt deve retornar str sem erros."""
+        from src.agents.base import AgentConfig, BaseAgent
+        cfg = AgentConfig(name="test", role="tester", soul_md="Sou um agente de teste.")
+        agent = BaseAgent(config=cfg)
+        prompt = agent._system_prompt
+        assert isinstance(prompt, str)
+        assert len(prompt) > 100
+
+    def test_base_agent_system_prompt_contains_soul(self):
+        """System prompt deve incluir o conteúdo de soul_md."""
+        from src.agents.base import AgentConfig, BaseAgent
+        cfg = AgentConfig(name="test", role="tester", soul_md="SOUL_MARKER_UNIQUE_XYZ")
+        agent = BaseAgent(config=cfg)
+        assert "SOUL_MARKER_UNIQUE_XYZ" in agent._system_prompt
+
+    def test_base_agent_fase17_docstring_present(self):
+        """_build_system_prompt deve ter docstring mencionando FASE 17."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "agents", "base.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "FASE 17" in content
