@@ -2784,3 +2784,105 @@ GET /api/v1/a2a/stats
   - Para MVP, funciona dentro do mesmo worker process
 - ✅ Load balancing automático: `find_best_agent()` escolhe agente com menor carga
 - ✅ Prioridades de mensagem: low | normal | high | urgent
+
+
+Análise Crítica: Arquitetura Declarada vs. Realidade
+Stack Declarado (topo do roadmap)
+
+Orquestração:  Google ADK (A2A + MCP + Debug UI)  
+Agents:        Agno (2μs instanciação + Learning + RAG)  
+Database:      Supabase + PGvector  
+Cache:         Redis  
+Channels:      WhatsApp + Telegram + WebChat  
+Inteligência:  ToT Engine + UncertaintyQuantifier  
+Item	Realidade
+Google ADK	❌ Nunca integrado. O orchestrator.py é uma implementação própria inspirada no ADK, mas a biblioteca google-adk nunca é importada.
+Agno	❌ Nunca integrado. O "2μs/agent" e "Teams" do Agno não existem. Temos AgentFactory + BaseAgent custom. agno está no requirements.txt mas zero imports no código.
+Supabase + PGvector	✅ Funcionando
+Redis	⚠️ Conectado mas subutilizado — sessions ficam no PostgreSQL, não no Redis
+WhatsApp + Telegram	⚠️ Código existe, zero canais funcionando em produção
+ToT Engine	❌ Existe mas nunca é chamado durante nenhuma conversa real
+UncertaintyQuantifier	❌ Existe mas nunca é chamado
+Bloco 1 — CHANNELS
+Item do Roadmap	Status	Evidência
+WhatsApp (Baileys)	❌ Não funciona	Requer Evolution API deployada separada
+Telegram (grammY)	❌ Não funciona	Nenhum token configurado em produção
+WebChat	⚠️ Parcial	webchat.py existe mas UI usa /api/v1/chat direto, não passa pelo WebChatChannel
+Chat Commands /status /think /agents /task /learn	❌ Não conectado	chat_commands.py implementado mas nunca chamado pelo endpoint /api/v1/chat
+Webhooks (GitHub, Forms)	❌ Não existe	Nenhum WebhookReceiver ativo
+Bloco 2 — GATEWAY (Control Plane)
+Item do Roadmap	Status	Evidência
+Session Router	✅ Funciona	gateway.route_message()
+Channel Routing	⚠️ Parcial	Só web funciona
+Presence (status online/offline)	❌ Não implementado	Nenhum código de presence
+Cron Jobs	✅ Funciona	5 jobs agendados no startup
+@Mentions	❌ Não funciona	Depende de chat_commands.py que não está conectado
+Thread Subscriptions	❌ Não funciona	thread_manager.py existe, nunca chamado
+Daily Standup Generator	✅ Funciona	Agendado via cron
+Bloco 3 — ORCHESTRATION (Google ADK)
+Item do Roadmap	Status	Evidência
+A2A Protocol	✅ API existe	/api/v1/a2a/* — mas nenhum agente real usa automaticamente
+MCP Server (tools)	✅ Funciona	Integrado no ReAct loop
+Sequential/Parallel/Loop	✅ API existe	/api/v1/orchestrator/* — mas nenhum pipeline pré-criado
+Debug Web UI	❌ Nunca feito	Prometido do Google ADK, não construído
+Evaluation Built-in	⚠️ Parcial	eval_runner.py existe, não está no CI
+Bloco 4 — AGENT CORE
+Agno Framework:
+
+Item do Roadmap	Status	Evidência
+Teams (leader + members) ~2μs	❌ Não existe	Temos AgentFactory custom. Agno nunca foi importado.
+Learning (melhora entre sessões)	✅ Parcial	auto_journal + collective_intelligence agora conectados
+Agentic RAG nativo	⚠️ Parcial	rag.py existe mas é órfão — o fluxo usa knowledge_tool separado
+Multimodal	✅ Funciona	Imagens, áudio, PDF, CSV
+Model Agnostic	✅ Parcial	Gemini, OpenAI, Groq via LiteLLM
+Identity Layer:
+
+Item do Roadmap	Status	Evidência
+SOUL.md	✅ Funciona	Carregado no system prompt
+AGENTS.md	✅ Existe	workspace/
+TOOLS.md	❌ Nunca gerado	tools_manifest.py existe, nunca chamado
+Personas dinâmicas por intent	✅ Funciona	personas.py via gateway
+Memory Stack:
+
+Item do Roadmap	Status	Evidência
+WORKING.md (Supabase synced)	❌ Não sincroniza	File-based apenas. Roadmap prometia sync com agents.learning_data no Supabase
+Daily Notes	✅ Funciona	Automáticos
+MEMORY.md (long-term)	✅ Funciona	Curado via auto_journal
+Agno Learning	❌ Não existe	Agno nunca foi integrado. Este feature não existe.
+Bloco 5 — INTELLIGENCE ENGINE
+Este bloco é o maior gap do projeto inteiro:
+
+Item do Roadmap	Status	Evidência
+ToT Engine (3 estratégias + meta-avaliação + síntese)	❌ Código existe, NUNCA chamado	tot_engine.py + tot_service.py implementados. Nenhum agente chama think() durante conversa real.
+Meta-Avaliação (scoring 0-10)	❌ Nunca chamado	Idem
+Síntese automática	❌ Nunca chamado	Idem
+UncertaintyQuantifier	❌ Código existe, NUNCA chamado	uncertainty.py implementado. O 🔴 warning na UI é calculado por heurística básica, não pelo Quantifier real.
+Multi-Model Fallback	✅ Funciona	model_router.py chains
+Session Compacting	✅ Agora funciona	Integrado hoje no session_manager.py
+Bloco 6 — TOOLS & SKILLS
+Item do Roadmap	Status	Evidência
+browser (CDP)	✅ Funciona	browser_service.py + Playwright
+database (Supabase queries)	✅ Funciona	mcp_tools.py
+filesystem (read/write)	✅ Funciona	mcp_tools.py
+research (web search)	❌ É um stub	research_search retorna mock. Nenhuma API real (Tavily/SerpAPI) integrada
+terminal (command exec)	✅ Funciona	mcp_tools.py
+Plugin MCP (ERP, CRM, etc.)	❌ Não existe	mcp_plugin.py carrega arquivos .py de workspace/plugins/ — pasta vazia
+Skills auto-install	❌ Não existe	skills_discovery.py faz busca mas não instala dinamicamente
+Bloco 7 — DATA LAYER
+Item do Roadmap	Status	Evidência
+PostgreSQL	✅ Funciona	
+PGvector (embeddings 768d)	✅ Funciona	Tabela embeddings com ivfflat index
+Supabase Real-time (subscriptions push)	❌ Nunca implementado	O roadmap prometia substituir polling por push via Supabase Realtime. Temos zero subscriptions. Notificações ficam in-memory.
+Auth (JWT + API keys)	✅ Funciona	
+Storage (attachments)	✅ Funciona	files_service.py
+Redis session cache	❌ Não usado assim	Sessions no PostgreSQL, Redis só para rate limiting
+Rate limiting	✅ Funciona	AgentRateLimiter
+Resumo Executivo
+Bloco	Prometido	Entregue	Gap
+Channels	5 canais	1 funcional (web)	Telegram, WhatsApp, Webhooks, Chat Commands
+Gateway	7 features	3 funcionando	Presence, @Mentions, Thread Subscriptions
+Orchestration	5 features	3 funcionando	Debug Web UI, Eval CI
+Agent Core (Agno)	Framework inteiro	0% do Agno	Agno nunca foi integrado
+Intelligence Engine	6 features	2 funcionando	ToT e Uncertainty nunca chamados
+Tools	8 features	5 funcionando	Research é stub, plugins vazios
+Data Layer	7 features	5 funcionando	Supabase Real-time, Redis sessions
