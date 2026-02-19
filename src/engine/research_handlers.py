@@ -49,6 +49,26 @@ async def on_research_cron_triggered(event: Event) -> None:
 
         logger.info(f"FASE 0 #6: Research briefing saved to {briefing_path}")
 
+        # FASE 16: Notify user for high-relevance findings (relevance >= 0.7)
+        high_findings = [f for f in findings if f.relevance >= 0.7]
+        if high_findings:
+            try:
+                from src.collaboration.notification_service import notification_service
+                top = high_findings[0]
+                count_extra = len(high_findings) - 1
+                content = f"📡 Nova descoberta: {top.title[:80]}"
+                if count_extra > 0:
+                    content += f" (+{count_extra} mais)"
+                await notification_service.send(
+                    target_agent="optimus",
+                    notification_type="system",
+                    content=content,
+                    source_agent="proactive_researcher",
+                )
+                logger.info(f"FASE 16: Notified user — {len(high_findings)} high-relevance finding(s)")
+            except Exception as notify_err:
+                logger.warning(f"FASE 16: Notification failed (non-critical): {notify_err}")
+
     except Exception as e:
         logger.error(f"FASE 0 #6: Proactive research failed: {e}", exc_info=True)
 

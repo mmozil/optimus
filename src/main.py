@@ -799,47 +799,33 @@ async def get_autonomous_suggestions(
     user: CurrentUser = Depends(get_current_user),
 ):
     """
-    Get proactive suggestions based on behavioral patterns (FASE 11: Jarvis Mode).
+    Get proactive insights as suggestion chips (FASE 16: Proactive Insights).
 
-    Analyzes daily notes to detect recurring actions and predicts what the user
-    might need right now based on day-of-week and time-of-day patterns.
+    Aggregates insights from multiple internal sources:
+    - Behavioral patterns (intent_predictor) — day/time-based predictions
+    - Recent research findings (proactive_researcher briefings)
+    - Recent high-relevance learnings (long_term_memory last 7 days)
+
+    Returns a unified list sorted by priority for display as clickable chips.
     """
-    from src.engine.intent_predictor import UserPattern, intent_predictor
+    # FASE 16: Use InsightsService to aggregate all sources
+    from src.engine.insights_service import insights_service
 
-    # Try to load cached patterns first; fall back to live analysis
-    from pathlib import Path as _Path
-    patterns_file = _Path(__file__).parent.parent / "workspace" / "patterns" / f"{agent}.json"
-
-    patterns: list[UserPattern] = []
-    if patterns_file.exists():
-        try:
-            import json as _json
-            raw = _json.loads(patterns_file.read_text(encoding="utf-8"))
-            patterns = [UserPattern(**p) for p in raw]
-        except Exception:
-            pass
-
-    # If no cached patterns, learn live (may be slow on first call)
-    if not patterns:
-        patterns = await intent_predictor.learn_patterns(agent, days=days)
-        if patterns:
-            await intent_predictor.save_patterns(agent, patterns)
-
-    predictions = intent_predictor.predict_next(patterns)
+    insights = await insights_service.get_insights(agent_name=agent)
 
     return {
         "status": "success",
         "data": {
             "agent": agent,
-            "patterns_count": len(patterns),
             "suggestions": [
                 {
-                    "action": p.action,
-                    "reason": p.reason,
-                    "confidence": p.confidence,
-                    "message": p.suggested_message,
+                    "action": i.action,
+                    "reason": i.reason,
+                    "confidence": i.confidence,
+                    "message": i.message,
+                    "type": i.type,
                 }
-                for p in predictions
+                for i in insights
             ],
         },
     }

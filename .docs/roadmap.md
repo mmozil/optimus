@@ -195,18 +195,26 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 16 — Proactive Insights
+## FASE 16 — Proactive Insights ✅ CONCLUÍDA
 
 **Objetivo:** Agente sugere ações baseado em padrões detectados (não apenas responde).
 **Por quê:** Transforma o agente de reativo para proativo — diferencial competitivo.
 **Ref:** `agent-claude.md` seção "Proactive"
 
-- [ ] **16.1** Conectar `proactive_researcher.py` ao cron (1x/dia)
-  - Call path: `cron_scheduler` → `proactive_researcher.check_patterns()` → `notification_service.notify()`
-- [ ] **16.2** Fonte de dados: emails recentes, tarefas pendentes, calendar
-- [ ] **16.3** Apresentar como "suggestion chips" no frontend
-- [ ] **16.4** Testes E2E
-- [ ] **16.5** Testar em produção
+- [x] **16.1** Bridging research → notification_service (usuário agora vê os findings)
+  - Call path: `cron "proactive_research"` → `on_research_cron_triggered()` → `proactive_researcher.run_check_cycle()` → se relevance >= 0.7 → `notification_service.send(target_agent="optimus", type="system")` → toast no frontend
+  - Implementado em `src/engine/research_handlers.py` (FASE 16)
+- [x] **16.2** Fontes de insights internas agregadas
+  - `intent_predictor` — padrões comportamentais por dia/hora (já existia)
+  - `proactive_researcher` briefing files — findings de hoje/ontem (🔴 e 🟡)
+  - `long_term_memory` — últimas 3 entradas de alta relevância (últimos 7 dias)
+  - Implementado em `src/engine/insights_service.py` (`InsightsService.get_insights()`)
+- [x] **16.3** Suggestion chips no frontend (já existia, agora alimentado pelo InsightsService)
+  - `GET /api/v1/autonomous/suggestions` → usa `insights_service.get_insights()` (antes: só `intent_predictor`)
+  - Frontend renderiza chips clicáveis que pre-preenchem o input (FASE 11, já funcionava)
+  - Resposta agora inclui campo `type` (pattern | research | learning)
+- [x] **16.4** Testes E2E — 14/14 passando (`TestFase16ProactiveInsights`)
+- [ ] **16.5** Testar em produção (deploy automático via push)
 
 ---
 

@@ -6376,3 +6376,158 @@ class TestFase15ContradictionDetection:
             content = f.read()
         assert "ContradictionDetected" in content
         assert "contradiction_service" in content or "force" in content
+
+
+class TestFase16ProactiveInsights:
+    """FASE 16: Proactive Insights — testes E2E."""
+
+    # ------------------------------------------------------------------
+    # 1. InsightsService — importação e estrutura
+    # ------------------------------------------------------------------
+
+    def test_insights_service_importable(self):
+        """insights_service singleton deve importar sem erro."""
+        from src.engine.insights_service import InsightsService, insights_service
+        assert isinstance(insights_service, InsightsService)
+
+    def test_proactive_insight_dataclass(self):
+        """ProactiveInsight deve ser instanciável com campos obrigatórios."""
+        from src.engine.insights_service import ProactiveInsight
+        insight = ProactiveInsight(
+            type="research",
+            action="Ver artigo",
+            reason="Nova descoberta",
+            message="Me fale sobre isso",
+        )
+        assert insight.type == "research"
+        assert insight.priority == 0.5  # default
+
+    def test_insight_types_expected(self):
+        """InsightsService deve suportar os tipos: pattern, research, learning."""
+        from src.engine.insights_service import ProactiveInsight
+        for t in ("pattern", "research", "learning"):
+            p = ProactiveInsight(type=t, action="x", reason="y", message="z")
+            assert p.type == t
+
+    # ------------------------------------------------------------------
+    # 2. get_insights() — graceful fallback
+    # ------------------------------------------------------------------
+
+    async def test_get_insights_returns_list(self):
+        """get_insights() deve retornar lista (possivelmente vazia) sem exceção."""
+        from src.engine.insights_service import insights_service
+        result = await insights_service.get_insights(agent_name="test_agent")
+        assert isinstance(result, list)
+
+    async def test_get_insights_max_results_respected(self):
+        """get_insights() deve limitar resultados ao max_results."""
+        from src.engine.insights_service import insights_service
+        result = await insights_service.get_insights(agent_name="optimus", max_results=2)
+        assert len(result) <= 2
+
+    async def test_get_insights_sorted_by_priority(self):
+        """Resultados devem estar ordenados por priority desc."""
+        from src.engine.insights_service import insights_service
+        result = await insights_service.get_insights(agent_name="optimus", max_results=5)
+        for i in range(len(result) - 1):
+            assert result[i].priority >= result[i + 1].priority
+
+    # ------------------------------------------------------------------
+    # 3. _parse_briefing() — parsing do markdown
+    # ------------------------------------------------------------------
+
+    def test_parse_briefing_empty(self):
+        """_parse_briefing com markdown vazio deve retornar lista vazia."""
+        from src.engine.insights_service import InsightsService
+        svc = InsightsService()
+        result = svc._parse_briefing("")
+        assert result == []
+
+    def test_parse_briefing_red_circle_only(self):
+        """_parse_briefing deve retornar apenas entradas com 🔴 (high relevance)."""
+        from src.engine.insights_service import InsightsService
+        svc = InsightsService()
+        md = """# Briefing
+
+### 1. 🔴 Claude 3.5 Sonnet lançado
+_anthropic_ — 2026-02-19
+Novo modelo com melhorias em raciocínio.
+
+### 2. ⚪ Algo pouco relevante
+_random_ — 2026-02-19
+Nada importante aqui.
+"""
+        result = svc._parse_briefing(md)
+        assert len(result) == 1
+        assert result[0].type == "research"
+        assert result[0].priority == 0.9  # 🔴 = high priority
+
+    def test_parse_briefing_yellow_circle(self):
+        """🟡 deve gerar insight com priority=0.6."""
+        from src.engine.insights_service import InsightsService
+        svc = InsightsService()
+        md = """# Briefing
+
+### 1. 🟡 Python 3.13 released
+_python.org_ — 2026-02-19
+Performance improvements.
+"""
+        result = svc._parse_briefing(md)
+        assert len(result) == 1
+        assert result[0].priority == 0.6
+
+    def test_parse_briefing_max_2_insights(self):
+        """_parse_briefing deve retornar no máximo 2 insights."""
+        from src.engine.insights_service import InsightsService
+        svc = InsightsService()
+        # 5 high-relevance sections
+        sections = "\n".join([
+            f"### {i}. 🔴 Finding {i}\n_src_ — 2026-02-19\nSummary {i}."
+            for i in range(1, 6)
+        ])
+        result = svc._parse_briefing(f"# Header\n\n{sections}")
+        assert len(result) <= 2
+
+    # ------------------------------------------------------------------
+    # 4. research_handlers.py — notificação ao usuário
+    # ------------------------------------------------------------------
+
+    def test_research_handler_imports_notification_service(self):
+        """research_handlers deve importar notification_service."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "engine", "research_handlers.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "notification_service" in content
+        assert "FASE 16" in content
+        assert "high_findings" in content
+
+    def test_research_handler_uses_correct_import_path(self):
+        """research_handlers deve importar de src.collaboration.notification_service."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "engine", "research_handlers.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "src.collaboration.notification_service" in content
+
+    # ------------------------------------------------------------------
+    # 5. main.py endpoint usa InsightsService
+    # ------------------------------------------------------------------
+
+    def test_suggestions_endpoint_uses_insights_service(self):
+        """GET /api/v1/autonomous/suggestions deve usar insights_service."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "main.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "insights_service" in content
+        assert "InsightsService" in content or "insights_service.get_insights" in content
+
+    def test_suggestions_endpoint_returns_type_field(self):
+        """Resposta do endpoint deve incluir campo 'type' por insight."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "main.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        # The endpoint should map insight.type in the response
+        assert '"type": i.type' in content or "'type': i.type" in content
