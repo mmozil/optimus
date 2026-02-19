@@ -2116,21 +2116,39 @@ User: "Quero rodar Optimus na minha VPS"
     ↓
 Clone repo
     ↓
-docker-compose up
+cp .env.example .env  (configurar API keys)
     ↓
-Optimus roda em sua máquina
+docker compose up -d --build
+    ↓
+Optimus roda em sua máquina (localhost:8000)
+    ↓
+(opcional) Nginx + Let's Encrypt para HTTPS
 ```
 
 - [x] `docker-compose.yml` já existe
-- [ ] Documentar setup no README
-- [ ] Testar em VPS de verdade
+- [x] Documentar setup no README (Nginx, SSL, variáveis, Coolify)
+- [ ] Testar em VPS de verdade (ação do usuário)
 
 ### Mobile: PWA First
 
-- [x] Service worker já existe
-- [ ] Validar instalação no celular
-- [ ] UI responsiva (já foi redesenhada)
+- [x] Service worker já existe (`src/static/service-worker.js`)
+- [x] `manifest.json` configurado (standalone, portrait)
+- [x] Viewport meta tag em todas as páginas
+- [x] UI responsiva — `@media (max-width: 600px)` adicionado a `index.html` (FASE 7)
+- [ ] Validar instalação no celular (ação do usuário)
 - [ ] (Futuro) App React Native / Flutter
+
+### ✅ FASE 7 — Implementação
+
+**Arquivos modificados:**
+- `README.md`: guia completo VPS (Docker, Nginx, SSL, Coolify, PWA install)
+- `src/static/index.html`: CSS responsivo `@media (max-width: 600px)` + `@media (max-width: 360px)`
+  - Header: labels dos botões ocultados em mobile, só emojis visíveis
+  - Chat container: padding reduzido
+  - Input area: padding reduzido
+  - Welcome screen: fontes menores
+  - Audio player: `width: 100%` em mobile
+  - Touch targets: `icon-btn` 38×38px em mobile
 
 ---
 
@@ -2148,7 +2166,7 @@ Optimus roda em sua máquina
 | **FASE 4C** | 🟡 Impl ✅ / Prod ⚠️ | IMAP/SMTP universal (Outlook, Office 365, Yahoo, corporativo, Locaweb); 4 MCP tools; settings UI |
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
 | **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
-| **FASE 7** | ⬜ Pending | Docker-compose em VPS de verdade + PWA mobile |
+| **FASE 7** | 🟡 Impl ✅ / VPS ⚠️ | README VPS + UI responsiva + PWA (falta testar em VPS real e celular) |
 
 ### ✅ #13-15 Telegram + WhatsApp + Slack Channels — CONCLUÍDO
 
