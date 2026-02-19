@@ -58,7 +58,10 @@ class EmbeddingService:
             result = _genai_client.models.embed_content(
                 model=self.model,
                 contents=text,
-                config={"task_type": task_type},
+                config={
+                    "task_type": task_type,
+                    "output_dimensionality": self.dimensions,  # trunca 3072→768
+                },
             )
             embedding = result.embeddings[0].values
             logger.debug(f"Embedding generated: {len(text)} chars → {len(embedding)} dims")
@@ -87,7 +90,10 @@ class EmbeddingService:
                 result = _genai_client.models.embed_content(
                     model=self.model,
                     contents=batch,
-                    config={"task_type": task_type},
+                    config={
+                        "task_type": task_type,
+                        "output_dimensionality": self.dimensions,
+                    },
                 )
                 for emb in result.embeddings:
                     all_embeddings.append(list(emb.values))

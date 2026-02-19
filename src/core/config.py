@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     LLM_MODEL: str = "gemini-2.5-flash"
     LLM_FALLBACK_MODEL: str = "gemini-2.0-flash"
-    EMBEDDING_MODEL: str = "text-embedding-004"
-    EMBEDDING_DIMENSIONS: int = 768
+    EMBEDDING_MODEL: str = "gemini-embedding-001"  # text-embedding-004 indisponível na API key
+    EMBEDDING_DIMENSIONS: int = 768               # output_dimensionality trunca de 3072→768
 
     # === Multi-Provider LLM (Phase 12) ===
     OPENAI_API_KEY: str = ""
