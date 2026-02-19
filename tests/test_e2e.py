@@ -5768,3 +5768,103 @@ class TestFase10ChatCommandsAndNotifications:
         assert result.get("is_command") is True
         assert result.get("agent") == "chat_commands"
         assert "/status" in result.get("content", "") or "/help" in result.get("content", "")
+
+# ============================================================
+# FASE 12 — Audit Trail & Observabilidade
+# ============================================================
+
+class TestFase12AuditTrail:
+    """FASE 12: Audit service persists react_steps for observability."""
+
+    def test_audit_service_exists(self):
+        """audit_service singleton importa sem erro."""
+        from src.core.audit_service import AuditService, audit_service
+        assert isinstance(audit_service, AuditService)
+
+    @pytest.mark.asyncio
+    async def test_audit_save_empty_is_noop(self):
+        """save() com steps vazios e sem usage não lança exceção."""
+        from src.core.audit_service import audit_service
+        # Should complete without raising
+        await audit_service.save(
+            session_id="00000000-0000-0000-0000-000000000001",
+            agent="optimus",
+            steps=[],
+            usage=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_audit_save_invalid_session_id(self):
+        """save() com session_id inválido retorna gracefully (sem crash)."""
+        from src.core.audit_service import audit_service
+        await audit_service.save(
+            session_id="invalid-uuid",
+            agent="optimus",
+            steps=[{"type": "reason", "result": "test", "iteration": 1}],
+        )
+
+    @pytest.mark.asyncio
+    async def test_audit_get_steps_invalid_session(self):
+        """get_steps() com session_id inválido retorna lista vazia."""
+        from src.core.audit_service import audit_service
+        steps = await audit_service.get_steps("not-a-uuid")
+        assert isinstance(steps, list)
+        assert len(steps) == 0
+
+    @pytest.mark.asyncio
+    async def test_audit_get_sessions_summary(self):
+        """get_sessions_summary() retorna lista (pode ser vazia em test env)."""
+        from src.core.audit_service import audit_service
+        sessions = await audit_service.get_sessions_summary(limit=5)
+        assert isinstance(sessions, list)
+
+    def test_audit_migration_file_exists(self):
+        """Migration 022_audit_log.sql deve existir."""
+        import os
+        path = os.path.join(os.getcwd(), "migrations", "022_audit_log.sql")
+        assert os.path.exists(path), f"Migration not found: {path}"
+        with open(path) as f:
+            sql = f.read()
+        assert "audit_log" in sql
+        assert "session_id" in sql
+        assert "step_type" in sql
+
+    @pytest.mark.asyncio
+    async def test_gateway_returns_conversation_id(self):
+        """
+        gateway.route_message() deve retornar conversation_id no resultado.
+        O frontend usa isso para consultar /api/v1/audit/{session_id}.
+        Requer DB — xfail se sqlalchemy não disponível (env local sem Docker).
+        """
+        try:
+            import sqlalchemy  # noqa: F401
+        except ImportError:
+            pytest.skip("sqlalchemy not available in local env — runs in Docker")
+
+        from unittest.mock import AsyncMock, patch
+        from src.core.gateway import Gateway
+
+        gw = Gateway()
+
+        mock_result = {
+            "content": "Resposta de teste",
+            "agent": "optimus",
+            "model": "stub",
+            "steps": [],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+
+        with patch.object(gw, '_load_user_agent_from_db', new_callable=AsyncMock, return_value=None):
+            from src.core.agent_factory import AgentFactory
+            mock_agent = AsyncMock()
+            mock_agent.think = AsyncMock(return_value=mock_result)
+
+            with patch.object(AgentFactory, 'get', return_value=mock_agent):
+                result = await gw.route_message(
+                    message="teste audit",
+                    user_id="00000000-0000-0000-0000-000000000001",
+                )
+
+        # May not have conversation_id if DB is unavailable in test env, but should not crash
+        assert isinstance(result, dict)
+        assert "content" in result

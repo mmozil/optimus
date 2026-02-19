@@ -71,6 +71,7 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] Working Memory (WORKING.md por agent no contexto)
 - [x] Context Awareness (hora/dia/saudação no prompt)
 - [x] Intent Routing (smart agent routing por intent)
+- [x] Audit Trail (react_steps persistidos em audit_log → painel debug no frontend)
 
 ---
 
@@ -106,19 +107,25 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 12 — Audit Trail & Observabilidade
+## FASE 12 — Audit Trail & Observabilidade ✅ CONCLUÍDA (2026-02-19)
 
 **Objetivo:** Persistir react_steps, tool calls e decisões para debug e melhoria contínua.
 **Por quê:** `react_steps` são computados no ReAct loop mas nunca salvos. Sem audit trail, não há como debugar respostas ruins.
 **Ref:** `agent-claude.md` seção "Audit Trail"
 
-- [ ] **12.1** Criar tabela `audit_log` (session_id, agent, step_type, content, timestamp)
-  - Migration SQL + modelo SQLAlchemy
-- [ ] **12.2** Salvar react_steps no audit_log após cada resposta
-  - Call path: `gateway.route_message()` → resultado do agent → `audit_service.save(react_steps)`
-- [ ] **12.3** Endpoint GET `/api/v1/audit/{session_id}` para consultar histórico
-- [ ] **12.4** Dashboard simples no frontend (colapsável, para debug)
-- [ ] **12.5** Testes E2E + produção
+- [x] **12.1** Criar tabela `audit_log` (session_id, agent, step_type, content, timestamp)
+  - `migrations/022_audit_log.sql` + `src/core/audit_service.py`
+- [x] **12.2** Salvar react_steps no audit_log após cada resposta
+  - Call path: `gateway.route_message()` → `asyncio.create_task(audit_service.save(session_id, agent, steps, usage))`
+  - `conversation_id` retornado no resultado para o frontend consultar
+- [x] **12.3** Endpoints REST:
+  - `GET /api/v1/audit/{session_id}` — steps de uma sessão
+  - `GET /api/v1/audit` — últimas sessões com contagem
+- [x] **12.4** Painel colapsável no frontend (botão "🔍 Audit" no canto inferior direito)
+  - Mostra step_type (reason/act/observe/summary) com ícones e duração
+  - Atualiza automaticamente após cada mensagem
+- [x] **12.5** Testes E2E: `TestFase12AuditTrail` (6 passed, 1 skipped sem DB local)
+- [ ] **12.6** Testar em produção (https://optimus.tier.finance)
 
 ---
 

@@ -367,6 +367,20 @@ class Gateway:
             await session_manager.add_message(conv["id"], "user", message)
             await session_manager.add_message(conv["id"], "assistant", result["content"])
 
+            # FASE 12: Audit Trail — persist react_steps (fire-and-forget)
+            _react_steps = result.get("steps", [])
+            _react_usage = result.get("usage", {})
+            _audit_session = str(conv.get("id", "")) if isinstance(conv, dict) else ""
+            if _audit_session and (_react_steps or _react_usage):
+                from src.core.audit_service import audit_service
+                asyncio.create_task(audit_service.save(
+                    session_id=_audit_session,
+                    agent=result.get("agent", agent_name),
+                    steps=_react_steps,
+                    usage=_react_usage,
+                    model=result.get("model", ""),
+                ))
+
             # 9. Auto-share learning to CollectiveIntelligence (fire-and-forget)
             asyncio.create_task(_auto_share_learning(
                 agent_name=result.get("agent", target_agent or "optimus"),
@@ -393,6 +407,11 @@ class Gateway:
                             logger.debug(f"FASE 21: {len(_predictions)} suggestion chips added to response")
             except Exception as _e_pred:
                 logger.debug(f"FASE 21: Intent predictor suggestions skipped: {_e_pred}")
+
+            # FASE 12: Expose conversation_id so frontend can query audit trail
+            if _audit_session:
+                result = dict(result)
+                result["conversation_id"] = _audit_session
 
             if span:
                 span.set_attribute("response.agent", result.get("agent", ""))

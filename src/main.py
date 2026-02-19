@@ -1185,6 +1185,52 @@ async def get_task_thread(
     }
 
 
+# ============================================
+# FASE 12 — Audit Trail endpoints
+# ============================================
+
+@app.get("/api/v1/audit/{session_id}")
+async def get_audit_trail(
+    session_id: str,
+    limit: int = 200,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    FASE 12: Get react_steps audit log for a session.
+    Call path: GET /api/v1/audit/{session_id} → audit_service.get_steps()
+    """
+    from src.core.audit_service import audit_service
+    steps = await audit_service.get_steps(session_id, limit=limit)
+    return {
+        "status": "success",
+        "data": {
+            "session_id": session_id,
+            "count": len(steps),
+            "steps": steps,
+        },
+    }
+
+
+@app.get("/api/v1/audit")
+async def get_audit_sessions(
+    limit: int = 50,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    FASE 12: List recent audit sessions with step counts.
+    Call path: GET /api/v1/audit → audit_service.get_sessions_summary()
+    """
+    from src.core.audit_service import audit_service
+    sessions = await audit_service.get_sessions_summary(limit=limit)
+    return {
+        "status": "success",
+        "data": {
+            "count": len(sessions),
+            "sessions": sessions,
+        },
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

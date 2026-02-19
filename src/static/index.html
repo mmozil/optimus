@@ -21,6 +21,72 @@
             --green: #22c55e;
         }
 
+        /* ── Audit Panel (FASE 12) ───────────────── */
+        #audit-panel {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 420px;
+            max-height: 60vh;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 10px 0 0 0;
+            z-index: 8000;
+            display: none;
+            flex-direction: column;
+            box-shadow: -4px -4px 16px rgba(0,0,0,0.4);
+            font-size: 0.75rem;
+        }
+        #audit-panel.visible { display: flex; }
+        #audit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--surface3, #1e2130);
+            border-radius: 10px 0 0 0;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+        #audit-header:hover { color: var(--text); }
+        #audit-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 8px 12px;
+        }
+        .audit-step {
+            border-left: 2px solid var(--border);
+            margin: 4px 0;
+            padding: 4px 8px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+        .audit-step.reason  { border-left-color: #6366f1; }
+        .audit-step.act     { border-left-color: #f59e0b; }
+        .audit-step.observe { border-left-color: #22c55e; }
+        .audit-step.summary { border-left-color: #64748b; font-style: italic; }
+        .audit-step .step-head { display: flex; gap: 8px; font-size: 0.7rem; }
+        .audit-step .step-body { margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+        #audit-toggle-btn {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            background: var(--surface3, #1e2130);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 5px 10px;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            cursor: pointer;
+            z-index: 8001;
+            display: none;
+        }
+        #audit-toggle-btn.visible { display: block; }
+        #audit-toggle-btn:hover { color: var(--text); }
+
         /* ── Toast Notifications (FASE 10) ──────── */
         #toast-container {
             position: fixed;
@@ -713,6 +779,20 @@
         <!-- Toast Notifications (FASE 10) -->
         <div id="toast-container"></div>
 
+        <!-- Audit Panel (FASE 12) -->
+        <button id="audit-toggle-btn" title="Abrir/fechar painel de audit">🔍 Audit</button>
+        <div id="audit-panel">
+            <div id="audit-header">
+                <span>🔍 Audit Trail — ReAct Steps</span>
+                <span id="audit-close" style="font-size:1rem; line-height:1;">✕</span>
+            </div>
+            <div id="audit-body">
+                <p style="color:var(--text-muted); text-align:center; padding:20px;">
+                    Envie uma mensagem para ver os steps do ReAct loop.
+                </p>
+            </div>
+        </div>
+
         <!-- Suggestion Chips (FASE 11: Jarvis Mode) -->
         <div class="suggestion-chips" id="suggestion-chips" style="display:none;"></div>
 
@@ -1158,6 +1238,11 @@
                     addMessage('Erro: resposta vazia da API.', false);
                 }
 
+                // FASE 12: Update audit trail with new session_id
+                if (data?.data?.conversation_id) {
+                    updateAuditSession(data.data.conversation_id);
+                }
+
                 // FASE 21: Render suggestion chips from intent predictor if present
                 const responseSuggestions = data?.data?.suggestions;
                 if (responseSuggestions && responseSuggestions.length > 0) {
@@ -1527,6 +1612,76 @@
             pollNotifications();
             setInterval(pollNotifications, 30000);
         }, 5000);
+
+        // ============================================================
+        // FASE 12 — Audit Trail Panel
+        // ============================================================
+        const auditPanel      = document.getElementById('audit-panel');
+        const auditBody       = document.getElementById('audit-body');
+        const auditToggleBtn  = document.getElementById('audit-toggle-btn');
+        const auditClose      = document.getElementById('audit-close');
+        let _auditSessionId   = null;
+
+        function openAuditPanel() {
+            auditPanel.classList.add('visible');
+            auditToggleBtn.textContent = '✕ Audit';
+        }
+        function closeAuditPanel() {
+            auditPanel.classList.remove('visible');
+            auditToggleBtn.textContent = '🔍 Audit';
+        }
+
+        auditToggleBtn.addEventListener('click', () => {
+            if (auditPanel.classList.contains('visible')) {
+                closeAuditPanel();
+            } else {
+                openAuditPanel();
+                if (_auditSessionId) loadAuditSteps(_auditSessionId);
+            }
+        });
+        auditClose.addEventListener('click', closeAuditPanel);
+
+        const STEP_ICONS = { reason: '🧠', act: '⚡', observe: '👁️', summary: '📊' };
+
+        async function loadAuditSteps(sessionId) {
+            if (!sessionId) return;
+            try {
+                const token = localStorage.getItem('auth_token');
+                const resp = await fetch(`${API_URL}/api/v1/audit/${sessionId}?limit=100`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const steps = data?.data?.steps || [];
+                if (!steps.length) {
+                    auditBody.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">Nenhum step registrado.</p>';
+                    return;
+                }
+                auditBody.innerHTML = steps.map(s => {
+                    const icon = STEP_ICONS[s.step_type] || '•';
+                    const tool = s.tool_name ? ` <b>${s.tool_name}</b>` : '';
+                    const dur  = s.duration_ms ? ` ${s.duration_ms.toFixed(0)}ms` : '';
+                    const ok   = s.success ? '' : ' ❌';
+                    const preview = (s.content || '').slice(0, 300);
+                    return `<div class="audit-step ${s.step_type}">
+                        <div class="step-head">${icon} <span>${s.step_type}${tool}${dur}${ok}</span></div>
+                        <div class="step-body">${preview}</div>
+                    </div>`;
+                }).join('');
+            } catch (_) { /* non-critical */ }
+        }
+
+        // Called from sendMessage after receiving a response with a session_id
+        function updateAuditSession(sessionId) {
+            if (!sessionId) return;
+            _auditSessionId = sessionId;
+            // Show the toggle button so user knows audit is available
+            auditToggleBtn.classList.add('visible');
+            // If panel is open, reload
+            if (auditPanel.classList.contains('visible')) {
+                loadAuditSteps(sessionId);
+            }
+        }
     </script>
 </body>
 
