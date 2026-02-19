@@ -176,6 +176,58 @@ async def find_expert(topic: str = Query(..., description="Topic to find expert 
     return {"topic": topic, "expert": expert}
 
 
+@router.get("/debug/pgvector")
+async def debug_pgvector() -> dict:
+    """
+    FASE 13 DIAGNÓSTICO TEMPORÁRIO: verifica estado do PGvector.
+    Mostra contagem de rows, testa cast vetorial e simula query.
+    Remover após validação em produção.
+    """
+    import json
+    result: dict = {"embeddings_count": 0, "cast_test": None, "query_test": None, "error": None}
+
+    try:
+        from src.infra.supabase_client import get_async_session
+        from src.memory.embeddings import embedding_service
+        from sqlalchemy import text
+
+        async with get_async_session() as db:
+            # 1. Count rows
+            row = (await db.execute(
+                text("SELECT COUNT(*) FROM embeddings WHERE source_type = 'collective'")
+            )).fetchone()
+            result["embeddings_count"] = row[0] if row else 0
+
+            # 2. Test vector cast
+            try:
+                test_vec = str([0.1] * 768)
+                cast_row = (await db.execute(
+                    text("SELECT CAST(:v AS vector) IS NOT NULL AS ok"),
+                    {"v": test_vec}
+                )).fetchone()
+                result["cast_test"] = bool(cast_row[0]) if cast_row else False
+            except Exception as e:
+                result["cast_test"] = f"error: {e}"
+
+            # 3. Generate real embedding and query
+            try:
+                emb = await embedding_service.embed_text("fastapi validacao")
+                result["embed_dims"] = len(emb)
+                if emb and result["embeddings_count"] > 0:
+                    q_row = (await db.execute(
+                        text("SELECT content, 1 - (embedding <=> CAST(:q AS vector)) AS sim FROM embeddings WHERE source_type = 'collective' ORDER BY sim DESC LIMIT 3"),
+                        {"q": str(emb)}
+                    )).fetchall()
+                    result["query_test"] = [{"content": r[0][:80], "sim": float(r[1])} for r in q_row]
+            except Exception as e:
+                result["query_test"] = f"error: {e}"
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
 @router.get("/graph")
 async def get_knowledge_graph() -> dict[str, list[str]]:
     """
