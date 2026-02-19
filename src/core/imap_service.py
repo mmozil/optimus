@@ -383,22 +383,39 @@ class ImapService:
                         mid_str,
                         "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
                     )
-                    # aioimaplib can return headers in different ways:
-                    # Case A: [b'1 (BODY... {n}', b'From: ...\r\n...', b')']
-                    # Case B: [b'1 (BODY... {n}\r\nFrom: ...\r\n...', b')']
+                    # aioimaplib response can vary by server. Strategy:
+                    # 1. Look for part containing header fields (case-insensitive)
+                    # 2. Extract content after {size}\r\n literal marker
+                    # 3. Fallback: concatenate all non-metadata parts
                     raw_header = b""
+                    _HEADER_MARKERS = (b"from:", b"subject:", b"date:", b"to:")
                     for part in msg_data:
-                        if not isinstance(part, bytes) or not part.strip() or part == b")":
+                        if not isinstance(part, bytes) or not part.strip():
                             continue
-                        # Case A: part is the header content directly
-                        if any(h in part for h in (b"From:", b"Subject:", b"Date:", b"To:")):
+                        part_lower = part.lower()
+                        # Case A: part IS the header content (case-insensitive)
+                        if any(h in part_lower for h in _HEADER_MARKERS):
                             raw_header = part
                             break
-                        # Case B: header embedded after {size}\r\n
+                        # Case B: header embedded after literal {size}\r\n
                         m = re.search(rb"\{\d+\}\r\n(.+)", part, re.DOTALL)
                         if m:
-                            raw_header = m.group(1)
-                            break
+                            candidate = m.group(1)
+                            if any(h in candidate.lower() for h in _HEADER_MARKERS):
+                                raw_header = candidate
+                                break
+                    # Case C: nothing matched — try RFC822.HEADER as fallback
+                    if not raw_header:
+                        try:
+                            _, hdr_data = await imap.fetch(mid_str, "(RFC822.HEADER)")
+                            for hpart in hdr_data:
+                                if isinstance(hpart, bytes) and len(hpart) > 20:
+                                    hpart_lower = hpart.lower()
+                                    if any(h in hpart_lower for h in _HEADER_MARKERS):
+                                        raw_header = hpart
+                                        break
+                        except Exception:
+                            pass
 
                     msg = message_from_bytes(raw_header)
                     subject = _decode_header_value(msg.get("Subject", "(sem assunto)"))
