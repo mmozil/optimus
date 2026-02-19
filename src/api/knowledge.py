@@ -223,16 +223,22 @@ async def debug_pgvector() -> dict:
                 from src.core.config import settings as _s
                 result["genai_version"] = getattr(_g, "__version__", "unknown")
                 result["has_api_key"] = bool(_s.GOOGLE_API_KEY)
-                _direct_client = _g.Client(api_key=_s.GOOGLE_API_KEY, http_options={"api_version": "v1"})
-                _direct_result = _direct_client.models.embed_content(
-                    model="text-embedding-004",
-                    contents="test",
-                )
-                _direct_emb = _direct_result.embeddings[0].values
-                result["direct_embed_dims"] = len(_direct_emb)
-                result["direct_embed_ok"] = len(_direct_emb) > 0
+                _direct_client = _g.Client(api_key=_s.GOOGLE_API_KEY)
+                # List available embedding models
+                _models = list(_direct_client.models.list())
+                _embed_models = [m.name for m in _models if "embed" in m.name.lower()]
+                result["available_embed_models"] = _embed_models[:10]
+                # Try each available embedding model
+                for _m in _embed_models[:3]:
+                    try:
+                        _r = _direct_client.models.embed_content(model=_m, contents="test")
+                        result["working_embed_model"] = _m
+                        result["direct_embed_dims"] = len(_r.embeddings[0].values)
+                        break
+                    except Exception as _me:
+                        result[f"error_{_m}"] = str(_me)[:100]
             except Exception as e:
-                result["direct_embed_error"] = str(e)
+                result["direct_embed_error"] = str(e)[:200]
 
             # 5. Via embedding_service
             try:
