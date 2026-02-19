@@ -115,6 +115,7 @@ class EmbeddingService:
             logger.warning("store_embedding skipped: empty embedding vector")
             return
 
+        import json as _json
         from sqlalchemy import text
 
         try:
@@ -123,15 +124,15 @@ class EmbeddingService:
                     INSERT INTO embeddings (content, embedding, source_type, source_id, agent_id, metadata)
                     VALUES (:content, CAST(:embedding AS vector), :source_type, :source_id,
                             (SELECT id FROM agents WHERE name = :agent_name),
-                            :metadata)
+                            CAST(:metadata AS jsonb))
                 """),
                 {
                     "content": content,
-                    "embedding": str(embedding),  # '[0.1, -0.2, ...]' → cast to vector
+                    "embedding": str(embedding),          # '[0.1, -0.2, ...]' → vector
                     "source_type": source_type,
                     "source_id": source_id,
                     "agent_name": agent_id or "",
-                    "metadata": str(metadata or {}),
+                    "metadata": _json.dumps(metadata or {}),  # valid JSON for JSONB
                 },
             )
             await db_session.commit()
