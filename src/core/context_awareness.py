@@ -163,9 +163,11 @@ class ContextAwareness:
 
     def build_context_prompt(self, ctx: AmbientContext) -> str:
         """Build a context block for injection into system prompt."""
+        period_map = {"morning": "manhã", "afternoon": "tarde", "evening": "noite", "night": "noite"}
+        period = period_map.get(ctx.time_slot, "")
         lines = [
             "## Ambient Context",
-            f"- **Hora local:** {ctx.local_time} ({ctx.day_of_week})",
+            f"- **Hora local:** {ctx.local_time} ({ctx.day_of_week}) — período: {period}",
             f"- **Horário comercial:** {'Sim' if ctx.is_business_hours else 'Não'}",
             f"- **Sensibilidade:** {ctx.time_sensitivity}",
         ]
