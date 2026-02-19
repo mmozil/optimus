@@ -72,7 +72,8 @@ async def share_knowledge(request: ShareKnowledgeRequest) -> Any:
 
     Returns the SharedKnowledge if new, or {"duplicate": true} if already exists.
     """
-    sk = collective_intelligence.share(
+    # FASE 11: use async_share so learning is persisted to PGvector embeddings table
+    sk = await collective_intelligence.async_share(
         agent_name=request.agent,
         topic=request.topic,
         learning=request.learning,

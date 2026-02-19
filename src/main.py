@@ -752,6 +752,59 @@ async def get_autonomous_stats(user: CurrentUser = Depends(get_current_user)):
     }
 
 
+@app.get("/api/v1/autonomous/suggestions")
+async def get_autonomous_suggestions(
+    agent: str = Query("optimus", description="Agent name"),
+    days: int = Query(30, description="Days of history to analyze"),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Get proactive suggestions based on behavioral patterns (FASE 11: Jarvis Mode).
+
+    Analyzes daily notes to detect recurring actions and predicts what the user
+    might need right now based on day-of-week and time-of-day patterns.
+    """
+    from src.engine.intent_predictor import UserPattern, intent_predictor
+
+    # Try to load cached patterns first; fall back to live analysis
+    from pathlib import Path as _Path
+    patterns_file = _Path(__file__).parent.parent / "workspace" / "patterns" / f"{agent}.json"
+
+    patterns: list[UserPattern] = []
+    if patterns_file.exists():
+        try:
+            import json as _json
+            raw = _json.loads(patterns_file.read_text(encoding="utf-8"))
+            patterns = [UserPattern(**p) for p in raw]
+        except Exception:
+            pass
+
+    # If no cached patterns, learn live (may be slow on first call)
+    if not patterns:
+        patterns = await intent_predictor.learn_patterns(agent, days=days)
+        if patterns:
+            await intent_predictor.save_patterns(agent, patterns)
+
+    predictions = intent_predictor.predict_next(patterns)
+
+    return {
+        "status": "success",
+        "data": {
+            "agent": agent,
+            "patterns_count": len(patterns),
+            "suggestions": [
+                {
+                    "action": p.action,
+                    "reason": p.reason,
+                    "confidence": p.confidence,
+                    "message": p.suggested_message,
+                }
+                for p in predictions
+            ],
+        },
+    }
+
+
 # ============================================
 # Admin-only endpoints
 # ============================================

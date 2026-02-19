@@ -48,7 +48,7 @@ class CollectiveIntelligence:
 
     def share(self, agent_name: str, topic: str, learning: str) -> SharedKnowledge | None:
         """
-        Share a learning from one agent to the collective.
+        Share a learning from one agent to the collective (in-memory, sync).
 
         Returns the SharedKnowledge if new, None if duplicate.
         """
@@ -62,6 +62,40 @@ class CollectiveIntelligence:
         self._hashes.add(sk.content_hash)
         self._knowledge.append(sk)
         logger.info(f"Collective: '{agent_name}' shared learning on '{topic}'")
+        return sk
+
+    async def async_share(self, agent_name: str, topic: str, learning: str) -> SharedKnowledge | None:
+        """
+        Share a learning + persist to PGvector embeddings table (FASE 11 fix).
+
+        In-memory deduplication → DB embedding → semantic search ready.
+        Falls back gracefully if embeddings service is unavailable.
+        """
+        sk = self.share(agent_name, topic, learning)
+        if sk is None:
+            return None  # duplicate
+
+        # Persist to DB for semantic search
+        try:
+            from src.infra.supabase_client import get_async_session
+            from src.memory.embeddings import embedding_service
+
+            text = f"[{topic}] {learning}"
+            embedding = await embedding_service.embed_text(text)
+            if embedding:
+                async with get_async_session() as session:
+                    await embedding_service.store_embedding(
+                        db_session=session,
+                        content=text,
+                        embedding=embedding,
+                        source_type="collective",
+                        source_id=agent_name,
+                        metadata={"topic": topic, "content_hash": sk.content_hash},
+                    )
+                logger.info(f"Collective: '{agent_name}' knowledge persisted to PGvector (topic='{topic}')")
+        except Exception as e:
+            logger.warning(f"Collective: PGvector persist failed (in-memory still works): {e}")
+
         return sk
 
     def query(self, topic: str, requesting_agent: str = "") -> list[SharedKnowledge]:

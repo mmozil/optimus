@@ -273,7 +273,36 @@ async def react_loop(
             from src.core.confirmation_service import confirmation_service
 
             user_id = context.get("user_id", "") if context else ""
-            if confirmation_service.should_confirm(tool_name, user_id):
+
+            # FASE 11: Jarvis Mode — autonomous_executor bypass for low/medium risk tools
+            _needs_confirmation = confirmation_service.should_confirm(tool_name, user_id)
+            if _needs_confirmation:
+                from src.engine.autonomous_executor import (
+                    ExecutionResult,
+                    ExecutionStatus,
+                    autonomous_executor,
+                )
+
+                _task_label = f"{tool_name} {json.dumps(tool_args, ensure_ascii=False)[:80]}"
+                if autonomous_executor.should_auto_execute(_task_label, confidence=0.85):
+                    # Auto-execute: log to audit trail and fall through to execution
+                    autonomous_executor._audit(ExecutionResult(
+                        task=_task_label,
+                        confidence=0.85,
+                        risk=autonomous_executor.classify_risk(_task_label),
+                        agent_name=agent_name,
+                        status=ExecutionStatus.SUCCESS,
+                        output=f"Auto-bypassed confirmation for tool '{tool_name}'",
+                    ))
+                    autonomous_executor._today_count += 1
+                    logger.info(
+                        f"FASE 11: Auto-executed '{tool_name}' (bypassed confirmation, "
+                        f"risk={autonomous_executor.classify_risk(_task_label).value})",
+                        extra={"props": {"agent": agent_name, "tool": tool_name}},
+                    )
+                    _needs_confirmation = False  # Allow fall-through to execution
+
+            if _needs_confirmation:
                 step.success = False
                 step.error = f"Tool '{tool_name}' requires user confirmation (HIGH/CRITICAL risk)"
                 step.duration_ms = (time.monotonic() - step_start) * 1000

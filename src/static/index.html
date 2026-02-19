@@ -468,6 +468,41 @@
 
         .file-chip .chip-remove:hover { color: var(--red); }
 
+        /* Suggestion chips (FASE 11: Jarvis Mode) */
+        .suggestion-chips {
+            max-width: 740px;
+            width: 100%;
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.4rem;
+            padding: 0 0.25rem;
+        }
+
+        .suggestion-chip {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.3rem 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .suggestion-chip:hover {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
         /* Mic status toast */
         #mic-toast {
             position: fixed;
@@ -640,6 +675,9 @@
 
         <!-- Slash Command Autocomplete Popup -->
         <div class="cmd-popup" id="cmd-popup"></div>
+
+        <!-- Suggestion Chips (FASE 11: Jarvis Mode) -->
+        <div class="suggestion-chips" id="suggestion-chips" style="display:none;"></div>
 
         <!-- File Preview (FASE 9 — Multimodal) -->
         <div class="file-preview" id="file-preview" style="display:none;"></div>
@@ -1344,6 +1382,46 @@
         });
 
         loadHistory();
+
+        // ── Suggestion Chips (FASE 11: Jarvis Mode) ──────────────────
+        const suggestionChips = document.getElementById('suggestion-chips');
+
+        async function loadSuggestions() {
+            if (!TOKEN) return;
+            try {
+                const agent = agentSelect.value || 'optimus';
+                const resp = await fetch(`${API_URL}/api/v1/autonomous/suggestions?agent=${agent}`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const suggestions = data?.data?.suggestions || [];
+                renderSuggestionChips(suggestions);
+            } catch (e) {
+                // Silently fail — suggestions are optional UX
+            }
+        }
+
+        function renderSuggestionChips(suggestions) {
+            if (!suggestions.length) {
+                suggestionChips.style.display = 'none';
+                return;
+            }
+            suggestionChips.innerHTML = suggestions.map(s =>
+                `<button class="suggestion-chip" title="${s.reason}" onclick="applySuggestion(${JSON.stringify(s.message)})">${s.message}</button>`
+            ).join('');
+            suggestionChips.style.display = 'flex';
+        }
+
+        function applySuggestion(message) {
+            chatInput.value = message;
+            chatInput.dispatchEvent(new Event('input'));
+            chatInput.focus();
+            suggestionChips.style.display = 'none';
+        }
+
+        // Load suggestions on page init (after a short delay to avoid blocking)
+        setTimeout(loadSuggestions, 2000);
     </script>
 </body>
 

@@ -5080,3 +5080,297 @@ class TestMultimodalInputIntegration:
             html = f.read()
         assert "file-preview" in html or "attachment-preview" in html or "pendingFiles" in html, \
             "index.html missing file preview area — user can't see what they're attaching"
+
+
+# ============================================
+# FASE 11: Jarvis Mode Integration
+# ============================================
+class TestJarvisModeIntegration:
+    """
+    FASE 11 — E2E tests for Jarvis Mode (autonomous execution + proactive suggestions).
+
+    Call paths covered:
+    1. PGvector persistence:
+       POST /api/v1/knowledge/share
+           → knowledge.py share_knowledge()
+           → collective_intelligence.async_share()
+           → embedding_service.embed_text() + store_embedding() (PGvector)
+
+    2. Autonomous executor bypass:
+       react_loop.py tool execution
+           → confirmation_service.should_confirm() → True (HIGH risk)
+           → autonomous_executor.should_auto_execute(task, 0.85) → check
+           → if True: audit + fall-through (bypass confirmation)
+           → if False: block (original behavior)
+
+    3. Suggestions endpoint:
+       GET /api/v1/autonomous/suggestions?agent=optimus
+           → intent_predictor.learn_patterns() (from daily notes)
+           → intent_predictor.predict_next() → list[Prediction]
+           → Returns suggestion chips for the UI
+
+    4. UI chips:
+       index.html loads suggestions on init
+           → renderSuggestionChips() → clickable buttons
+           → applySuggestion() → fills textarea
+    """
+
+    # ------------------------------------------------------------------
+    # 1. PGvector — async_share persistence
+    # ------------------------------------------------------------------
+
+    def test_collective_intelligence_has_async_share(self):
+        """
+        CollectiveIntelligence must expose async_share() for PGvector persistence.
+
+        Without it, knowledge.py calls sync share() and nothing is stored in
+        the embeddings table, making semantic search return empty results.
+        """
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        assert hasattr(ci, "async_share"), "CollectiveIntelligence missing async_share() method"
+        import inspect
+        assert inspect.iscoroutinefunction(ci.async_share), \
+            "async_share() must be an async method"
+
+    @pytest.mark.asyncio
+    async def test_async_share_returns_shared_knowledge(self):
+        """
+        async_share() must return a SharedKnowledge object for new learnings.
+
+        The PGvector persistence is attempted but gracefully handled;
+        the in-memory result should always succeed.
+        """
+        from src.memory.collective_intelligence import CollectiveIntelligence, SharedKnowledge
+
+        ci = CollectiveIntelligence()
+        sk = await ci.async_share(
+            agent_name="test_agent",
+            topic="unit_testing",
+            learning="Always test async methods with pytest-asyncio",
+        )
+        assert sk is not None, "async_share() should return SharedKnowledge for new content"
+        assert isinstance(sk, SharedKnowledge), "Return type must be SharedKnowledge"
+        assert sk.source_agent == "test_agent"
+        assert sk.topic == "unit_testing"
+
+    @pytest.mark.asyncio
+    async def test_async_share_deduplication(self):
+        """
+        async_share() must return None for duplicate content (same hash).
+
+        Prevents duplicate embeddings in PGvector.
+        """
+        from src.memory.collective_intelligence import CollectiveIntelligence
+
+        ci = CollectiveIntelligence()
+        learning = "Unique learning content for dedup test FASE11"
+        sk1 = await ci.async_share("agent_a", "topic_x", learning)
+        sk2 = await ci.async_share("agent_b", "topic_x", learning)  # duplicate
+
+        assert sk1 is not None, "First share should succeed"
+        assert sk2 is None, "Duplicate share should return None"
+
+    def test_knowledge_api_uses_async_share(self):
+        """
+        src/api/knowledge.py share_knowledge() endpoint must call async_share(),
+        not the sync share(). Only async_share() persists to PGvector.
+        """
+        import inspect
+        from src.api import knowledge as k_module
+
+        source = inspect.getsource(k_module.share_knowledge)
+        assert "async_share" in source, \
+            "knowledge.py share_knowledge() must call async_share() for PGvector persistence"
+        assert "await" in source, \
+            "share_knowledge() must await async_share()"
+
+    # ------------------------------------------------------------------
+    # 2. Autonomous executor — react_loop bypass
+    # ------------------------------------------------------------------
+
+    def test_react_loop_has_autonomous_bypass(self):
+        """
+        react_loop.py must contain the FASE 11 autonomous_executor bypass code.
+
+        Without this, all HIGH-risk tools are always blocked for user confirmation,
+        even when the autonomous executor allows them.
+        """
+        import inspect
+        from src.engine import react_loop as rl_module
+
+        source = inspect.getsource(rl_module)
+        assert "autonomous_executor" in source, \
+            "react_loop.py missing FASE 11 autonomous_executor bypass"
+        assert "should_auto_execute" in source, \
+            "react_loop.py must call should_auto_execute() for Jarvis bypass"
+
+    def test_autonomous_executor_should_auto_execute_low_risk(self):
+        """
+        should_auto_execute() must return True for low-risk tools at high confidence.
+
+        A 'search' or 'read' operation at 0.95 confidence should be auto-executed.
+        """
+        from src.engine.autonomous_executor import AutonomousExecutor
+
+        executor = AutonomousExecutor()
+        executor.config.enabled = True
+        executor.config.auto_execute_threshold = 0.9
+        executor.config.max_risk_level = "medium"
+        executor._today_count = 0
+
+        result = executor.should_auto_execute("search database for user records", confidence=0.95)
+        assert result is True, \
+            "Low-risk task at 0.95 confidence should be auto-executed"
+
+    def test_autonomous_executor_blocks_critical_risk(self):
+        """
+        should_auto_execute() must return False for CRITICAL risk tasks,
+        regardless of confidence level.
+        """
+        from src.engine.autonomous_executor import AutonomousExecutor
+
+        executor = AutonomousExecutor()
+        executor.config.enabled = True
+        executor.config.auto_execute_threshold = 0.5  # very low threshold
+        executor._today_count = 0
+
+        result = executor.should_auto_execute("delete all production data", confidence=1.0)
+        assert result is False, \
+            "CRITICAL risk tasks must NEVER be auto-executed"
+
+    def test_autonomous_executor_audit_logged(self, tmp_path, monkeypatch):
+        """
+        _audit() must write execution results to the JSONL audit trail.
+
+        This ensures full traceability of autonomous decisions.
+        """
+        import json
+        from src.engine.autonomous_executor import (
+            AutonomousExecutor,
+            ExecutionResult,
+            ExecutionStatus,
+            TaskRisk,
+        )
+        import src.engine.autonomous_executor as ae_module
+
+        monkeypatch.setattr(ae_module, "AUDIT_DIR", tmp_path)
+        monkeypatch.setattr(ae_module, "AUDIT_FILE", tmp_path / "audit.jsonl")
+        monkeypatch.setattr(ae_module, "CONFIG_FILE", tmp_path / "config.json")
+
+        executor = AutonomousExecutor()
+        result = ExecutionResult(
+            task="list files in workspace",
+            confidence=0.92,
+            risk=TaskRisk.LOW,
+            agent_name="optimus",
+            status=ExecutionStatus.SUCCESS,
+            output="Auto-bypassed confirmation",
+        )
+        executor._audit(result)
+
+        audit_file = tmp_path / "audit.jsonl"
+        assert audit_file.exists(), "Audit file must be created"
+        entries = [json.loads(line) for line in audit_file.read_text().strip().split("\n")]
+        assert len(entries) == 1
+        assert entries[0]["task"] == "list files in workspace"
+        assert entries[0]["status"] == "success"
+        assert entries[0]["confidence"] == 0.92
+
+    # ------------------------------------------------------------------
+    # 3. Suggestions endpoint
+    # ------------------------------------------------------------------
+
+    def test_suggestions_endpoint_exists_in_main(self):
+        """
+        GET /api/v1/autonomous/suggestions must be registered in main.py.
+
+        Without this endpoint, index.html cannot fetch suggestion chips.
+        """
+        import inspect
+        import src.main as main_module
+
+        source = inspect.getsource(main_module)
+        assert "/api/v1/autonomous/suggestions" in source, \
+            "main.py missing GET /api/v1/autonomous/suggestions endpoint"
+        assert "intent_predictor" in source, \
+            "Suggestions endpoint must use intent_predictor"
+
+    def test_intent_predictor_predict_next_returns_predictions(self):
+        """
+        predict_next() must return Prediction objects with suggested_message.
+
+        The suggestion chips in index.html display suggested_message text.
+        """
+        from src.engine.intent_predictor import (
+            IntentPredictor,
+            UserPattern,
+            Prediction,
+        )
+        from datetime import datetime, timezone
+
+        predictor = IntentPredictor()
+
+        # Pattern: deploy on Fridays (weekday=4) in the afternoon
+        patterns = [
+            UserPattern(
+                action="deploy",
+                frequency=8,
+                weekdays=[4],
+                time_slots=["afternoon"],
+                confidence=0.85,
+                last_seen="2026-02-14",
+            )
+        ]
+
+        # Mock current time to Friday afternoon
+        friday_afternoon = datetime(2026, 2, 20, 15, 0, tzinfo=timezone.utc)  # Friday 15:00
+        predictions = predictor.predict_next(patterns, current_time=friday_afternoon)
+
+        assert len(predictions) > 0, \
+            "predict_next() should return suggestions for a matching day/time pattern"
+        assert all(isinstance(p, Prediction) for p in predictions), \
+            "All predictions must be Prediction instances"
+        assert all(p.suggested_message for p in predictions), \
+            "Each prediction must have a non-empty suggested_message"
+
+    # ------------------------------------------------------------------
+    # 4. UI chips in index.html
+    # ------------------------------------------------------------------
+
+    def test_frontend_has_suggestion_chips_html(self):
+        """
+        index.html must have suggestion-chips container for Jarvis proactive suggestions.
+
+        Without this, loadSuggestions() has nowhere to render chips.
+        """
+        with open("src/static/index.html", "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "suggestion-chips" in html, \
+            "index.html missing suggestion-chips container"
+
+    def test_frontend_has_load_suggestions_js(self):
+        """
+        index.html must have loadSuggestions() JS function that calls the API.
+
+        This is the function that fetches and renders suggestion chips.
+        """
+        with open("src/static/index.html", "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "loadSuggestions" in html, \
+            "index.html missing loadSuggestions() JS function"
+        assert "/api/v1/autonomous/suggestions" in html, \
+            "loadSuggestions() must call /api/v1/autonomous/suggestions endpoint"
+
+    def test_frontend_has_apply_suggestion_js(self):
+        """
+        index.html must have applySuggestion() JS function that fills the textarea.
+
+        Clicking a chip should pre-fill the message input so the user can review
+        or send it immediately.
+        """
+        with open("src/static/index.html", "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "applySuggestion" in html, \
+            "index.html missing applySuggestion() JS function"
