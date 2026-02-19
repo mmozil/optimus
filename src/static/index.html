@@ -1120,6 +1120,15 @@
                 } else {
                     addMessage('Erro: resposta vazia da API.', false);
                 }
+
+                // FASE 21: Render suggestion chips from intent predictor if present
+                const responseSuggestions = data?.data?.suggestions;
+                if (responseSuggestions && responseSuggestions.length > 0) {
+                    renderSuggestionChips(responseSuggestions.map(s => ({
+                        message: s.text,
+                        reason: `${s.action} (${Math.round(s.confidence * 100)}%)`
+                    })));
+                }
             } catch (e) {
                 typingDiv.remove();
                 addMessage('Erro de conexão. Tente novamente.', false);

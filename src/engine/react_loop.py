@@ -452,6 +452,10 @@ def _build_user_content(message: str, context: dict | None) -> str:
         if context.get("tot_pre_reasoning"):
             parts.append(f"## Análise Prévia (Tree-of-Thought)\n{context['tot_pre_reasoning']}")
 
+        # FASE 21 #7: Inject ambient time context (from context_awareness)
+        if context.get("time_context"):
+            parts.append(context["time_context"])
+
         # FASE 21: Inject RAG context enrichment (from rag_pipeline.augment_prompt)
         if context.get("rag_context"):
             parts.append(context["rag_context"])

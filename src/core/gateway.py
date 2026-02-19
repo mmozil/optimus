@@ -218,6 +218,28 @@ class Gateway:
             context["sentiment"] = sentiment
             context["tone_instruction"] = sentiment.tone_instruction
 
+            # FASE 21 #5: Working Memory — load WORKING.md scratchpad into context
+            # react_loop._build_user_content() already uses context["working_memory"] if present
+            try:
+                from src.memory.working_memory import working_memory as wm_service
+                _wm_content = await wm_service.load(agent_name)
+                if _wm_content and _wm_content.strip():
+                    context["working_memory"] = _wm_content
+            except Exception as _wm_e:
+                logger.debug(f"FASE 21: Working memory load skipped: {_wm_e}")
+
+            # FASE 21 #7: Context Awareness — ambient time/day context for the agent
+            # Gives the agent awareness of current time, day of week, business hours
+            try:
+                from src.core.context_awareness import ContextAwareness
+                _ambient = ContextAwareness().build_context()
+                context["time_context"] = (
+                    f"[{_ambient.greeting}, {_ambient.local_time} — {_ambient.day_of_week}. "
+                    f"{_ambient.day_suggestion}]"
+                )
+            except Exception as _ca_e:
+                logger.debug(f"FASE 21: Context awareness skipped: {_ca_e}")
+
             # FASE 0 #3: Add intent classification to context
             context["intent_classification"] = intent_result
 

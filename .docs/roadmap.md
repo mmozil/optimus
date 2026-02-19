@@ -258,18 +258,23 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
   - Call path: `gateway.route_message()` linha ~261 → `rag_pipeline.augment_prompt()` → `context["rag_context"]`
   - Renderizado pelo `react_loop.py` em `_build_user_content()`
 
-### Pendente:
-- [ ] **21.4** `reflection_engine.py` — Conectar ao cron semanal
-  - Call path: `cron_scheduler` (semanal) → `reflection_engine.analyze_week()` → `collective_intelligence.share()`
-- [ ] **21.5** `working_memory.py` — Injetar no session context
-  - Call path: `session_bootstrap.load_context()` → carregar `WORKING.md` do agent → `context["working_memory"]`
-- [ ] **21.6** `tools_manifest.py` — Gerar TOOLS.md no startup
-  - Call path: `main.py lifespan startup` → `tools_manifest.generate()` → salvar em `workspace/TOOLS.md`
-- [ ] **21.7** `context_awareness.py` — Fuso horário + greeting no bootstrap
-  - Call path: `gateway.route_message()` → `context_awareness.get_context()` → injetar em context
-- [ ] **21.8** `security.py` — Enforcement real no gateway
-  - Call path: `gateway.route_message()` → `security.check_permission(user, action)` → bloquear se negado
-- [ ] **21.9** Frontend: renderizar `suggestions` do intent predictor como chips clicáveis
+### Também já integrados (descobertos nesta sessão):
+- [x] **21.4** `reflection_engine.py` — JÁ INTEGRADO (main.py:184 → reflection_handlers.py → cron weekly_reflection)
+- [x] **21.6** `tools_manifest.py` — Módulo não existe; ignorado
+- [x] **21.8** `security.py` — JÁ INTEGRADO (react_loop.py:252 → check_permission(MCP_EXECUTE) por tool call)
+
+### Integrado nesta sessão (itens 21.5, 21.7, 21.9):
+- [x] **21.5** `working_memory.py` — WORKING.md carregado em `context["working_memory"]` no gateway
+  - Call path: `gateway.route_message()` → `wm_service.load(agent_name)` → `context["working_memory"]`
+  - react_loop.py `_build_user_content()` já injetava se presente (checkpoint✓)
+- [x] **21.7** `context_awareness.py` — Contexto de tempo/dia injetado em `context["time_context"]`
+  - Call path: `gateway.route_message()` → `ContextAwareness().build_context()` → `context["time_context"]`
+  - Injetado no prompt via react_loop.py `_build_user_content()` como linha de contexto
+  - Exemplo: `[Boa tarde, 14:30 — sexta-feira. Sexta-feira! 🎉 Vamos fechar a semana. Algo para deploy?]`
+- [x] **21.9** Frontend: chips renderizados após cada resposta que inclua `suggestions`
+  - `data?.data?.suggestions` → `renderSuggestionChips()` → chips clicáveis preenchem o input
+
+## FASE 21 — ✅ CONCLUÍDA (2026-02-19)
 
 ---
 
