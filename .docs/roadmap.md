@@ -53,7 +53,7 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] Session Manager + Session Compacting
 - [x] Cost Tracker
 - [x] Deploy CI/CD (Push → Coolify → Docker)
-- [x] Web Research (Tavily)
+- [⚠️] Web Research — stub (`research_search` retorna mock, Tavily NÃO integrado — ver FASE 26)
 - [x] Browser Automation (Playwright/CDP)
 - [x] Dynamic Agents (criação sob demanda)
 - [x] Google OAuth + IMAP/SMTP (email)
@@ -63,8 +63,8 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] Onboarding + Settings page
 - [x] A2A Protocol (API REST)
 - [x] Collective Intelligence (cross-agent learning)
-- [x] ToT Engine conectado (pre-reasoning no ReAct loop)
-- [x] UncertaintyQuantifier conectado (🔴 warning no gateway)
+- [⚠️] ToT Engine — parcial (pre-reasoning injetado em queries complexas, mas `think()` completo nunca chamado em conversa real — ver FASE 25)
+- [⚠️] UncertaintyQuantifier — parcial (🔴 warning via heurística simples, quantifier real nunca chamado — ver FASE 25)
 - [x] Chat Commands (10 comandos: /status /help /agents /task /learn /think /compact /new /standup /cron)
 - [x] Thread Manager (task → thread → subscribe → @mentions)
 - [x] Notification Service (send → polling REST → toast no frontend)
@@ -345,6 +345,103 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
+## FASE 25 — Intelligence Engine Real (ToT + Uncertainty)
+
+**Objetivo:** Conectar `tot_engine.py` e `uncertainty.py` ao fluxo real de conversas.
+**Por quê:** Ambos existem mas nunca são chamados. Estado Atual marcava como ✅ mas são stubs funcionais sem integração real.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 5 — "NUNCA chamado. Nenhum agente chama think() durante conversa real."
+
+- [ ] **25.1** Conectar `tot_engine.think()` ao `react_loop.py` para queries marcadas como complexas
+  - Call path: `react_loop.process()` → detecta query complexa → `tot_service.think(query)` → injeta pre-reasoning no prompt
+  - Critério de ativação: `is_complex_query()` já existe em `react_loop.py`
+- [ ] **25.2** Substituir heurística de uncertainty pelo `UncertaintyQuantifier` real
+  - Call path: `gateway.route_message()` → resposta gerada → `uncertainty.quantify(response, context)` → score real
+  - Se score > threshold → adicionar 🔴 warning (atualmente calculado por regex simples)
+- [ ] **25.3** Testes E2E — `TestFase25IntelligenceReal`
+- [ ] **25.4** Testar em produção
+
+---
+
+## FASE 26 — Web Research Real (Tavily)
+
+**Objetivo:** Substituir o stub `research_search` por chamada real à API Tavily.
+**Por quê:** `research_search` em `mcp_tools.py` retorna mock. Estado Atual marcava "Web Research (Tavily) ✅" incorretamente.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 6 — "research ❌ É um stub. Nenhuma API real integrada."
+
+- [ ] **26.1** Integrar Tavily API em `mcp_tools.py`
+  - Call path: `react_loop` → tool `research_search(query)` → `tavily_client.search(query)` → resultados reais
+  - Graceful fallback: sem `TAVILY_API_KEY` → log warning + retorna mock (comportamento atual)
+- [ ] **26.2** Adicionar `TAVILY_API_KEY` ao `config.py` e ao Coolify
+- [ ] **26.3** Testes E2E — `TestFase26WebResearch`
+- [ ] **26.4** Testar em produção
+
+---
+
+## FASE 27 — Agentic RAG Nativo
+
+**Objetivo:** Conectar `rag.py` ao fluxo principal de forma transparente.
+**Por quê:** `rag.py` existe e foi parcialmente conectado (FASE 21), mas o fluxo ainda usa `knowledge_tool` separado. O RAG deveria enriquecer automaticamente o contexto de qualquer query relevante.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 4 — "Agentic RAG ⚠️ Parcial — rag.py existe mas é órfão."
+
+- [ ] **27.1** Auto-ingest de uploads: ao receber PDF/CSV via multimodal, indexar automaticamente no PGvector
+  - Call path: `files_service.process()` → `rag_pipeline.ingest(content, source)` → `embedding_service.store_embedding()`
+- [ ] **27.2** Garantir que RAG augmentation está ativa para todos os intents relevantes (research, analysis, qa)
+  - Verificar integração existente de FASE 21 e corrigir se necessário
+- [ ] **27.3** Testes E2E — `TestFase27RAGNativo`
+- [ ] **27.4** Testar em produção
+
+---
+
+## FASE 28 — Plugins MCP & Skills Auto-install
+
+**Objetivo:** Ativar o sistema de plugins MCP e o auto-install de skills.
+**Por quê:** `workspace/plugins/` está vazia. `skills_discovery.py` faz busca mas não instala. `tools_manifest.py` nunca gera TOOLS.md.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 6 — "Plugin MCP ❌ pasta vazia. Skills auto-install ❌."
+
+- [ ] **28.1** Criar pelo menos 1 plugin MCP de exemplo em `workspace/plugins/`
+  - Estrutura: arquivo `.py` com `def register_tools() -> list[MCPTool]:`
+  - Call path: `main.py startup` → `mcp_plugin.load_plugins()` → tools registradas no registry
+- [ ] **28.2** Gerar `workspace/TOOLS.md` via `tools_manifest.py` no startup
+  - Call path: `main.py startup` → `tools_manifest.generate()` → `workspace/TOOLS.md` (lista de tools disponíveis)
+- [ ] **28.3** `skills_discovery.py` — ao encontrar skill compatível, instalar automaticamente (com confirmação do usuário)
+- [ ] **28.4** Testes E2E — `TestFase28Plugins`
+- [ ] **28.5** Testar em produção
+
+---
+
+## FASE 29 — Webhooks & Presence
+
+**Objetivo:** Receber eventos externos (GitHub, Forms) e implementar status de presença.
+**Por quê:** Nenhum WebhookReceiver ativo. Presence (online/offline) não existe.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 1 — "Webhooks ❌". Bloco 2 — "Presence ❌."
+
+- [ ] **29.1** Webhook receiver genérico
+  - Call path: `POST /api/v1/webhooks/{source}` → valida secret → `event_bus.emit(WEBHOOK_RECEIVED, payload)` → handler processa
+  - Sources iniciais: `github` (push/PR events), `generic` (qualquer JSON)
+- [ ] **29.2** Presence: status online/offline por usuário
+  - SSE heartbeat a cada 30s → atualiza `last_seen` no Redis (TTL 60s) → `GET /api/v1/presence/{user_id}`
+- [ ] **29.3** Testes E2E — `TestFase29Webhooks`
+- [ ] **29.4** Testar em produção
+
+---
+
+## FASE 30 — Eval CI & Debug Web UI
+
+**Objetivo:** Integrar `eval_runner.py` ao CI e construir painel de debug da orquestração.
+**Por quê:** `eval_runner.py` existe mas não está no CI. Debug Web UI prometido pelo Google ADK nunca foi construído.
+**Evidência do gap:** `roadmap-optimus-v2.md` Bloco 3 — "Evaluation ⚠️ Parcial. Debug Web UI ❌."
+
+- [ ] **30.1** Integrar `eval_runner.py` ao pipeline CI (GitHub Actions ou Coolify hooks)
+  - Rodar suite de avaliação a cada push para `main`
+  - Métricas: acurácia de tool calling, taxa de fallback, latência P95
+- [ ] **30.2** Debug Web UI — painel em `/debug` (protegido por auth admin)
+  - Visualizar: pipelines de orquestração ativos, fila de cron jobs, últimas 10 sessões de audit
+  - Dados já existem: `audit_log`, `cron_scheduler.list_jobs()`, `decay_service.get_stats()`
+- [ ] **30.3** Testes E2E — `TestFase30EvalDebug`
+- [ ] **30.4** Testar em produção
+
+---
+
 ## Priorização Recomendada
 
 | Prioridade | Fase | Impacto | Esforço |
@@ -353,15 +450,21 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 | **P0** | FASE 21 — Limpeza Código Morto | Alto (reduz complexidade) | Médio |
 | **P1** | FASE 12 — Audit Trail | Alto (debug + melhoria contínua) | Médio |
 | **P1** | FASE 13 — Embeddings CI | Alto (qualidade do knowledge) | Baixo |
+| **P1** | FASE 25 — Intelligence Real (ToT+Uncertainty) | Alto (corrige falso ✅, impacto direto na qualidade) | Médio |
+| **P1** | FASE 26 — Web Research Real (Tavily) | Alto (corrige falso ✅, pesquisa funcional) | Baixo |
 | **P1** | FASE 17 — Prompt Engineering | Alto (qualidade sem custo) | Baixo |
-| **P2** | FASE 18 — User Profile | Médio (UX) | Baixo |
+| **P2** | FASE 27 — Agentic RAG Nativo | Alto (uploads indexados automaticamente) | Médio |
 | **P2** | FASE 14 — Temporal Decay | Médio (relevância da memória) | Médio |
+| **P2** | FASE 18 — User Profile | Médio (UX) | Baixo |
 | **P2** | FASE 19 — PWA | Médio (mobile access) | Médio |
 | **P2** | FASE 11 — Telegram | Médio (novo canal) | Médio |
 | **P3** | FASE 15 — Contradiction | Médio (consistência) | Médio |
 | **P3** | FASE 16 — Proactive | Alto (diferencial) | Alto |
+| **P3** | FASE 28 — Plugins MCP & Skills | Médio (extensibilidade) | Médio |
+| **P3** | FASE 29 — Webhooks & Presence | Médio (integrações externas) | Médio |
 | **P3** | FASE 20 — Browser Streaming | Baixo (nice-to-have) | Médio |
 | **P3** | FASE 22 — Redis | Médio (performance) | Médio |
+| **P4** | FASE 30 — Eval CI & Debug UI | Médio (qualidade de engenharia) | Médio |
 | **P4** | FASE 23 — Máquina do Usuário | Alto (ambicioso) | Alto |
 | **P4** | FASE 24 — Voice Assistant | Médio (UX avançado) | Alto |
 
