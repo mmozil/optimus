@@ -5993,3 +5993,181 @@ class TestFase13Embeddings:
         assert "create extension" in sql and "vector" in sql
         assert "embeddings" in sql
         assert "vector(768)" in sql
+
+
+class TestFase14TemporalDecay:
+    """FASE 14: Temporal Memory & Decay — testes E2E."""
+
+    # ------------------------------------------------------------------
+    # 1. Módulo e funções de decay
+    # ------------------------------------------------------------------
+
+    def test_decay_service_importable(self):
+        """decay_service singleton deve importar sem erro."""
+        from src.core.decay_service import decay_service, DecayService
+        assert isinstance(decay_service, DecayService)
+
+    def test_recency_factor_recent(self):
+        """Entrada recente → recency_factor próximo de 1.0."""
+        from datetime import datetime, timezone
+        from src.core.decay_service import recency_factor
+        now = datetime.now(timezone.utc)
+        rf = recency_factor(last_accessed_at=now)
+        assert 0.99 <= rf <= 1.0, f"Expected ~1.0, got {rf}"
+
+    def test_recency_factor_old(self):
+        """Entrada de 100 dias atrás → recency_factor significativamente < 1.0."""
+        from datetime import datetime, timedelta, timezone
+        from src.core.decay_service import recency_factor, LAMBDA
+        import math
+        old = datetime.now(timezone.utc) - timedelta(days=100)
+        rf = recency_factor(last_accessed_at=old)
+        expected = math.exp(-LAMBDA * 100)
+        assert abs(rf - expected) < 0.001, f"Expected {expected:.4f}, got {rf:.4f}"
+
+    def test_access_factor_zero(self):
+        """Sem acessos → access_factor = 1.0."""
+        from src.core.decay_service import access_factor
+        assert access_factor(0) == 1.0
+
+    def test_access_factor_ten(self):
+        """10 acessos → access_factor = 2.0 (max)."""
+        from src.core.decay_service import access_factor
+        assert access_factor(10) == 2.0
+
+    def test_access_factor_over_cap(self):
+        """Muitos acessos → access_factor nunca passa de 2.0."""
+        from src.core.decay_service import access_factor
+        assert access_factor(100) == 2.0
+
+    def test_compute_score_combines_factors(self):
+        """compute_score = similarity * recency * access (sem acesso = 1.0)."""
+        from datetime import datetime, timezone
+        from src.core.decay_service import compute_score
+        now = datetime.now(timezone.utc)
+        score = compute_score(similarity=0.9, last_accessed_at=now, access_count=0)
+        # recency ≈ 1.0, access = 1.0 → score ≈ 0.9
+        assert 0.89 <= score <= 0.91, f"Expected ~0.9, got {score}"
+
+    # ------------------------------------------------------------------
+    # 2. apply_decay re-ranking
+    # ------------------------------------------------------------------
+
+    def test_apply_decay_adds_final_score(self):
+        """apply_decay() deve adicionar 'final_score' em cada resultado."""
+        from src.core.decay_service import apply_decay
+        results = [
+            {"similarity": 0.8, "last_accessed_at": None, "access_count": 0, "created_at": None},
+            {"similarity": 0.7, "last_accessed_at": None, "access_count": 5, "created_at": None},
+        ]
+        ranked = apply_decay(results)
+        for r in ranked:
+            assert "final_score" in r
+            assert "recency_factor" in r
+            assert isinstance(r["final_score"], float)
+
+    def test_apply_decay_reranks_by_final_score(self):
+        """Entrada com mais acessos pode ultrapassar entrada mais similar (sem acessos)."""
+        from datetime import datetime, timezone
+        from src.core.decay_service import apply_decay
+        now = datetime.now(timezone.utc)
+        results = [
+            # Altamente similar mas sem acessos
+            {"id": "A", "similarity": 0.85, "last_accessed_at": now, "access_count": 0, "created_at": now},
+            # Menos similar mas com muitos acessos (boost 2x)
+            {"id": "B", "similarity": 0.50, "last_accessed_at": now, "access_count": 10, "created_at": now},
+        ]
+        ranked = apply_decay(results)
+        # B: 0.50 * 1.0 * 2.0 = 1.0 > A: 0.85 * 1.0 * 1.0 = 0.85
+        assert ranked[0]["id"] == "B", f"Expected B first, got {ranked[0]['id']}"
+
+    def test_apply_decay_empty_list(self):
+        """apply_decay com lista vazia não deve lançar exceção."""
+        from src.core.decay_service import apply_decay
+        result = apply_decay([])
+        assert result == []
+
+    def test_apply_decay_parses_iso_strings(self):
+        """apply_decay deve aceitar datetimes como strings ISO."""
+        from src.core.decay_service import apply_decay
+        results = [
+            {
+                "similarity": 0.75,
+                "last_accessed_at": "2025-01-01T00:00:00+00:00",
+                "access_count": 0,
+                "created_at": "2025-01-01T00:00:00+00:00",
+            }
+        ]
+        ranked = apply_decay(results)
+        assert len(ranked) == 1
+        assert ranked[0]["final_score"] < 0.75  # decay reduziu o score
+
+    # ------------------------------------------------------------------
+    # 3. Decay handlers
+    # ------------------------------------------------------------------
+
+    def test_decay_handlers_importable(self):
+        """decay_handlers deve importar sem erro e expor register_decay_handlers."""
+        from src.engine.decay_handlers import register_decay_handlers
+        assert callable(register_decay_handlers)
+
+    def test_register_decay_handlers_is_idempotent(self):
+        """register_decay_handlers() pode ser chamado múltiplas vezes sem duplicar."""
+        from src.engine.decay_handlers import register_decay_handlers
+        # Não deve lançar exceção em chamadas repetidas
+        register_decay_handlers()
+        register_decay_handlers()
+
+    # ------------------------------------------------------------------
+    # 4. Migration 023
+    # ------------------------------------------------------------------
+
+    def test_migration_023_exists(self):
+        """Migration 023_embeddings_temporal.sql deve existir."""
+        import os
+        path = os.path.join(os.getcwd(), "migrations", "023_embeddings_temporal.sql")
+        assert os.path.exists(path), "Migration 023 não encontrada"
+
+    def test_migration_023_has_required_columns(self):
+        """Migration 023 deve adicionar last_accessed_at, access_count e archived."""
+        import os
+        path = os.path.join(os.getcwd(), "migrations", "023_embeddings_temporal.sql")
+        with open(path, encoding="utf-8") as f:
+            sql = f.read().lower()
+        assert "last_accessed_at" in sql
+        assert "access_count" in sql
+        assert "archived" in sql
+        assert "if not exists" in sql  # idempotente
+
+    # ------------------------------------------------------------------
+    # 5. Integração com semantic_search (sem DB — verifica estrutura)
+    # ------------------------------------------------------------------
+
+    def test_embedding_service_has_semantic_search(self):
+        """EmbeddingService deve ter método semantic_search."""
+        from src.memory.embeddings import EmbeddingService
+        svc = EmbeddingService()
+        assert hasattr(svc, "semantic_search")
+        assert callable(svc.semantic_search)
+
+    def test_semantic_search_query_includes_archived_filter(self):
+        """SQL em semantic_search deve filtrar archived = FALSE."""
+        import inspect
+        from src.memory.embeddings import EmbeddingService
+        source = inspect.getsource(EmbeddingService.semantic_search)
+        assert "archived" in source.lower(), "Filtro 'archived' ausente em semantic_search"
+        assert "record_access" in source, "record_access não chamado em semantic_search"
+
+    # ------------------------------------------------------------------
+    # 6. _schedule_decay_archiving em main.py
+    # ------------------------------------------------------------------
+
+    def test_schedule_decay_archiving_exists_in_main(self):
+        """_schedule_decay_archiving deve estar definido em src/main.py."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "main.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "_schedule_decay_archiving" in content
+        assert "decay_archiving" in content
+        assert "register_decay_handlers" in content

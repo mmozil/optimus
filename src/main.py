@@ -129,6 +129,29 @@ def _schedule_pattern_learning(cron_scheduler) -> None:
     logger.info(f"FASE 0 #4: Pattern learning scheduled — runs every 168h (7 days), first run at {cron_scheduler._jobs[job_id].next_run}")
 
 
+def _schedule_decay_archiving(cron_scheduler) -> None:
+    """
+    FASE 14: Schedule weekly decay archiving (every 168h / 7 days).
+    Archives embeddings with low recency score to keep the DB lean.
+    """
+    from src.core.cron_scheduler import CronJob
+
+    existing = [j for j in cron_scheduler.list_jobs() if j.name == "decay_archiving"]
+    if existing:
+        logger.info(f"FASE 14: Decay archiving already scheduled — next run: {existing[0].next_run}")
+        return
+
+    job = CronJob(
+        name="decay_archiving",
+        schedule_type="every",
+        schedule_value="168h",  # weekly
+        payload="Archive stale embeddings with low temporal decay score",
+        delete_after_run=False,
+    )
+    job_id = cron_scheduler.add(job)
+    logger.info(f"FASE 14: Decay archiving scheduled — runs every 168h, first run at {cron_scheduler._jobs[job_id].next_run}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -209,6 +232,11 @@ async def lifespan(app: FastAPI):
     # FASE 0 #4: Schedule weekly pattern learning every 168h (7 days)
     # Only adds the job if it doesn't already exist (jobs persist across restarts)
     _schedule_pattern_learning(cron_scheduler)
+
+    # FASE 14: Register decay archiving handler + schedule weekly cron
+    from src.engine.decay_handlers import register_decay_handlers
+    register_decay_handlers()
+    _schedule_decay_archiving(cron_scheduler)
 
     # Performance: Schedule session pruning every 24h (removes idle sessions from memory)
     from src.core.cron_scheduler import CronJob

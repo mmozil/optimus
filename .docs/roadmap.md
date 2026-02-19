@@ -154,18 +154,24 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 14 — Temporal Memory & Decay
+## FASE 14 — Temporal Memory & Decay ✅ CONCLUÍDA
 
 **Objetivo:** Implementar decaimento temporal na memória para que conhecimento obsoleto perca relevância.
 **Por quê:** Memória acumula sem limite. Informações de 6 meses atrás têm mesmo peso que de hoje.
 **Ref:** `agent-claude.md` seção "Temporal Decay"
 
-- [ ] **14.1** Adicionar `last_accessed_at` e `access_count` nas tabelas de knowledge/memory
-- [ ] **14.2** Score de relevância: `similarity * recency_factor * access_factor`
-  - `recency_factor = exp(-lambda * days_since_access)`
-- [ ] **14.3** Cron job semanal para arquivar entries com score < threshold
-- [ ] **14.4** Testes E2E
-- [ ] **14.5** Testar em produção
+- [x] **14.1** Adicionar `last_accessed_at`, `access_count` e `archived` na tabela `embeddings`
+  - Migration: `migrations/023_embeddings_temporal.sql`
+- [x] **14.2** Score de relevância: `similarity * recency_factor * access_factor`
+  - `recency_factor = exp(-LAMBDA * days_since_access)` (LAMBDA=0.01, half-life~69 dias)
+  - `access_factor = min(2.0, 1.0 + 0.1 * access_count)`
+  - Implementado em `src/core/decay_service.py`
+- [x] **14.3** Cron job semanal para arquivar entries com score < 0.05
+  - Handler: `src/engine/decay_handlers.py` → `on_decay_archiving_triggered`
+  - Agendado em `lifespan()` via `_schedule_decay_archiving(cron_scheduler)` (every 168h)
+  - `semantic_search()` atualizado: filtra `archived=FALSE`, re-rank por `final_score`, fire-and-forget `record_access()`
+- [x] **14.4** Testes E2E — 18/18 passando (`TestFase14TemporalDecay`)
+- [ ] **14.5** Testar em produção (deploy automático via push)
 
 ---
 

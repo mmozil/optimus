@@ -151,6 +151,10 @@ class EmbeddingService:
         """
         Search for similar content using cosine similarity.
 
+        FASE 14: Results are re-ranked by decay-adjusted score:
+            final_score = similarity * recency_factor * access_factor
+        Access metadata is updated asynchronously (fire-and-forget).
+
         Args:
             db_session: Async DB session
             query: Search query
@@ -170,15 +174,21 @@ class EmbeddingService:
 
         # NOTE: explicit CAST required — PGvector <=> operator does not
         # auto-cast text parameters, causing silent failure without it.
-        where_clause = ""
-        params: dict = {"query_embedding": str(query_embedding), "threshold": threshold, "limit": limit}
+        where_clause = "AND archived = FALSE"
+        params: dict = {
+            "query_embedding": str(query_embedding),
+            "threshold": threshold,
+            # Fetch 3x limit so decay re-ranking can choose the best
+            "limit": limit * 3,
+        }
 
         if source_type:
-            where_clause = "AND source_type = :source_type"
+            where_clause += " AND source_type = :source_type"
             params["source_type"] = source_type
 
         sql = text(f"""
-            SELECT content, source_type, source_id, metadata,
+            SELECT id::text, content, source_type, source_id, metadata,
+                   last_accessed_at, access_count, created_at,
                    1 - (embedding <=> CAST(:query_embedding AS vector)) as similarity
             FROM embeddings
             WHERE 1 - (embedding <=> CAST(:query_embedding AS vector)) > :threshold
@@ -191,15 +201,32 @@ class EmbeddingService:
             result = await db_session.execute(sql, params)
             rows = result.fetchall()
 
-            return [
+            raw = [
                 {
-                    "content": row.content,
-                    "source_type": row.source_type,
-                    "source_id": row.source_id,
-                    "similarity": round(row.similarity, 4),
+                    "id": row[0],
+                    "content": row[1],
+                    "source_type": row[2],
+                    "source_id": row[3],
+                    "similarity": round(row[8], 4),
+                    "last_accessed_at": row[5],
+                    "access_count": row[6] or 0,
+                    "created_at": row[7],
                 }
                 for row in rows
             ]
+
+            # FASE 14: Apply temporal decay re-ranking
+            from src.core.decay_service import apply_decay, decay_service
+            ranked = apply_decay(raw)[:limit]
+
+            # Fire-and-forget: update access metadata for returned entries
+            if ranked:
+                import asyncio
+                ids = [r["id"] for r in ranked if r.get("id")]
+                asyncio.create_task(decay_service.record_access(ids))
+
+            return ranked
+
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
             return []
