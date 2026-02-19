@@ -18,6 +18,40 @@
             --text-muted: #737373;
             --accent: #3b82f6;
             --red: #ef4444;
+            --green: #22c55e;
+        }
+
+        /* ── Toast Notifications (FASE 10) ──────── */
+        #toast-container {
+            position: fixed;
+            top: 56px;
+            right: 16px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 10px 14px;
+            min-width: 240px;
+            max-width: 320px;
+            font-size: 0.8rem;
+            color: var(--text);
+            pointer-events: all;
+            cursor: pointer;
+            animation: toast-in 0.2s ease;
+        }
+        .toast.toast-task { border-left-color: var(--green); }
+        .toast.toast-mention { border-left-color: var(--accent); }
+        .toast.toast-system { border-left-color: var(--text-muted); }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateX(20px); }
+            to   { opacity: 1; transform: translateX(0); }
         }
 
         * {
@@ -675,6 +709,9 @@
 
         <!-- Slash Command Autocomplete Popup -->
         <div class="cmd-popup" id="cmd-popup"></div>
+
+        <!-- Toast Notifications (FASE 10) -->
+        <div id="toast-container"></div>
 
         <!-- Suggestion Chips (FASE 11: Jarvis Mode) -->
         <div class="suggestion-chips" id="suggestion-chips" style="display:none;"></div>
@@ -1431,6 +1468,65 @@
 
         // Load suggestions on page init (after a short delay to avoid blocking)
         setTimeout(loadSuggestions, 2000);
+
+        // ── Notifications (FASE 10) ──────────────────────────────────
+        const toastContainer = document.getElementById('toast-container');
+        const _seenNotifIds = new Set();
+
+        function showToast(notification) {
+            const typeClass = {
+                task_assigned: 'toast-task',
+                task_status: 'toast-task',
+                mention: 'toast-mention',
+                system: 'toast-system',
+            }[notification.type] || 'toast-system';
+
+            const el = document.createElement('div');
+            el.className = `toast ${typeClass}`;
+            el.textContent = notification.content;
+            el.title = 'Clique para dispensar';
+            el.onclick = async () => {
+                el.remove();
+                // Mark as read
+                try {
+                    const agent = agentSelect?.value || 'optimus';
+                    await fetch(`${API_URL}/api/v1/notifications/${notification.id}/read?agent=${agent}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${TOKEN}` },
+                    });
+                } catch (_) {}
+            };
+            toastContainer.appendChild(el);
+            // Auto-dismiss after 6s
+            setTimeout(() => el.remove(), 6000);
+        }
+
+        async function pollNotifications() {
+            if (!TOKEN) return;
+            try {
+                const agent = agentSelect?.value || 'optimus';
+                const resp = await fetch(`${API_URL}/api/v1/notifications?agent=${agent}&limit=10`, {
+                    headers: { 'Authorization': `Bearer ${TOKEN}` }
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const notifications = data?.data || [];
+                for (const n of notifications) {
+                    if (!_seenNotifIds.has(n.id)) {
+                        _seenNotifIds.add(n.id);
+                        showToast(n);
+                    }
+                }
+            } catch (_) {
+                // Silently fail — notifications are non-critical
+            }
+        }
+
+        // Poll notifications every 30s (start after 5s to avoid startup congestion)
+        setTimeout(() => {
+            pollNotifications();
+            setInterval(pollNotifications, 30000);
+        }, 5000);
     </script>
 </body>
 

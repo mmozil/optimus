@@ -155,6 +155,14 @@ class ChatCommandHandler:
                 created_by=msg.user_name,
                 priority=TaskPriority.MEDIUM,
             ))
+            # FASE 10 #10.2: Subscribe creator to thread + post opening message
+            creator = msg.user_name or str(msg.user_id)
+            from src.collaboration.thread_manager import thread_manager
+            await thread_manager.subscribe(creator, task.id)
+            await thread_manager.post_message(
+                task.id, "system",
+                f"Task '{task.title}' criada por {creator}.",
+            )
             return CommandResult(text=f"✅ Task criada: **{task.title}** (ID: `{str(task.id)[:8]}`)")
 
         elif action == "status":

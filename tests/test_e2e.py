@@ -5567,3 +5567,204 @@ class TestToTAndUncertaintyIntegration:
         content = _build_user_content("qual é a melhor estratégia?", context)
 
         assert "Tree-of-Thought" not in content
+
+
+class TestFase10ChatCommandsAndNotifications:
+    """
+    FASE 10: Chat Commands & Thread System.
+
+    Call paths testados:
+    - /help → ChatCommandHandler.execute() → CommandResult
+    - /status → ChatCommandHandler._cmd_status() → AgentFactory.list_agents()
+    - /task create → task_manager.create() + thread_manager.subscribe()
+    - notification_service.send() → get_pending() → mark_delivered()
+    - thread_manager.post_message() → subscribe auto + get_messages()
+    - gateway.route_message("/status") → returns is_command=True
+    """
+
+    def test_chat_commands_importable(self):
+        """ChatCommandHandler deve ser importável como singleton."""
+        from src.channels.chat_commands import chat_commands, ChatCommandHandler
+        assert isinstance(chat_commands, ChatCommandHandler)
+
+    def test_is_command_detects_slash(self):
+        """/help é detectado como comando."""
+        from src.channels.chat_commands import chat_commands
+        assert chat_commands.is_command("/help") is True
+        assert chat_commands.is_command("/status") is True
+        assert chat_commands.is_command("olá tudo bem") is False
+        assert chat_commands.is_command("fale sobre /dev") is False  # não começa com /
+
+    @pytest.mark.asyncio
+    async def test_help_command_returns_all_commands(self):
+        """/help retorna lista de todos os comandos disponíveis."""
+        from src.channels.chat_commands import chat_commands, COMMANDS
+        from src.channels.base_channel import IncomingMessage, ChannelType
+
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/help",
+            user_id="test-user",
+            user_name="tester",
+            chat_id="test-chat",
+        )
+        result = await chat_commands.execute(msg)
+
+        assert result is not None
+        assert result.handled is True
+        for cmd in COMMANDS:
+            assert cmd in result.text, f"Comando {cmd} não aparece no /help"
+
+    @pytest.mark.asyncio
+    async def test_status_command_lists_agents(self):
+        """/status lista agents registrados no AgentFactory."""
+        from src.channels.chat_commands import chat_commands
+        from src.channels.base_channel import IncomingMessage, ChannelType
+        from src.core.agent_factory import AgentFactory
+
+        # Garante que há pelo menos um agent
+        if not AgentFactory.list_agents():
+            AgentFactory.create(
+                name="optimus",
+                role="Lead AI Agent",
+                level="lead",
+                model="gemini-2.5-flash",
+                model_chain="default",
+            )
+
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/status",
+            user_id="test-user",
+            user_name="tester",
+            chat_id="test-chat",
+        )
+        result = await chat_commands.execute(msg)
+        assert result is not None
+        assert "optimus" in result.text.lower() or "Agents" in result.text
+
+    @pytest.mark.asyncio
+    async def test_unknown_command_returns_helpful_error(self):
+        """Comando desconhecido retorna mensagem amigável com dica do /help."""
+        from src.channels.chat_commands import chat_commands
+        from src.channels.base_channel import IncomingMessage, ChannelType
+
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/xyzabc",
+            user_id="test-user",
+            user_name="tester",
+            chat_id="test-chat",
+        )
+        result = await chat_commands.execute(msg)
+        assert result is not None
+        assert "/help" in result.text
+
+    @pytest.mark.asyncio
+    async def test_task_create_subscribes_creator_to_thread(self):
+        """/task create deve criar task E subscrever o criador no thread."""
+        from src.channels.chat_commands import chat_commands
+        from src.channels.base_channel import IncomingMessage, ChannelType
+        from src.collaboration.thread_manager import thread_manager
+
+        msg = IncomingMessage(
+            channel=ChannelType.WEBCHAT,
+            text="/task create Teste FASE 10 E2E",
+            user_id="test-user",
+            user_name="tester-e2e",
+            chat_id="test-chat",
+        )
+        result = await chat_commands.execute(msg)
+
+        assert result is not None
+        assert "Teste FASE 10 E2E" in result.text
+        assert "Task criada" in result.text
+
+        # Verificar que tester-e2e foi subscrito a alguma task
+        subscriptions = thread_manager._subscriptions
+        subscribed_tasks = [
+            tid for tid, agents in subscriptions.items()
+            if "tester-e2e" in agents
+        ]
+        assert len(subscribed_tasks) > 0, \
+            "Criador deve ser subscrito ao thread da task criada"
+
+    @pytest.mark.asyncio
+    async def test_notification_service_send_and_get_pending(self):
+        """notification_service.send() deve estar visível em get_pending()."""
+        from src.collaboration.notification_service import (
+            notification_service, NotificationType
+        )
+
+        await notification_service.send(
+            target_agent="test-agent-fase10",
+            notification_type=NotificationType.TASK_ASSIGNED,
+            content="Task de teste FASE 10 atribuída",
+            source_agent="system",
+        )
+
+        pending = await notification_service.get_pending("test-agent-fase10")
+        assert len(pending) >= 1
+        texts = [n.content for n in pending]
+        assert any("FASE 10" in t for t in texts)
+
+    @pytest.mark.asyncio
+    async def test_notification_mark_delivered(self):
+        """mark_delivered() deve marcar a notificação como entregue."""
+        from src.collaboration.notification_service import (
+            notification_service, NotificationType
+        )
+
+        notif = await notification_service.send(
+            target_agent="test-agent-mark",
+            notification_type=NotificationType.SYSTEM,
+            content="Notificação para marcar como lida",
+        )
+
+        ok = await notification_service.mark_delivered(notif.id, "test-agent-mark")
+        assert ok is True
+
+        # Não deve aparecer mais em get_pending (entregues são filtrados)
+        pending = await notification_service.get_pending("test-agent-mark")
+        pending_ids = [n.id for n in pending]
+        assert notif.id not in pending_ids
+
+    @pytest.mark.asyncio
+    async def test_thread_manager_post_and_get_messages(self):
+        """thread_manager: post_message() + auto-subscribe + get_messages()."""
+        from src.collaboration.thread_manager import thread_manager
+        from uuid import uuid4
+
+        task_id = uuid4()
+        msg = await thread_manager.post_message(
+            task_id=task_id,
+            from_agent="optimus",
+            content="Iniciando trabalho na task. @friday pode ajudar com o código.",
+        )
+
+        assert msg.task_id == task_id
+        assert "friday" in msg.mentions  # @friday deve ser detectado
+
+        messages = await thread_manager.get_messages(task_id)
+        assert len(messages) >= 1
+        assert messages[0].content == msg.content
+
+        # Auto-subscribe: optimus e friday devem estar subscritos
+        subscribers = thread_manager.get_subscribers(task_id)
+        assert "optimus" in subscribers
+        assert "friday" in subscribers
+
+    @pytest.mark.asyncio
+    async def test_gateway_intercepts_slash_command(self):
+        """gateway.route_message() deve interceptar /help sem chamar agent."""
+        from src.core.gateway import Gateway
+
+        gw = Gateway()
+        result = await gw.route_message(
+            message="/help",
+            user_id="00000000-0000-0000-0000-000000000001",
+        )
+
+        assert result.get("is_command") is True
+        assert result.get("agent") == "chat_commands"
+        assert "/status" in result.get("content", "") or "/help" in result.get("content", "")

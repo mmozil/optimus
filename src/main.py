@@ -1103,6 +1103,88 @@ async def update_agent_soul(
     return {"status": "success", "data": {"agent": agent_name, "reloaded": agent is not None}}
 
 
+# ============================================
+# FASE 10: Notifications + Tasks + Thread API
+# ============================================
+
+@app.get("/api/v1/notifications")
+async def get_notifications(
+    agent: str = "optimus",
+    limit: int = 20,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    FASE 10 #10.3: Get pending notifications for an agent.
+    Call path: frontend poll → GET /api/v1/notifications → notification_service.get_pending()
+    """
+    from src.collaboration.notification_service import notification_service
+    notifications = await notification_service.get_pending(agent)
+    return {
+        "status": "success",
+        "data": [n.model_dump(mode="json") for n in notifications[:limit]],
+    }
+
+
+@app.post("/api/v1/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    agent: str = "optimus",
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Mark a notification as delivered."""
+    from src.collaboration.notification_service import notification_service
+    from uuid import UUID
+    try:
+        nid = UUID(notification_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid notification_id")
+    ok = await notification_service.mark_delivered(nid, agent)
+    return {"status": "success", "data": {"marked": ok}}
+
+
+@app.get("/api/v1/tasks")
+async def list_tasks(
+    limit: int = 20,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    FASE 10: List all tasks.
+    Call path: GET /api/v1/tasks → task_manager.list_tasks()
+    """
+    from src.collaboration.task_manager import task_manager
+    tasks = await task_manager.list_tasks()
+    return {
+        "status": "success",
+        "data": [t.model_dump(mode="json") for t in tasks[:limit]],
+    }
+
+
+@app.get("/api/v1/tasks/{task_id}/thread")
+async def get_task_thread(
+    task_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    FASE 10: Get thread messages for a task.
+    Call path: GET /api/v1/tasks/{id}/thread → thread_manager.get_messages()
+    """
+    from src.collaboration.thread_manager import thread_manager
+    from uuid import UUID
+    try:
+        tid = UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid task_id")
+    messages = await thread_manager.get_messages(tid)
+    summary = await thread_manager.get_thread_summary(tid)
+    return {
+        "status": "success",
+        "data": {
+            "summary": summary,
+            "messages": [m.model_dump(mode="json") for m in messages],
+        },
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

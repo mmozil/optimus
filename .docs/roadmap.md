@@ -65,22 +65,30 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] Collective Intelligence (cross-agent learning)
 - [x] ToT Engine conectado (pre-reasoning no ReAct loop)
 - [x] UncertaintyQuantifier conectado (🔴 warning no gateway)
+- [x] Chat Commands (10 comandos: /status /help /agents /task /learn /think /compact /new /standup /cron)
+- [x] Thread Manager (task → thread → subscribe → @mentions)
+- [x] Notification Service (send → polling REST → toast no frontend)
+- [x] Working Memory (WORKING.md por agent no contexto)
+- [x] Context Awareness (hora/dia/saudação no prompt)
+- [x] Intent Routing (smart agent routing por intent)
 
 ---
 
-## FASE 10 — Chat Commands & Thread System
+## FASE 10 — Chat Commands & Thread System ✅ CONCLUÍDA (2026-02-19)
 
-**Objetivo:** Conectar `chat_commands.py` e `thread_manager.py` ao fluxo principal.
-**Por quê:** 9 comandos implementados (`/status`, `/think`, `/agents`, `/task`, `/learn`, etc.) mas NUNCA chamados pelo endpoint `/api/v1/chat`. Thread manager órfão.
+**Objetivo:** Conectar `chat_commands.py`, `thread_manager.py` e `notification_service.py` ao fluxo principal.
 
-- [ ] **10.1** Interceptar mensagens com `/` no gateway antes de enviar ao agent
-  - Call path: `gateway.route_message()` → detecta prefixo `/` → `chat_commands.handle()`
-- [ ] **10.2** Conectar thread_manager ao task_manager
-  - Call path: `chat_commands /task` → `task_manager.create()` → `thread_manager.subscribe()`
-- [ ] **10.3** Conectar notification_service ao frontend via SSE
-  - Call path: `notification_service.notify()` → SSE push → frontend toast
-- [ ] **10.4** Testes E2E: enviar `/status` via API e validar resposta formatada
-- [ ] **10.5** Testar em produção
+- [x] **10.1** `/status`, `/help`, `/agents`, `/task`, `/learn`, `/cron`, `/standup` — JÁ INTEGRADO
+  - Call path: `gateway.route_message()` linha 163 → `chat_commands.is_command()` → `execute()`
+- [x] **10.2** thread_manager conectado ao `/task create`
+  - Call path: `_cmd_task("create")` → `task_manager.create()` → `thread_manager.subscribe(creator)` + `post_message()`
+- [x] **10.3** notification_service → polling REST + frontend toast
+  - API: `GET /api/v1/notifications` + `POST /api/v1/notifications/{id}/read`
+  - API: `GET /api/v1/tasks` + `GET /api/v1/tasks/{id}/thread`
+  - Frontend: polling a cada 30s → `showToast()` → auto-dismiss 6s + click para dispensar
+- [x] **10.4** Testes E2E — `TestFase10ChatCommandsAndNotifications` (9 testes)
+  - `/help`, `/status`, `/task create`, `notification_service`, `thread_manager`, `gateway intercept`
+- [ ] **10.5** Testar em produção (https://optimus.tier.finance)
 
 ---
 
