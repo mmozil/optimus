@@ -209,8 +209,21 @@ async def debug_pgvector() -> dict:
             except Exception as e:
                 result["cast_test"] = f"error: {e}"
 
-            # 3. Generate real embedding and query
+            # 3. Check import and client
             try:
+                from google import genai as _g
+                result["genai_importable"] = True
+                result["genai_version"] = getattr(_g, "__version__", "unknown")
+                client_test = _g.Client(api_key=settings.GOOGLE_API_KEY) if settings.GOOGLE_API_KEY else None
+                result["client_created"] = client_test is not None
+            except Exception as e:
+                result["genai_importable"] = f"error: {e}"
+                result["client_created"] = False
+
+            # 4. Generate real embedding and query
+            try:
+                from src.core.config import settings as _s
+                result["has_api_key"] = bool(_s.GOOGLE_API_KEY)
                 emb = await embedding_service.embed_text("fastapi validacao")
                 result["embed_dims"] = len(emb)
                 if emb and result["embeddings_count"] > 0:
@@ -220,7 +233,7 @@ async def debug_pgvector() -> dict:
                     )).fetchall()
                     result["query_test"] = [{"content": r[0][:80], "sim": float(r[1])} for r in q_row]
             except Exception as e:
-                result["query_test"] = f"error: {e}"
+                result["embed_error"] = str(e)
 
     except Exception as e:
         result["error"] = str(e)
