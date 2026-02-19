@@ -96,10 +96,18 @@ async def run_migrations():
                                     await session.execute(text(stmt))
                                 except Exception as e:
                                     msg = str(e).lower()
+                                    stmt_upper = stmt.strip().upper()
+                                    # Schema changes must succeed — re-raise
+                                    is_schema = any(stmt_upper.startswith(kw) for kw in (
+                                        "CREATE ", "DROP ", "ALTER ", "GRANT ", "REVOKE "
+                                    ))
                                     if "already exists" in msg or "duplicate" in msg:
-                                        logger.warning(f"⚠️ Skipping duplicate object in {filename}: {stmt[:50]}...")
-                                    else:
+                                        logger.warning(f"⚠️ Skipping duplicate in {filename}: {stmt[:60]}...")
+                                    elif is_schema:
                                         raise e
+                                    else:
+                                        # Data migration (UPDATE/INSERT/DELETE) — log and skip
+                                        logger.warning(f"⚠️ Data migration stmt failed in {filename} (skipping): {e}")
                         
                         await session.commit()
                         logger.info(f"✅ Migration {filename} applied successfully.")
