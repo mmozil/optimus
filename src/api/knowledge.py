@@ -209,21 +209,33 @@ async def debug_pgvector() -> dict:
             except Exception as e:
                 result["cast_test"] = f"error: {e}"
 
-            # 3. Check import and client
+            # 3. Module-level GENAI_AVAILABLE state
+            try:
+                from src.memory.embeddings import GENAI_AVAILABLE as _ga, _genai_client as _gc
+                result["module_genai_available"] = _ga
+                result["module_client_is_none"] = _gc is None
+            except Exception as e:
+                result["module_check_error"] = str(e)
+
+            # 4. Direct client test (bypasses embedding_service)
             try:
                 from google import genai as _g
-                result["genai_importable"] = True
-                result["genai_version"] = getattr(_g, "__version__", "unknown")
-                client_test = _g.Client(api_key=settings.GOOGLE_API_KEY) if settings.GOOGLE_API_KEY else None
-                result["client_created"] = client_test is not None
-            except Exception as e:
-                result["genai_importable"] = f"error: {e}"
-                result["client_created"] = False
-
-            # 4. Generate real embedding and query
-            try:
                 from src.core.config import settings as _s
+                result["genai_version"] = getattr(_g, "__version__", "unknown")
                 result["has_api_key"] = bool(_s.GOOGLE_API_KEY)
+                _direct_client = _g.Client(api_key=_s.GOOGLE_API_KEY)
+                _direct_result = _direct_client.models.embed_content(
+                    model="text-embedding-004",
+                    contents="test",
+                )
+                _direct_emb = _direct_result.embeddings[0].values
+                result["direct_embed_dims"] = len(_direct_emb)
+                result["direct_embed_ok"] = len(_direct_emb) > 0
+            except Exception as e:
+                result["direct_embed_error"] = str(e)
+
+            # 5. Via embedding_service
+            try:
                 emb = await embedding_service.embed_text("fastapi validacao")
                 result["embed_dims"] = len(emb)
                 if emb and result["embeddings_count"] > 0:
