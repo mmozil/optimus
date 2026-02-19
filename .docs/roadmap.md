@@ -146,7 +146,11 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 - [x] **13.3** Batch migration de entries existentes
   - `POST /api/v1/knowledge/index` → `collective_intelligence.index_knowledge()`
 - [x] **13.4** Testes E2E: `TestFase13Embeddings` (9 passed, 2 skipped sem fastapi local)
-- [ ] **13.5** Testar em produção (https://optimus.tier.finance)
+- [x] **13.5** Testado em produção ✅ (2026-02-19)
+  - "como validar dados em API" → FastAPI/Pydantic (similarity=0.86)
+  - "busca semantica postgres" → PGvector entry (similarity>0.5)
+  - Keyword fallback (`semantic=false`) continua funcional
+  - Bugs corrigidos: SDK google-genai, modelo gemini-embedding-001, CAST vector, json.dumps metadata
 
 ---
 
