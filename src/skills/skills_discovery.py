@@ -109,7 +109,7 @@ class SkillsDiscovery:
         Falls back to keyword search if PGvector/embeddings are unavailable.
         """
         try:
-            from src.infra.database import get_session
+            from src.infra.supabase_client import get_async_session as get_session
             from src.memory.embeddings import embedding_service
 
             async with get_session() as session:
@@ -150,7 +150,7 @@ class SkillsDiscovery:
         """
         count = 0
         try:
-            from src.infra.database import get_session
+            from src.infra.supabase_client import get_async_session as get_session
             from src.memory.embeddings import embedding_service
             from src.skills.skills_registry import skills_registry
 

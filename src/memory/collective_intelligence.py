@@ -125,7 +125,7 @@ class CollectiveIntelligence:
         Falls back to keyword query if PGvector/embeddings are unavailable.
         """
         try:
-            from src.infra.database import get_session
+            from src.infra.supabase_client import get_async_session as get_session
             from src.memory.embeddings import embedding_service
 
             async with get_session() as session:
@@ -173,7 +173,7 @@ class CollectiveIntelligence:
         """
         count = 0
         try:
-            from src.infra.database import get_session
+            from src.infra.supabase_client import get_async_session as get_session
             from src.memory.embeddings import embedding_service
 
             if not self._knowledge:

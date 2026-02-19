@@ -11,8 +11,14 @@ from typing import Any
 from sqlalchemy import text
 
 from src.infra.supabase_client import get_async_session
+from src.core.performance import context_compactor, session_pruner
 
 logger = logging.getLogger(__name__)
+
+# Max messages stored per conversation before compaction
+_MAX_MESSAGES = 200
+# Messages to keep after compaction (most recent)
+_KEEP_MESSAGES = 100
 
 class SessionManager:
     """
@@ -77,6 +83,20 @@ class SessionManager:
                 "timestamp": datetime.now().isoformat(),
                 "metadata": metadata or {}
             })
+
+            # 2b. Cap conversation length to avoid unbounded JSONB growth
+            if len(messages) > _MAX_MESSAGES:
+                older = messages[:-_KEEP_MESSAGES]
+                summary = context_compactor._summarize_messages(older)
+                messages = [
+                    {
+                        "role": "system",
+                        "content": f"[Contexto resumido de {len(older)} mensagens anteriores]\n{summary}",
+                        "timestamp": datetime.now().isoformat(),
+                        "metadata": {"compacted": True},
+                    }
+                ] + messages[-_KEEP_MESSAGES:]
+                logger.info(f"Conversation {conversation_id}: compacted {len(older)} msgs → summary")
 
             # 3. Save back
             update_query = """

@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 from colorama import Fore, Style, init
 
-from src.core.factory import AgentFactory
+from src.core.agent_factory import AgentFactory
 from src.core.gateway import gateway
 
 # Initialize colorama

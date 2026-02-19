@@ -5,7 +5,7 @@ Auth + Chat + Files + Streaming.
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -209,6 +209,18 @@ async def lifespan(app: FastAPI):
     # FASE 0 #4: Schedule weekly pattern learning every 168h (7 days)
     # Only adds the job if it doesn't already exist (jobs persist across restarts)
     _schedule_pattern_learning(cron_scheduler)
+
+    # Performance: Schedule session pruning every 24h (removes idle sessions from memory)
+    from src.core.cron_scheduler import CronJob
+    if not any(j.name == "session_prune" for j in cron_scheduler.list_jobs()):
+        cron_scheduler.add(CronJob(
+            name="session_prune",
+            schedule_type="every",
+            schedule_value="24h",
+            payload="Prune inactive sessions from memory",
+            delete_after_run=False,
+        ))
+        logger.info("Performance: session_prune scheduled — runs every 24h")
 
     # FASE 0 #16: Start WebChatChannel
     # Enables REST API + SSE streaming for web-based chat
