@@ -301,6 +301,13 @@ class Gateway:
                 # FASE 0 #1: Use think() instead of process() to enable ToT for complex queries
                 result = await optimus.think(message, context)
 
+            # FASE 0 #2: Apply 🔴 uncertainty warning if calibrated confidence is low
+            # Format: "\n\n---\n\n🔴 ..." so TTS can strip it (split on "\n---\n")
+            _uncertainty = result.get("uncertainty")
+            if _uncertainty and _uncertainty.get("calibrated_confidence", 1.0) < 0.4:
+                result = dict(result)
+                result["content"] += f"\n\n---\n\n🔴 {_uncertainty['recommendation']}"
+
             # 8. Save Interaction to History
             await session_manager.add_message(conv["id"], "user", message)
             await session_manager.add_message(conv["id"], "assistant", result["content"])

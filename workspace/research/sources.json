@@ -4,7 +4,16 @@
     "type": "url",
     "url": "",
     "check_interval": "24h",
-    "last_checked": "2026-02-16T22:10:21.450405+00:00",
+    "last_checked": "2026-02-18T05:31:24.318939+00:00",
+    "enabled": true,
+    "tags": []
+  },
+  {
+    "name": "Test RSS Feed",
+    "type": "rss",
+    "url": "https://example.com/feed",
+    "check_interval": "1h",
+    "last_checked": "2026-02-18T05:32:47.241177+00:00",
     "enabled": true,
     "tags": []
   }

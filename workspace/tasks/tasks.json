@@ -1,0 +1,47 @@
+[
+  {
+    "id": "5f5f3339-cbd6-4cde-84dd-7a78a5e7f6fc",
+    "title": "Tarefa de teste FASE 0 #21",
+    "description": "",
+    "status": "inbox",
+    "priority": "medium",
+    "parent_task_id": null,
+    "assignee_ids": [],
+    "tags": [],
+    "due_date": null,
+    "estimated_effort": null,
+    "created_by": "test_user_21",
+    "created_at": "2026-02-17T23:22:49.472650Z",
+    "updated_at": "2026-02-17T23:22:49.472652Z"
+  },
+  {
+    "id": "66892722-7c91-4cd9-96d3-a70566877394",
+    "title": "Test list task #21",
+    "description": "",
+    "status": "inbox",
+    "priority": "medium",
+    "parent_task_id": null,
+    "assignee_ids": [],
+    "tags": [],
+    "due_date": null,
+    "estimated_effort": null,
+    "created_by": "test_user",
+    "created_at": "2026-02-17T23:22:49.478482Z",
+    "updated_at": "2026-02-17T23:22:49.478484Z"
+  },
+  {
+    "id": "d52e5ec0-7f11-4c59-966d-7d7865dfce2f",
+    "title": "Test notification task",
+    "description": "",
+    "status": "inbox",
+    "priority": "medium",
+    "parent_task_id": null,
+    "assignee_ids": [],
+    "tags": [],
+    "due_date": null,
+    "estimated_effort": null,
+    "created_by": "test-agent",
+    "created_at": "2026-02-18T19:16:27.060559Z",
+    "updated_at": "2026-02-18T19:16:27.060567Z"
+  }
+]

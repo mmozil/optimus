@@ -175,6 +175,7 @@ Existem DOIS sistemas de e-mail completamente separados:
                     for s in result.steps
                 ],
                 "iterations": result.iterations,
+                "uncertainty": result.uncertainty,  # FASE 0 #2: forwarded to gateway
             }
 
         except Exception as e:
@@ -353,58 +354,43 @@ Existem DOIS sistemas de e-mail completamente separados:
         """
         Process with enhanced thinking using Tree-of-Thought for complex queries.
 
-        FASE 0 #1: Integrates tot_service for deep analysis.
-        - Simple queries → process() normal
-        - Complex queries → tot_service.deep_think() → 3 strategies + synthesis
+        FASE 0 #1: Integrates tot_service as pre-reasoning context enrichment.
+        - Simple queries → process() normal (ReAct loop with tools)
+        - Complex queries → tot_service.quick_think() injects pre-reasoning into context
+          → process() runs normally through ReAct loop (tools always available)
+
+        The ToT pre-reasoning becomes a contextual hint in the user message, allowing
+        the ReAct loop to use both tool results AND deep analytical thinking.
         """
-        # FASE 0 #1: Detect complexity
-        if self._is_complex_query(query):
-            logger.info(f"Agent '{self.name}' detected complex query — using ToT deep thinking")
+        if not self._is_complex_query(query):
+            return await self.process(query, context)
 
-            from src.engine.tot_service import tot_service
+        # Complex query: quick ToT pre-reasoning → inject → ReAct (tools still run)
+        logger.info(f"Agent '{self.name}' detected complex query — using ToT pre-reasoning")
 
-            # Build context for ToT
-            tot_context = ""
-            if context:
-                if context.get("working_memory"):
-                    tot_context += f"## Memória de Trabalho\n{context['working_memory']}\n\n"
-                if context.get("task"):
-                    tot_context += f"## Task Atual\n{context['task']}\n\n"
+        from src.engine.tot_service import tot_service
 
-            # Deep ToT analysis (3 strategies: CONSERVATIVE, CREATIVE, ANALYTICAL)
-            tot_result = await tot_service.deep_think(
-                query=query,
-                context=tot_context,
-                agent_soul=self.config.soul_md,
-            )
+        tot_context = ""
+        if context:
+            if context.get("working_memory"):
+                tot_context += f"## Memória de Trabalho\n{context['working_memory']}\n\n"
+            if context.get("task"):
+                tot_context += f"## Task Atual\n{context['task']}\n\n"
 
+        # Quick single-strategy pre-reasoning (low latency, ~1 LLM call)
+        enriched_context = dict(context or {})
+        try:
+            pre_reasoning = await tot_service.quick_think(query=query, context=tot_context)
+            enriched_context["tot_pre_reasoning"] = pre_reasoning
             logger.info(
-                f"Agent '{self.name}' ToT complete",
-                extra={"props": {
-                    "agent": self.name,
-                    "confidence": tot_result["confidence"],
-                    "best_strategy": tot_result["best_strategy"],
-                    "model": tot_result["model"],
-                }}
+                f"Agent '{self.name}' ToT pre-reasoning injected",
+                extra={"props": {"agent": self.name, "pre_reasoning_chars": len(pre_reasoning)}},
             )
+        except Exception as e:
+            logger.warning(f"Agent '{self.name}' ToT pre-reasoning failed, continuing without it: {e}")
 
-            # Return enriched response with ToT meta-analysis
-            return {
-                "content": tot_result["synthesis"],
-                "agent": self.name,
-                "model": tot_result["model"],
-                "rate_limited": False,
-                "usage": {"prompt_tokens": 0, "completion_tokens": tot_result["total_tokens"]},
-                "tot_meta": {
-                    "confidence": tot_result["confidence"],
-                    "thinking_level": tot_result["thinking_level"],
-                    "best_strategy": tot_result["best_strategy"],
-                    "hypotheses_count": len(tot_result["hypotheses"]),
-                },
-            }
-
-        # Simple query → use normal processing
-        return await self.process(query, context)
+        # Run through normal process() → ReAct loop (tools always available)
+        return await self.process(query, enriched_context)
 
     def _is_complex_query(self, query: str) -> bool:
         """

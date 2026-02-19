@@ -90,3 +90,5 @@ libs/
 maestro.tar.gz
 .claude/
 =1.55.0
+client_secret_*.json
+test_import.py
