@@ -4928,3 +4928,155 @@ class TestAppleICloudIntegration:
             "iCloud SMTP host must be smtp.mail.me.com"
         assert icloud["imap_port"] == 993, "iCloud IMAP port must be 993"
         assert icloud["smtp_port"] == 587, "iCloud SMTP port must be 587"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FASE 9 — Multimodal Input (Imagens, Áudio, Documentos)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestMultimodalInputIntegration:
+    """
+    FASE 9 — E2E tests for multimodal file attachments.
+
+    Call path (REGRA DE OURO #1):
+      User selects/pastes file in index.html
+          → POST /api/v1/files/upload (multipart)
+          → files_service.upload_file() → Supabase Storage → DB (files table)
+          → Returns {id, public_url, mime_type}
+      User sends message with file_ids=[id]
+          → POST /api/v1/chat {message: "...", file_ids: ["..."]}
+          → gateway.route_message(file_ids=[...])
+          → files_service.get_file_info(id) → attachment dict
+          → context["attachments"] = [attachment]
+          → base.py _build_multimodal_content(text, attachments)
+          → LiteLLM Gemini call with image/audio parts
+    """
+
+    def test_audio_mime_types_allowed(self):
+        """
+        Audio MIME types must be in ALLOWED_MIME_TYPES.
+
+        Without this, POST /api/v1/files/upload rejects audio files
+        with 400 'Tipo de arquivo não permitido'.
+        """
+        from src.core.files_service import ALLOWED_MIME_TYPES
+        audio_types = ["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"]
+        for mime in audio_types:
+            assert mime in ALLOWED_MIME_TYPES, \
+                f"'{mime}' not in ALLOWED_MIME_TYPES — audio attachments will fail with 400"
+
+    def test_image_mime_types_allowed(self):
+        """
+        Image MIME types must be in ALLOWED_MIME_TYPES for vision use cases.
+        """
+        from src.core.files_service import ALLOWED_MIME_TYPES
+        assert "image/jpeg" in ALLOWED_MIME_TYPES
+        assert "image/png" in ALLOWED_MIME_TYPES
+        assert "image/webp" in ALLOWED_MIME_TYPES
+
+    def test_files_service_max_size(self):
+        """
+        MAX_FILE_SIZE_BYTES should be at least 20 MB.
+        """
+        from src.core.files_service import MAX_FILE_SIZE_BYTES
+        assert MAX_FILE_SIZE_BYTES >= 20 * 1024 * 1024, \
+            "MAX_FILE_SIZE_BYTES too small — audio files > 20MB will be rejected"
+
+    def test_chat_request_accepts_file_ids(self):
+        """
+        ChatRequest schema must accept file_ids list so the frontend can
+        send previously uploaded file IDs together with the message.
+        """
+        import sys
+        import importlib
+        main_mod = importlib.import_module("src.main")
+        ChatRequest = getattr(main_mod, "ChatRequest", None)
+        assert ChatRequest is not None, "ChatRequest not found in src.main"
+        fields = ChatRequest.model_fields
+        assert "file_ids" in fields, \
+            "ChatRequest missing 'file_ids' field — multimodal attachments won't be sent to agent"
+
+    def test_build_multimodal_content_images(self):
+        """
+        _build_multimodal_content must produce image_url parts for image attachments.
+        Gemini accepts public image URLs directly via LiteLLM.
+        """
+        from src.agents.base import BaseAgent
+        agent = BaseAgent.__new__(BaseAgent)
+        attachments = [
+            {"mime_type": "image/jpeg", "public_url": "https://example.com/photo.jpg",
+             "filename": "photo.jpg"}
+        ]
+        parts = agent._build_multimodal_content("Descreva esta imagem", attachments)
+        assert len(parts) >= 2, "Expected at least 2 parts: text + image"
+        types = [p.get("type") for p in parts]
+        assert "image_url" in types, "image attachment must produce image_url part"
+
+    def test_build_multimodal_content_pdf(self):
+        """
+        _build_multimodal_content must handle PDFs (Gemini reads PDFs natively).
+        """
+        from src.agents.base import BaseAgent
+        agent = BaseAgent.__new__(BaseAgent)
+        attachments = [
+            {"mime_type": "application/pdf", "public_url": "https://example.com/doc.pdf",
+             "filename": "doc.pdf"}
+        ]
+        parts = agent._build_multimodal_content("Resumo deste PDF", attachments)
+        assert any(p.get("type") in ("image_url",) for p in parts), \
+            "PDF attachment must produce image_url part for Gemini"
+
+    def test_build_multimodal_content_audio(self):
+        """
+        _build_multimodal_content must handle audio attachments.
+        Audio can be sent as data URI (base64) or input_audio type.
+        """
+        from src.agents.base import BaseAgent
+        agent = BaseAgent.__new__(BaseAgent)
+        import base64
+        fake_audio = base64.b64encode(b"RIFF....WAVE...").decode()
+        attachments = [
+            {"mime_type": "audio/mpeg", "public_url": "https://example.com/audio.mp3",
+             "filename": "audio.mp3", "content_base64": fake_audio}
+        ]
+        parts = agent._build_multimodal_content("O que tem neste áudio?", attachments)
+        # Must include at least text part (audio handling via data URI or inline)
+        assert parts[0]["type"] == "text", "First part must be text"
+        assert len(parts) >= 2, "Audio attachment must produce at least 2 parts"
+
+    def test_frontend_has_attach_button(self):
+        """
+        index.html must have a file attachment button (📎) so users can
+        select files to attach to messages.
+        """
+        html_path = "src/static/index.html"
+        with open(html_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "file-input" in html, \
+            "index.html missing file-input element — no way to select files"
+        assert "attach-btn" in html or "attachBtn" in html or "📎" in html, \
+            "index.html missing attach button"
+
+    def test_frontend_has_paste_support(self):
+        """
+        index.html must listen for paste events to detect clipboard images.
+        User copies a screenshot and Ctrl+V in the chat → image is attached.
+        """
+        html_path = "src/static/index.html"
+        with open(html_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "paste" in html, \
+            "index.html missing paste event listener — Ctrl+V images won't work"
+        assert "clipboardData" in html or "clipboard" in html.lower(), \
+            "index.html missing clipboard handling code"
+
+    def test_frontend_has_file_preview(self):
+        """
+        index.html must have a file preview area that shows attached files
+        before the user sends the message.
+        """
+        html_path = "src/static/index.html"
+        with open(html_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        assert "file-preview" in html or "attachment-preview" in html or "pendingFiles" in html, \
+            "index.html missing file preview area — user can't see what they're attaching"

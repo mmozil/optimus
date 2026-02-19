@@ -2243,6 +2243,78 @@ apple_contacts_search(query)
 
 ---
 
+## FASE 9 — Multimodal Input (Imagens, Áudio, Documentos)
+
+> **Gemini já suporta multimodal nativamente. Faltava só a UI.**
+
+### Call Path (REGRA DE OURO #1)
+
+```
+User clica 📎 ou cola (Ctrl+V) imagem/áudio/documento no chat
+    ↓
+Frontend: pendingFiles[] acumula arquivos com preview
+    ↓
+User envia mensagem (com ou sem texto)
+    ↓
+uploadPendingFiles() → POST /api/v1/files/upload (multipart)
+    → files_service.upload_file() → Supabase Storage → DB (tabela files)
+    → retorna {id, public_url, mime_type}
+    ↓
+POST /api/v1/chat {message: "...", agent: "...", file_ids: ["uuid1", ...]}
+    ↓
+gateway.route_message(file_ids=[...])
+    → files_service.get_file_info(id) → info dict
+    → _enrich_attachment_with_inline_data(info):
+        - audio/* → download bytes → base64 (content_base64)
+        - text/* → download → UTF-8 text (text_content)
+        - image/pdf → sem download (Gemini busca via URL)
+    → context["attachments"] = [info]
+    ↓
+base.py _build_multimodal_content(text, attachments)
+    - image/* | application/pdf → {"type": "image_url", "image_url": {"url": "https://..."}}
+    - audio/* → {"type": "image_url", "image_url": {"url": "data:audio/mpeg;base64,..."}}
+    - text/* → {"type": "text", "text": "[Arquivo: x.csv]\n conteúdo..."}
+    ↓
+LiteLLM → Gemini (multimodal parts) → resposta
+```
+
+### Arquivos Modificados
+
+- **`src/core/files_service.py`**: Add `audio/*` MIME types to `ALLOWED_MIME_TYPES`
+- **`src/core/gateway.py`**: `_enrich_attachment_with_inline_data()` — fetch audio/text bytes for inline
+- **`src/agents/base.py`**: `_build_multimodal_content()` — handle audio (data URI) + text (text part)
+- **`src/static/index.html`**:
+  - CSS: `.file-preview`, `.file-chip`, `.chip-icon`, `.chip-name`, `.chip-remove`
+  - HTML: `<input type="file" id="file-input">` + botão 📎 (`id="attach-btn"`)
+  - HTML: `<div id="file-preview">` acima do input-box
+  - JS: `pendingFiles[]`, `addPendingFile()`, `removeFile()`, `renderFilePreviews()`, `uploadPendingFiles()`, `clearPendingFiles()`, `updateSendBtn()`
+  - JS: paste event listener (clipboard images)
+  - JS: `sendMessage()` — upload files before send, include `file_ids`
+
+### Formatos Suportados
+
+| Tipo | MIMEs | Como Gemini Recebe |
+|------|-------|--------------------|
+| Imagens | image/jpeg, png, webp, gif | URL pública |
+| PDF | application/pdf | URL pública |
+| Áudio | audio/mpeg, wav, ogg, webm, aac, flac | base64 inline |
+| Texto | text/plain, text/csv | Text part |
+
+### Testes E2E (`TestMultimodalInputIntegration`)
+
+- `test_audio_mime_types_allowed` — audio/* em ALLOWED_MIME_TYPES
+- `test_image_mime_types_allowed` — image/* em ALLOWED_MIME_TYPES
+- `test_files_service_max_size` — MAX ≥ 20MB
+- `test_chat_request_accepts_file_ids` — ChatRequest.file_ids existe
+- `test_build_multimodal_content_images` — image → image_url part
+- `test_build_multimodal_content_pdf` — pdf → image_url part
+- `test_build_multimodal_content_audio` — audio → data URI part
+- `test_frontend_has_attach_button` — index.html tem #file-input + botão
+- `test_frontend_has_paste_support` — index.html tem paste + clipboardData
+- `test_frontend_has_file_preview` — index.html tem file-preview ou pendingFiles
+
+---
+
 ## Matriz Final: "PRONTO" significa...
 
 | Item | Status | Prova |
@@ -2252,13 +2324,14 @@ apple_contacts_search(query)
 | **FASE 2** | ✅ Concluído | research_search() usa Tavily (TAVILY_API_KEY) + DuckDuckGo fallback |
 | **FASE 2B** | ✅ Concluído | 5 browser_* tools via Playwright headless: navigate, extract, search, screenshot, pdf |
 | **FASE 3** | ✅ Done | User cria agent → aparece em chat → responde |
-| **FASE 4A** | 🟡 Infra ✅ / E2E ⚠️ | Calendar ✅; gmail_send impl; aguarda reconexão OAuth + Drive propagação |
-| **FASE 4B** | 🟡 Impl ✅ / Prod ⚠️ | 12 novos tools (Gmail modify, Calendar write, Drive write, Contacts); requer reconexão OAuth |
-| **FASE 4C** | 🟡 Impl ✅ / Prod ⚠️ | IMAP/SMTP universal (Outlook, Office 365, Yahoo, corporativo, Locaweb); 4 MCP tools; settings UI |
+| **FASE 4A** | ✅ Validado | Google OAuth reconectado; Gmail, Calendar, Drive tools funcionando em produção |
+| **FASE 4B** | ✅ Validado | 12 tools Google (Gmail modify, Calendar write, Drive write, Contacts) funcionando |
+| **FASE 4C** | ✅ Validado | IMAP/SMTP universal + iCloud Mail configurado e funcionando em produção |
 | **FASE 5** | ✅ Validado | Voice: Groq Whisper STT + Edge TTS + auto-play validados em produção |
-| **FASE 6** | 🟡 Gap crítico ✅ | Memory sync → PostgreSQL implementado; comparação OpenClaw feita; E2E pendente |
+| **FASE 6** | ✅ Validado | Memory sync → PostgreSQL funcionando em produção (confirmado 2026-02-19) |
 | **FASE 7** | 🟡 Impl ✅ / VPS ⚠️ | README VPS + UI responsiva + PWA (falta testar em VPS real e celular) |
-| **FASE 8** | 🟡 Impl ✅ / Prod ⚠️ | Apple iCloud: Calendar + Reminders + Contacts (CalDAV/CardDAV) + 7 MCP tools; aguarda configuração de credenciais |
+| **FASE 8** | ✅ Validado | Apple iCloud: Calendar + Reminders + Contacts (CalDAV/CardDAV) + iCloud Mail IMAP configurado |
+| **FASE 9** | 🟡 Impl ✅ / Prod ⚠️ | Multimodal Input: botão 📎, paste de imagem, áudio inline, 10 testes E2E; aguarda teste em prod |
 
 ### ✅ #13-15 Telegram + WhatsApp + Slack Channels — CONCLUÍDO
 

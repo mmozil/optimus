@@ -289,15 +289,37 @@ Existem DOIS sistemas de e-mail completamente separados:
             yield {"type": "error", "content": str(e)}
 
     def _build_multimodal_content(self, text: str, attachments: list[dict]) -> list[dict]:
-        """Format content as list of parts (text + images)."""
+        """Format content as list of parts (text + images + audio + text files).
+
+        - image/* and application/pdf → image_url (Gemini fetches by URL natively)
+        - audio/* → data URI base64 inline (via content_base64 pre-fetched by gateway)
+        - text/plain, text/csv → injected as text part (via text_content pre-fetched)
+        """
         parts = [{"type": "text", "text": text}]
         for att in attachments:
             mime = att.get("mime_type", "")
-            if mime and ("image" in mime or "pdf" in mime):
-                parts.append({
-                    "type": "image_url",
-                    "image_url": {"url": att.get("public_url", "")}
-                })
+            filename = att.get("filename", "arquivo")
+
+            if mime.startswith("image/") or mime == "application/pdf":
+                url = att.get("public_url", "")
+                if url:
+                    parts.append({"type": "image_url", "image_url": {"url": url}})
+
+            elif mime.startswith("audio/"):
+                b64 = att.get("content_base64")
+                if b64:
+                    # Data URI format — LiteLLM translates this to Gemini inline_data
+                    data_uri = f"data:{mime};base64,{b64}"
+                    parts.append({"type": "image_url", "image_url": {"url": data_uri}})
+                else:
+                    # Fallback: mention the file in text so agent is aware
+                    parts[0]["text"] += f"\n[Áudio anexado: {filename}]"
+
+            elif mime in ("text/plain", "text/csv"):
+                content = att.get("text_content")
+                if content:
+                    parts.append({"type": "text", "text": f"\n[Arquivo: {filename}]\n{content}"})
+
         return parts
 
     def _inject_history(self, history: list[dict]) -> list[dict]:

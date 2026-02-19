@@ -3,6 +3,7 @@ Agent Optimus — Gateway (Control Plane).
 Routes messages to agents, manages sessions, handles orchestration.
 """
 
+import base64
 import logging
 from typing import Any
 
@@ -11,6 +12,44 @@ from src.agents.optimus import OptimusAgent
 from src.core.agent_factory import AgentFactory
 
 logger = logging.getLogger(__name__)
+
+
+async def _enrich_attachment_with_inline_data(att: dict) -> dict:
+    """
+    For audio attachments, download bytes from the public URL and store
+    as base64 in 'content_base64' so _build_multimodal_content can send
+    audio inline to Gemini (data URI format).
+    Text/CSV files are read as UTF-8 and stored in 'text_content'.
+    Images and PDFs are passed by URL — Gemini fetches them natively.
+    """
+    mime = att.get("mime_type", "")
+    url = att.get("public_url", "")
+    if not url:
+        return att
+
+    if mime.startswith("audio/"):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                att = dict(att)
+                att["content_base64"] = base64.b64encode(resp.content).decode()
+        except Exception as e:
+            logger.warning(f"Could not fetch audio bytes for multimodal: {e}")
+
+    elif mime in ("text/plain", "text/csv"):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                att = dict(att)
+                att["text_content"] = resp.text[:8000]  # cap at 8k chars
+        except Exception as e:
+            logger.warning(f"Could not fetch text content for multimodal: {e}")
+
+    return att
 
 
 class Gateway:
@@ -208,13 +247,14 @@ class Gateway:
             if sentiment.mood != "neutral":
                 await emotional_adapter.log_mood("user", sentiment)
 
-            # 4. Resolve file_ids to attachments
+            # 4. Resolve file_ids to attachments (FASE 9: enrich audio/text with inline data)
             from src.core.files_service import files_service
             attachments = []
             if file_ids:
                 for fid in file_ids:
                     info = await files_service.get_file_info(fid)
                     if info:
+                        info = await _enrich_attachment_with_inline_data(info)
                         attachments.append(info)
             if attachments:
                 context["attachments"] = attachments
@@ -379,13 +419,14 @@ class Gateway:
         context["tone_instruction"] = sentiment.tone_instruction
         context["intent_classification"] = intent_result  # FASE 0 #3
 
-        # 2. Resolve file_ids to attachments
+        # 2. Resolve file_ids to attachments (FASE 9: enrich audio/text with inline data)
         from src.core.files_service import files_service
         attachments = []
         if file_ids:
             for fid in file_ids:
                 info = await files_service.get_file_info(fid)
                 if info:
+                    info = await _enrich_attachment_with_inline_data(info)
                     attachments.append(info)
         if attachments:
             context["attachments"] = attachments

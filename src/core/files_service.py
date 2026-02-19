@@ -23,6 +23,9 @@ ALLOWED_MIME_TYPES = {
     "text/csv", "text/plain",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
+    # Audio (Gemini multimodal — FASE 9)
+    "audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/webm",
+    "audio/aac", "audio/flac", "audio/x-m4a", "audio/mp4",
 }
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
