@@ -467,6 +467,136 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
+## FASE 31 — Security Hardening (Argon2id + Secrets Guardrail)
+
+**Objetivo:** Elevar segurança de senhas para padrão enterprise e bloquear boot com segredos fracos.
+**Por quê:** SHA-256 é rápido demais para passwords — GPU quebra em segundos. Argon2id é o padrão OWASP. Bloqueador para venda enterprise e SOC2.
+**Fonte:** `avaliacao-brutal-unicornio.md` P0 — "Password Hardening + Secrets Guardrail"
+**Prazo sugerido:** 2 semanas
+
+- [ ] **31.1** Migrar hashing de `SHA-256 + salt manual` para `Argon2id`
+  - Instalar `argon2-cffi` no `requirements.txt`
+  - Atualizar `auth_service._hash_password()` e `_verify_password()` para Argon2id
+  - Migração progressiva: novos logins já em Argon2id; hashes antigos detectados pelo prefixo e migrados no próximo login
+  - Call path: `auth_service.login()` → detecta hash antigo → rehashar → salvar
+- [ ] **31.2** Secrets Guardrail — bloquear boot com JWT_SECRET default ou fraco
+  - Check em `main.py` lifespan startup: `if settings.JWT_SECRET == "CHANGE-ME..." → raise RuntimeError`
+  - Também bloquear se len(secret) < 32
+- [ ] **31.3** Auth Observability — métricas básicas de autenticação
+  - Contador de falhas de login por IP (Redis, TTL 1h)
+  - Log estruturado: `login_failed`, `token_refresh_invalid`, `api_key_invalid`
+  - `GET /api/v1/auth/metrics` (admin only) — total de falhas últimas 24h
+- [ ] **31.4** Testes E2E — `TestFase31SecurityHardening`
+- [ ] **31.5** Testar em produção
+
+---
+
+## FASE 32 — Agent Scorecard & Métricas
+
+**Objetivo:** Medir sistematicamente se os agents estão funcionando bem.
+**Por quê:** Sem métricas, qualquer "melhora" é impressão subjetiva. Blockeador para escala e confiança operacional.
+**Fonte:** `avaliacao-brutal-unicornio.md` P0 — "Scorecard por agent + métricas mínimas"
+**Prazo sugerido:** 2 semanas
+
+- [ ] **32.1** Coletar métricas por agent em cada interação
+  - KPIs: `success_rate` (sem fallback), `fallback_rate`, `latency_p95`, `cost_per_success`, `tool_error_rate`
+  - Call path: `react_loop.process()` → ao final → `scorecard_service.record(agent, metrics)`
+  - Tabela: `agent_metrics (agent_name, metric_name, value, recorded_at)`
+  - Migration: `migrations/024_agent_metrics.sql`
+- [ ] **32.2** Endpoint de scorecard
+  - `GET /api/v1/metrics/agents` — score atual de cada agent (últimas 24h / 7d)
+  - `GET /api/v1/metrics/agents/{name}` — histórico por agent
+- [ ] **32.3** Painel básico no frontend (admin)
+  - Tabela de agents com: success_rate, fallback_rate, latência média, custo médio
+  - Atualiza a cada 60s
+- [ ] **32.4** Alertas internos quando `fallback_rate > 10%` em intents cobertos
+- [ ] **32.5** Testes E2E — `TestFase32AgentScorecard`
+- [ ] **32.6** Testar em produção
+
+---
+
+## FASE 33 — Routing Policy Declarativa
+
+**Objetivo:** Extrair regras de roteamento de agent para arquivo/serviço declarativo.
+**Por quê:** Regras de roteamento estão dispersas em código. Dificulta auditoria, A/B testing e evolução.
+**Fonte:** `avaliacao-brutal-unicornio.md` P1 — "Routing Policy v1 (declarativa)"
+**Prazo sugerido:** 3 semanas
+
+- [ ] **33.1** Criar `src/core/routing_policy.py` — serviço declarativo de routing
+  - Regras em YAML/JSON: `{intent: "code", agent: "friday", confidence_min: 0.6}`
+  - Carregar de `workspace/routing_policy.yaml`
+  - Call path: `gateway.route_message()` → `routing_policy.resolve(intent, confidence)` → agent
+- [ ] **33.2** Migrar regras hardcoded do gateway para o arquivo de política
+- [ ] **33.3** Métrica de precisão: `routing_precision@intent` (avaliado via `eval_runner`)
+  - Meta: `routing_precision >= 85%` em suite de avaliação fixa
+- [ ] **33.4** Testes E2E — `TestFase33RoutingPolicy`
+- [ ] **33.5** Testar em produção
+
+---
+
+## FASE 34 — Resilience SDK (Retry + Circuit Breaker)
+
+**Objetivo:** Retry exponencial + circuit breaker + timeout padronizado para todas as integrações.
+**Por quê:** Integrações falham silenciosamente ou com timeout longo. UX degradada e difícil debug.
+**Fonte:** `avaliacao-brutal-unicornio.md` P1 — "Padrão Resilience SDK"
+**Prazo sugerido:** 4 semanas
+
+- [ ] **34.1** Criar `src/infra/resilience.py` — decorator `@resilient(retries=3, backoff=2, timeout=10, circuit_breaker=True)`
+  - Retry exponencial com jitter
+  - Circuit breaker: abre após 5 falhas em 60s, fecha após 30s
+  - Timeout configurável por integração
+- [ ] **34.2** Aplicar nos top-3 conectores mais críticos: Gmail API, IMAP/SMTP, modelo LLM
+  - Call path: decorar handlers em `google_oauth_service.py`, `imap_service.py`, `model_router.py`
+- [ ] **34.3** Métricas de resiliência: `circuit_open_count`, `retry_count`, `timeout_count`
+  - Integrado ao scorecard da FASE 32
+- [ ] **34.4** Testes E2E — `TestFase34Resilience`
+- [ ] **34.5** Testar em produção
+
+---
+
+## FASE 35 — A2A Reliability (Fila Persistente + DLQ)
+
+**Objetivo:** Migrar A2A de REST in-memory para fila persistente com retry e DLQ.
+**Por quê:** Delegações A2A se perdem em restart. Sem replay e idempotência, falhas são silenciosas.
+**Fonte:** `avaliacao-brutal-unicornio.md` P1 — "A2A com fila persistente + DLQ"
+**Prazo sugerido:** 4–6 semanas
+
+- [ ] **35.1** Substituir A2A REST direto por Redis Streams como transporte
+  - Producer: `a2a_protocol.delegate()` → `XADD a2a_tasks *`
+  - Consumer: worker em background → `XREADGROUP` → processa → ACK
+  - Call path: `gateway.route_message()` → `a2a_protocol.delegate(task)` → Redis Stream
+- [ ] **35.2** Idempotência: cada task tem `task_id` único; duplicatas ignoradas
+- [ ] **35.3** DLQ: tasks que falham 3x vão para `a2a_dlq` stream
+  - `GET /api/v1/a2a/dlq` — lista tasks em dead letter (admin)
+  - Reprocessar manualmente via `POST /api/v1/a2a/dlq/{id}/retry`
+- [ ] **35.4** Testes E2E — `TestFase35A2AReliability`
+- [ ] **35.5** Testar em produção
+
+---
+
+## FASE 36 — SLOs + Load Testing + Runbooks
+
+**Objetivo:** Definir e monitorar SLOs, executar load testing recorrente e criar runbooks de incidente.
+**Por quê:** Sem SLOs, não há contrato de qualidade. Sem load testing, capacidade é desconhecida. Bloqueador enterprise.
+**Fonte:** `avaliacao-brutal-unicornio.md` P2 — "SLOs oficiais + Load Testing + Incidente e recuperação"
+**Prazo sugerido:** 3 semanas
+
+- [ ] **36.1** Definir SLOs oficiais
+  - API chat: `availability >= 99.5%`, `latency p95 <= 2.5s` (sem tool externa)
+  - Healthcheck endpoint já existe: `GET /health`
+  - Implementar `GET /api/v1/slo/status` — calcula SLO atual das últimas 24h com dados do audit_log
+- [ ] **36.2** Load testing automatizado
+  - Script `tests/load_test.py` com locust ou k6: cenários 50, 100, 200 usuários concorrentes
+  - Rodar semanalmente via cron (ou CI) — relatório salvo em `workspace/reports/load-{date}.json`
+- [ ] **36.3** Runbooks de incidente (documentação)
+  - `docs/runbooks/db-down.md` — PostgreSQL indisponível
+  - `docs/runbooks/redis-down.md` — Redis indisponível
+  - `docs/runbooks/llm-quota.md` — quota de LLM esgotada
+- [ ] **36.4** Testes E2E — `TestFase36SLOs`
+- [ ] **36.5** Testar em produção
+
+---
+
 ## Priorização Recomendada
 
 | Prioridade | Fase | Impacto | Esforço |
@@ -489,6 +619,12 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 | **P3** | FASE 29 — Webhooks & Presence | Médio (integrações externas) | Médio |
 | **P3** | FASE 20 — Browser Streaming | Baixo (nice-to-have) | Médio |
 | **P3** | FASE 22 — Redis | Médio (performance) | Médio |
+| **P0** | FASE 31 — Security Hardening (Argon2id) | Alto (segurança real dos usuários) | Médio |
+| **P0** | FASE 32 — Agent Scorecard & Métricas | Alto (voar sem instrumentos → voar com) | Médio |
+| **P1** | FASE 34 — Resilience SDK | Alto (integrações param silenciosamente) | Alto |
+| **P1** | FASE 33 — Routing Policy Declarativa | Médio (routing hoje funciona, mas frágil) | Médio |
+| **P2** | FASE 36 — SLOs + Load Testing | Alto (exigência enterprise) | Médio |
+| **P2** | FASE 35 — A2A Reliability (Redis Streams) | Médio (só importa com volume A2A real) | Alto |
 | **P4** | FASE 30 — Eval CI & Debug UI | Médio (qualidade de engenharia) | Médio |
 | **P4** | FASE 23 — Máquina do Usuário | Alto (ambicioso) | Alto |
 | **P4** | FASE 24 — Voice Assistant | Médio (UX avançado) | Alto |
