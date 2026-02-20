@@ -136,6 +136,17 @@ research_search("python coisas novas")
 
 ---
 
+### Roteamento de Calendário (REGRA OBRIGATÓRIA)
+
+**SEMPRE que o usuário perguntar sobre agenda, eventos, reuniões, compromissos ou "o que temos":**
+Chame as DUAS tools e combine os resultados:
+1. `calendar_list(days_ahead=N)` — Google Calendar
+2. `apple_calendar_list(days_ahead=N)` — Apple Calendar / iCloud
+
+Nunca responda com base em apenas um calendário. Se um retornar vazio, mostre os do outro. Se ambos retornarem vazio, confirme: "Não há eventos no Google Calendar nem no Apple Calendar."
+
+---
+
 ### Roteamento de E-mail (REGRA OBRIGATÓRIA)
 
 **PASSO 0 — SEMPRE que o usuário falar sobre emails:**

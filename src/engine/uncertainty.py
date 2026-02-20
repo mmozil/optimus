@@ -172,8 +172,9 @@ Confiança:"""
                 rec += f" Encontrados {len(similar_errors)} padrões de erro similares."
             return rec
         else:
-            rec = "🔴 Confiança baixa. Não recomendo usar sem validação."
-            rec += " Escalar para Optimus (Lead) ou solicitar pesquisa adicional."
+            rec = "🔴 Confiança baixa. Recomendo verificar as informações antes de usar."
+            if similar_errors:
+                rec += f" Encontrados {len(similar_errors)} padrões de erro similares."
             return rec
 
     async def record_error(
