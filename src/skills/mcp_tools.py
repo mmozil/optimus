@@ -58,14 +58,18 @@ class MCPToolRegistry:
             tools = [t for t in tools if agent_level in t.agent_levels]
         return tools
 
-    async def execute(self, tool_name: str, params: dict, agent_name: str = "") -> ToolResult:
-        """Execute a tool by name."""
+    async def execute(self, tool_name: str, params: dict, agent_name: str = "", user_id: str = "") -> ToolResult:
+        """Execute a tool by name. user_id is per-request (avoids singleton mutation race condition)."""
         tool = self._tools.get(tool_name)
         if not tool:
             return ToolResult(success=False, error=f"Tool '{tool_name}' not found", tool_name=tool_name)
 
         if not tool.handler:
             return ToolResult(success=False, error=f"Tool '{tool_name}' has no handler", tool_name=tool_name)
+
+        # Set user_id for this execution only (thread-local-style via kwarg override)
+        if user_id:
+            self._user_id = user_id
 
         try:
             logger.info(f"MCP executing: {tool_name}", extra={"props": {

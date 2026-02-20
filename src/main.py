@@ -533,19 +533,23 @@ async def _load_user_context(user: CurrentUser) -> dict:
         async with get_async_session() as session:
             result = await session.execute(
                 sql_text("""
-                    SELECT preferred_name, agent_name, language, communication_style
+                    SELECT preferred_name, agent_name, language, communication_style,
+                           tts_mode, tts_voice, tts_speed
                     FROM user_preferences WHERE user_id = :uid
                 """),
                 {"uid": user.id},
             )
             row = result.fetchone()
         if row:
-            preferred_name, agent_name, language, comm_style = row
+            preferred_name, agent_name, language, comm_style, tts_mode, tts_voice, tts_speed = row
             if preferred_name:
-                ctx["user_name"] = preferred_name  # Override with preference
+                ctx["user_name"] = preferred_name
             ctx["agent_name"] = agent_name or "Optimus"
             ctx["language"] = language or "pt-BR"
             ctx["communication_style"] = comm_style or "casual"
+            ctx["tts_mode"] = tts_mode or "off"
+            ctx["tts_voice"] = tts_voice or "pt-BR-AntonioNeural"
+            ctx["tts_speed"] = float(tts_speed) if tts_speed else 1.0
     except Exception:
         pass  # Fallback to defaults if DB unavailable
 
@@ -564,6 +568,23 @@ async def chat(request: ChatRequest, user: CurrentUser = Depends(get_current_use
         context=context,
         file_ids=request.file_ids,
     )
+
+    # Auto-TTS: if user has tts_mode=always and no audio_base64 yet, generate it
+    tts_mode = user_ctx.get("tts_mode", "off")
+    if tts_mode == "always" and not result.get("audio_base64"):
+        try:
+            from src.core.tts_service import text_to_audio_base64
+            content = result.get("content", "")
+            audio_b64 = await text_to_audio_base64(
+                content,
+                voice=user_ctx.get("tts_voice", "pt-BR-AntonioNeural"),
+            )
+            if audio_b64:
+                result = dict(result)
+                result["audio_base64"] = audio_b64
+        except Exception as _tts_err:
+            logger.warning(f"Auto-TTS failed: {_tts_err}")
+
     return {"status": "success", "data": result}
 
 

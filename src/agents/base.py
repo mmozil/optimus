@@ -169,6 +169,17 @@ Existem DOIS sistemas de e-mail completamente separados:
 - Usar `email_read` sem `account_email` quando há múltiplas contas IMAP
 - Inventar de qual conta vieram os emails — se não souber, chame `email_accounts_overview`
 """
+        # BOOT.md: append startup instructions if file exists
+        try:
+            from pathlib import Path
+            boot_path = Path(__file__).parent.parent.parent / "workspace" / "BOOT.md"
+            if boot_path.exists():
+                boot_content = boot_path.read_text(encoding="utf-8").strip()
+                if boot_content:
+                    base += f"\n\n---\n\n### Inicialização (BOOT.md)\n{boot_content}"
+        except Exception:
+            pass
+
         return base
 
     async def process(self, message: str, context: dict | None = None, stream: bool = False) -> Any:

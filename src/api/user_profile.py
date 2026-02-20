@@ -38,6 +38,9 @@ class UserPreferences(BaseModel):
     language: str = "pt-BR"
     communication_style: str = "casual"
     timezone: str = "America/Sao_Paulo"
+    tts_mode: str = "off"          # off | always | on_request
+    tts_voice: str = "pt-BR-AntonioNeural"
+    tts_speed: float = 1.0
 
 
 class CompleteOnboardingRequest(BaseModel):
@@ -107,7 +110,8 @@ async def get_preferences(user: CurrentUser = Depends(get_current_user)) -> User
     async with get_async_session() as session:
         result = await session.execute(
             text("""
-                SELECT preferred_name, agent_name, language, communication_style, timezone
+                SELECT preferred_name, agent_name, language, communication_style, timezone,
+                       tts_mode, tts_voice, tts_speed
                 FROM user_preferences WHERE user_id = :user_id
             """),
             {"user_id": user.id},
@@ -115,7 +119,6 @@ async def get_preferences(user: CurrentUser = Depends(get_current_user)) -> User
         row = result.fetchone()
 
     if not row:
-        # Return defaults if no preferences set yet
         return UserPreferences()
 
     return UserPreferences(
@@ -124,6 +127,9 @@ async def get_preferences(user: CurrentUser = Depends(get_current_user)) -> User
         language=row[2] or "pt-BR",
         communication_style=row[3] or "casual",
         timezone=row[4] or "America/Sao_Paulo",
+        tts_mode=row[5] or "off",
+        tts_voice=row[6] or "pt-BR-AntonioNeural",
+        tts_speed=float(row[7]) if row[7] else 1.0,
     )
 
 
@@ -138,14 +144,17 @@ async def update_preferences(
     async with get_async_session() as session:
         await session.execute(
             text("""
-                INSERT INTO user_preferences (user_id, preferred_name, agent_name, language, communication_style, timezone)
-                VALUES (:user_id, :preferred_name, :agent_name, :language, :communication_style, :timezone)
+                INSERT INTO user_preferences (user_id, preferred_name, agent_name, language, communication_style, timezone, tts_mode, tts_voice, tts_speed)
+                VALUES (:user_id, :preferred_name, :agent_name, :language, :communication_style, :timezone, :tts_mode, :tts_voice, :tts_speed)
                 ON CONFLICT (user_id) DO UPDATE SET
                     preferred_name = EXCLUDED.preferred_name,
                     agent_name = EXCLUDED.agent_name,
                     language = EXCLUDED.language,
                     communication_style = EXCLUDED.communication_style,
                     timezone = EXCLUDED.timezone,
+                    tts_mode = EXCLUDED.tts_mode,
+                    tts_voice = EXCLUDED.tts_voice,
+                    tts_speed = EXCLUDED.tts_speed,
                     updated_at = now()
             """),
             {
@@ -155,6 +164,9 @@ async def update_preferences(
                 "language": request.language,
                 "communication_style": request.communication_style,
                 "timezone": request.timezone,
+                "tts_mode": request.tts_mode,
+                "tts_voice": request.tts_voice,
+                "tts_speed": request.tts_speed,
             },
         )
         await session.commit()
