@@ -218,6 +218,15 @@ Existem DOIS sistemas de e-mail completamente separados:
         """Process using the ReAct loop with tool calling."""
         from src.engine.react_loop import react_loop
 
+        # Auto-inject long-term memory so agent remembers facts across sessions
+        try:
+            from src.memory.long_term import long_term_memory
+            agent_memory = await long_term_memory.load(self.name)
+            if agent_memory and agent_memory.strip():
+                context = {**(context or {}), "working_memory": agent_memory}
+        except Exception as _mem_err:
+            logger.debug(f"Could not load long-term memory for {self.name}: {_mem_err}")
+
         try:
             result = await react_loop(
                 user_message=message,
