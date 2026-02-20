@@ -1562,7 +1562,7 @@ class MCPToolRegistry:
         """Convert text to audio via TTS and return audio_base64 for the frontend."""
         import base64
         try:
-            from src.engine.voice_interface import voice_interface
+            from src.channels.voice_interface import voice_interface
             # Strip uncertainty markers before TTS (same as voice_command endpoint)
             clean_text = text.split("\n---\n")[0].strip()
             audio_bytes = await voice_interface.speak(clean_text)
