@@ -967,16 +967,20 @@
 
         // ── Slash Command Autocomplete ────────────────────────────────
         const SLASH_COMMANDS = [
-            { cmd: '/help',    hint: 'Lista todos os comandos disponíveis' },
-            { cmd: '/status',  hint: 'Status dos agents, tokens e limites' },
-            { cmd: '/agents',  hint: 'Lista agents ativos e seus status' },
-            { cmd: '/think',   hint: 'Ajusta pensamento: quick | standard | deep' },
-            { cmd: '/task',    hint: 'Tasks: list | create <título> | status' },
-            { cmd: '/learn',   hint: 'Learnings do agent: /learn [nome]' },
-            { cmd: '/compact', hint: 'Compacta sessão atual' },
-            { cmd: '/new',     hint: 'Inicia nova sessão' },
-            { cmd: '/standup', hint: 'Gera standup do time' },
-            { cmd: '/cron',    hint: 'Jobs agendados: /cron list' },
+            { cmd: '/help',     hint: 'Lista todos os comandos disponíveis' },
+            { cmd: '/status',   hint: 'Status dos agents, tokens e limites' },
+            { cmd: '/agents',   hint: 'Lista agents ativos e seus status' },
+            { cmd: '/think',    hint: 'Ajusta pensamento: quick | standard | deep' },
+            { cmd: '/task',     hint: 'Tasks: list | create <título> | status' },
+            { cmd: '/learn',    hint: 'Learnings do agent: /learn [nome]' },
+            { cmd: '/memory',   hint: 'Memória de longo prazo do agente sobre você' },
+            { cmd: '/tools',    hint: 'Lista tools MCP disponíveis: /tools [categoria]' },
+            { cmd: '/activity', hint: 'Feed de atividades recentes: /activity [N]' },
+            { cmd: '/clear',    hint: 'Limpa o chat na tela (contexto preservado)' },
+            { cmd: '/compact',  hint: 'Compacta sessão atual' },
+            { cmd: '/new',      hint: 'Inicia nova sessão' },
+            { cmd: '/standup',  hint: 'Gera standup do time' },
+            { cmd: '/cron',     hint: 'Jobs: /cron list | enable <nome> | disable <nome>' },
         ];
 
         const cmdPopup = document.getElementById('cmd-popup');
@@ -1204,6 +1208,19 @@
         async function sendMessage(text) {
             // Allow sending with just files (empty text)
             if (!text.trim() && pendingFiles.length === 0) return;
+
+            // /clear — frontend-only, never sent to backend
+            if (text.trim().toLowerCase() === '/clear') {
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                chatContainer.innerHTML = '';
+                hasMessages = false;
+                showWelcome(true);
+                if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
+                updateStopBtn(false);
+                return;
+            }
+
             const agent = agentSelect.value;
 
             const displayText = text.trim() || `[${pendingFiles.length} arquivo(s) anexado(s)]`;

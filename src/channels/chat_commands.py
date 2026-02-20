@@ -21,16 +21,20 @@ class CommandResult:
 
 # Command definitions
 COMMANDS = {
-    "/status": "Mostra status dos agents, tokens usados e limites",
-    "/think": "Ajusta nível de pensamento: /think quick | standard | deep",
-    "/agents": "Lista agents ativos e seus status",
-    "/task": "Gerencia tasks: /task list | /task create <título> | /task status",
-    "/learn": "Mostra learnings do agent: /learn [agent_name]",
-    "/compact": "Compacta a sessão atual (limpa contexto)",
-    "/new": "Inicia nova sessão",
-    "/help": "Mostra esta lista de comandos",
-    "/standup": "Gera standup do time",
-    "/cron": "Lista jobs agendados: /cron list",
+    "/status":   "Mostra status dos agents, tokens usados e limites",
+    "/think":    "Ajusta nível de pensamento: /think quick | standard | deep",
+    "/agents":   "Lista agents ativos e seus status",
+    "/task":     "Gerencia tasks: /task list | /task create <título> | /task status",
+    "/learn":    "Mostra learnings do agent: /learn [agent_name]",
+    "/memory":   "Exibe memória de longo prazo do agente sobre você",
+    "/tools":    "Lista todas as tools MCP disponíveis",
+    "/activity": "Feed de atividades recentes (tasks, crons, eventos)",
+    "/compact":  "Compacta a sessão atual (limpa contexto)",
+    "/clear":    "Limpa o chat na tela (contexto preservado)",
+    "/new":      "Inicia nova sessão",
+    "/standup":  "Gera standup do time",
+    "/cron":     "Jobs agendados: /cron list | /cron enable <nome> | /cron disable <nome>",
+    "/help":     "Mostra esta lista de comandos",
 }
 
 
@@ -55,16 +59,20 @@ class ChatCommandHandler:
         args = parts[1] if len(parts) > 1 else ""
 
         handler = {
-            "/status": self._cmd_status,
-            "/think": self._cmd_think,
-            "/agents": self._cmd_agents,
-            "/task": self._cmd_task,
-            "/learn": self._cmd_learn,
-            "/compact": self._cmd_compact,
-            "/new": self._cmd_new,
-            "/help": self._cmd_help,
-            "/standup": self._cmd_standup,
-            "/cron": self._cmd_cron,
+            "/status":   self._cmd_status,
+            "/think":    self._cmd_think,
+            "/agents":   self._cmd_agents,
+            "/task":     self._cmd_task,
+            "/learn":    self._cmd_learn,
+            "/memory":   self._cmd_memory,
+            "/tools":    self._cmd_tools,
+            "/activity": self._cmd_activity,
+            "/compact":  self._cmd_compact,
+            "/clear":    self._cmd_clear,
+            "/new":      self._cmd_new,
+            "/help":     self._cmd_help,
+            "/standup":  self._cmd_standup,
+            "/cron":     self._cmd_cron,
         }.get(command)
 
         if not handler:
@@ -232,7 +240,9 @@ class ChatCommandHandler:
         from src.core.cron_scheduler import cron_scheduler
         from datetime import datetime, timezone
 
-        action = args.strip().lower() or "list"
+        cron_parts = args.strip().split(maxsplit=1)
+        action = cron_parts[0].lower() if cron_parts else "list"
+        action_args = cron_parts[1] if len(cron_parts) > 1 else ""
 
         if action == "list":
             jobs = cron_scheduler.list_jobs()
@@ -243,18 +253,13 @@ class ChatCommandHandler:
             now = datetime.now(timezone.utc)
 
             for job in jobs:
-                # Status emoji
                 status = "✅" if job.enabled else "⏸️"
-
-                # Calculate next run time
                 next_run = "—"
                 if job.next_run:
                     try:
                         next_dt = datetime.fromisoformat(job.next_run)
                         if next_dt.tzinfo is None:
                             next_dt = next_dt.replace(tzinfo=timezone.utc)
-
-                        # Time until next run
                         delta = next_dt - now
                         if delta.total_seconds() < 0:
                             next_run = "⚠️ Atrasado"
@@ -266,8 +271,6 @@ class ChatCommandHandler:
                             next_run = f"em {int(delta.total_seconds() / 86400)}d"
                     except (ValueError, TypeError):
                         next_run = "erro"
-
-                # Job info
                 schedule = f"a cada {job.schedule_value}" if job.schedule_type == "every" else job.schedule_value
                 lines.append(
                     f"{status} **{job.name}**\n"
@@ -276,9 +279,128 @@ class ChatCommandHandler:
 
             return CommandResult(text="\n".join(lines))
 
+        if action in ("enable", "disable") and action_args:
+            jobs = cron_scheduler.list_jobs()
+            name_lower = action_args.lower()
+            matched = [j for j in jobs if name_lower in j.name.lower()]
+
+            if not matched:
+                return CommandResult(
+                    text=f"⏰ Nenhum job encontrado com o nome `{action_args}`.\n"
+                         "Use `/cron list` para ver os nomes disponíveis."
+                )
+
+            results = []
+            for job in matched:
+                job.enabled = (action == "enable")
+                cron_scheduler._save()
+                state = "ativado ✅" if job.enabled else "pausado ⏸️"
+                results.append(f"**{job.name}** {state}")
+
+            return CommandResult(text="⏰ " + "\n".join(results))
+
         return CommandResult(
             text="⏰ **Comandos de Cron**\n"
-                 "• `/cron list` — Listar jobs agendados"
+                 "• `/cron list` — Listar jobs agendados\n"
+                 "• `/cron enable <nome>` — Ativar job\n"
+                 "• `/cron disable <nome>` — Pausar job"
+        )
+
+    async def _cmd_memory(self, args: str, msg: IncomingMessage) -> CommandResult:
+        """Show agent long-term memory about the user."""
+        from src.memory.long_term import long_term_memory
+
+        agent = args.strip() or "optimus"
+        content = await long_term_memory.load(agent)
+
+        if not content or not content.strip():
+            return CommandResult(
+                text=f"🧠 **Memória de longo prazo** (`{agent}`)\n\nNenhum dado salvo ainda."
+            )
+
+        # Truncate for chat display
+        preview = content.strip()
+        truncated = ""
+        if len(preview) > 2000:
+            preview = preview[:2000]
+            truncated = "\n\n_... truncado. Memória completa disponível internamente._"
+
+        return CommandResult(
+            text=f"🧠 **Memória de longo prazo** (`{agent}`)\n\n{preview}{truncated}"
+        )
+
+    async def _cmd_tools(self, args: str, msg: IncomingMessage) -> CommandResult:
+        """List all available MCP tools."""
+        from src.skills.mcp_tools import mcp_tools
+
+        category_filter = args.strip().lower() or None
+        tools = mcp_tools.list_tools(category=category_filter)
+
+        if not tools:
+            hint = f" na categoria `{category_filter}`" if category_filter else ""
+            return CommandResult(text=f"🔧 Nenhuma tool encontrada{hint}.")
+
+        # Group by category
+        by_category: dict[str, list] = {}
+        for t in sorted(tools, key=lambda x: (x.category, x.name)):
+            by_category.setdefault(t.category, []).append(t)
+
+        lines = [f"🔧 **Tools MCP disponíveis** ({len(tools)} total)\n"]
+        for cat, cat_tools in by_category.items():
+            lines.append(f"**{cat.upper()}**")
+            for t in cat_tools:
+                approval = " ⚠️" if t.requires_approval else ""
+                lines.append(f"• `{t.name}`{approval} — {t.description[:60]}")
+            lines.append("")
+
+        if category_filter is None:
+            lines.append("_Use `/tools <categoria>` para filtrar._")
+
+        return CommandResult(text="\n".join(lines))
+
+    async def _cmd_activity(self, args: str, msg: IncomingMessage) -> CommandResult:
+        """Show recent activity feed."""
+        from src.collaboration.activity_feed import activity_feed
+
+        limit = 10
+        try:
+            limit = int(args.strip()) if args.strip() else 10
+        except ValueError:
+            pass
+        limit = min(limit, 30)
+
+        activities = await activity_feed.get_recent(limit=limit)
+
+        if not activities:
+            return CommandResult(text="📡 Nenhuma atividade registrada ainda.")
+
+        type_emoji = {
+            "task_created": "📋",
+            "task_status_changed": "🔄",
+            "task_completed": "✅",
+            "message_sent": "💬",
+            "cron_triggered": "⏰",
+            "standup_generated": "📊",
+            "agent_started": "🤖",
+        }
+
+        lines = [f"📡 **Atividade Recente** (últimas {len(activities)})\n"]
+        for a in activities:
+            emoji = type_emoji.get(a.type, "•")
+            ts = a.created_at.strftime("%d/%m %H:%M")
+            agent = f" _[{a.agent_name}]_" if a.agent_name else ""
+            lines.append(f"{emoji} `{ts}`{agent} {a.message[:80]}")
+
+        return CommandResult(text="\n".join(lines))
+
+    async def _cmd_clear(self, args: str, msg: IncomingMessage) -> CommandResult:
+        """Clear the chat screen (frontend-handled)."""
+        # The frontend intercepts /clear before sending to API.
+        # This handler exists as fallback for non-web channels.
+        return CommandResult(
+            text="🧹 Chat limpo. Contexto da sessão preservado.",
+            is_command=True,
+            handled=True,
         )
 
 
