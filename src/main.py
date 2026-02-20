@@ -182,6 +182,13 @@ async def lifespan(app: FastAPI):
     else:
         print(f"ℹ️  FASE 0 #11: Plugins directory {plugins_dir} not found, skipping plugin loading")
 
+    # Cleanup orphaned audio temp files from previous crashes (Vivaldi-inspired)
+    try:
+        from src.channels.voice_interface import cleanup_audio_temp_files
+        cleanup_audio_temp_files(max_age_seconds=3600)
+    except Exception:
+        pass
+
     # FASE 0 #20: Register notification handlers on EventBus
     # TaskManager emits TASK_CREATED/UPDATED/COMPLETED → handlers send notifications
     from src.collaboration.notification_handlers import register_notification_handlers

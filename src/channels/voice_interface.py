@@ -10,13 +10,39 @@ with graceful fallback when API keys are not configured.
 import logging
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Dedicated temp directory for audio files — easier to track orphans than /tmp
+_AUDIO_TMP_DIR = Path(__file__).parent.parent.parent / "workspace" / "tmp" / "audio"
+_AUDIO_TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def cleanup_audio_temp_files(max_age_seconds: int = 3600) -> int:
+    """
+    Delete orphaned audio temp files older than max_age_seconds (default 1h).
+    Called on app startup to recover from crash scenarios.
+    Returns number of files deleted.
+    """
+    deleted = 0
+    cutoff = time.time() - max_age_seconds
+    for f in _AUDIO_TMP_DIR.glob("*.mp3"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                deleted += 1
+        except Exception:
+            pass
+    if deleted:
+        logger.info(f"Audio cleanup: deleted {deleted} orphaned temp file(s)")
+    return deleted
 
 
 class VoiceProviderType(str, Enum):
@@ -240,22 +266,20 @@ class EdgeTTSProvider(VoiceProvider):
         voice = os.environ.get("EDGE_TTS_VOICE", "pt-BR-AntonioNeural")
 
         try:
-            # Create a temporary file to store the audio
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
+            # Use dedicated audio tmp dir (easier cleanup than /tmp)
+            tmp_path = _AUDIO_TMP_DIR / f"tts_{int(time.time() * 1000)}.mp3"
 
             # Generate speech
             communicate = edge_tts.Communicate(text, voice)
-            await communicate.save(tmp_path)
+            await communicate.save(str(tmp_path))
 
             # Read the audio bytes
             with open(tmp_path, "rb") as f:
                 audio_bytes = f.read()
 
-            # Clean up temp file
+            # Clean up immediately
             try:
-                os.unlink(tmp_path)
+                tmp_path.unlink()
             except Exception:
                 pass
 

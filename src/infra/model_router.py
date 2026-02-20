@@ -209,29 +209,40 @@ class ModelRouter:
         models = self.fallback_chains.get(chain, self.fallback_chains.get("default", []))
         last_error = None
 
+        failed_models = []
+
         for short_name in models:
             try:
-                # 1. Try LiteLLM if available OR if we are in a test (LITELLM_AVAILABLE will be false but litellm is patched)
-                # To support tests, we try litellm call first and catch ImportError later if it really fails
-                return await self._lite_llm_call(
+                result = await self._lite_llm_call(
                     short_name, messages, temperature, max_tokens, tools, include_raw
                 )
+                if failed_models:
+                    logger.info(
+                        f"Model fallback succeeded: {short_name} (failed: {', '.join(failed_models)})",
+                        extra={"props": {"chain": chain, "used": short_name, "failed": failed_models}},
+                    )
+                return result
             except (ImportError, Exception) as e:
-                # If it's a Gemini model, try native fallback
                 if GOOGLE_GENAI_AVAILABLE and "gemini" in short_name:
                     try:
-                        return await self._native_gemini_call(
+                        result = await self._native_gemini_call(
                             short_name, messages, temperature, max_tokens, tools, include_raw
                         )
+                        if failed_models:
+                            logger.info(f"Native Gemini fallback succeeded: {short_name}")
+                        return result
                     except Exception as ge:
                         last_error = ge
+                        failed_models.append(f"{short_name}(native:{type(ge).__name__})")
                         continue
-                
+
                 last_error = e
-                logger.warning(f"Model {short_name} failed: {e}")
+                failed_models.append(f"{short_name}({type(e).__name__})")
+                logger.warning(f"Model {short_name} failed, trying next: {type(e).__name__}: {str(e)[:120]}")
                 continue
 
-        raise RuntimeError(f"All models in chain {chain} failed. Last: {last_error}")
+        error_summary = " → ".join(failed_models)
+        raise RuntimeError(f"All models in chain '{chain}' failed: {error_summary}")
 
     async def _lite_llm_call(self, short_name, messages, temp, tokens, tools, include_raw):
         """Standard LiteLLM call."""

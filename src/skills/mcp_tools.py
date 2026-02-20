@@ -3,11 +3,17 @@ Agent Optimus — MCP Tools.
 Native MCP tool definitions for agent capabilities.
 """
 
+import importlib.util
 import logging
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Coroutine
 
 logger = logging.getLogger(__name__)
+
+# Directory scanned for plugin files at startup
+_PLUGINS_DIR = Path(__file__).parent.parent.parent / "workspace" / "plugins"
 
 
 @dataclass
@@ -34,12 +40,63 @@ class ToolResult:
 class MCPToolRegistry:
     """
     Registry for native MCP tools.
-    Provides tool definitions, execution, and manifest generation.
+    Provides tool definitions, execution, hooks, and manifest generation.
+
+    Hooks (Vivaldi-inspired):
+      before_tool_call(tool_name, params, user_id) → dict | None
+        Return modified params dict to override, None to use original.
+      after_tool_call(tool_name, result, user_id) → None
+        Observability/logging hook, fire-and-forget.
     """
 
     def __init__(self):
         self._tools: dict[str, MCPTool] = {}
+        self._before_hooks: list = []  # Callable(tool_name, params, user_id) → dict|None
+        self._after_hooks: list = []   # Callable(tool_name, result, user_id) → None
         self._register_native_tools()
+        self.load_plugins()
+
+    def add_before_hook(self, fn) -> None:
+        """Register a before_tool_call hook."""
+        self._before_hooks.append(fn)
+
+    def add_after_hook(self, fn) -> None:
+        """Register an after_tool_call hook."""
+        self._after_hooks.append(fn)
+
+    def load_plugins(self, plugins_dir: Path | None = None) -> int:
+        """
+        Auto-discover and load plugins from workspace/plugins/.
+        Each .py file must expose register_tools(registry: MCPToolRegistry).
+        Returns the number of plugins loaded.
+        """
+        directory = plugins_dir or _PLUGINS_DIR
+        if not directory.exists():
+            return 0
+
+        loaded = 0
+        for plugin_file in sorted(directory.glob("*.py")):
+            if plugin_file.name.startswith("_"):
+                continue
+            try:
+                module_name = f"_plugin_{plugin_file.stem}"
+                spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+
+                if hasattr(module, "register_tools"):
+                    module.register_tools(self)
+                    loaded += 1
+                    logger.info(f"Plugin loaded: {plugin_file.name}")
+                else:
+                    logger.warning(f"Plugin '{plugin_file.name}' has no register_tools() — skipped")
+            except Exception as e:
+                logger.error(f"Failed to load plugin '{plugin_file.name}': {e}")
+
+        if loaded:
+            logger.info(f"Plugins loaded: {loaded} from {directory}")
+        return loaded
 
     def register(self, tool: MCPTool):
         """Register an MCP tool."""
@@ -71,17 +128,36 @@ class MCPToolRegistry:
         if user_id:
             self._user_id = user_id
 
+        # Run before_tool_call hooks (can modify params)
+        current_params = dict(params)
+        for hook in self._before_hooks:
+            try:
+                result = hook(tool_name, current_params, user_id)
+                if result is not None:
+                    current_params = result
+            except Exception as e:
+                logger.warning(f"before_hook failed for '{tool_name}': {e}")
+
         try:
             logger.info(f"MCP executing: {tool_name}", extra={"props": {
                 "tool": tool_name, "agent": agent_name, "category": tool.category,
             }})
 
-            output = await tool.handler(**params)
-            return ToolResult(success=True, output=output, tool_name=tool_name)
+            output = await tool.handler(**current_params)
+            result = ToolResult(success=True, output=output, tool_name=tool_name)
 
         except Exception as e:
             logger.error(f"MCP tool '{tool_name}' failed: {e}")
-            return ToolResult(success=False, error=str(e), tool_name=tool_name)
+            result = ToolResult(success=False, error=str(e), tool_name=tool_name)
+
+        # Run after_tool_call hooks (observability, fire-and-forget)
+        for hook in self._after_hooks:
+            try:
+                hook(tool_name, result, user_id)
+            except Exception as e:
+                logger.warning(f"after_hook failed for '{tool_name}': {e}")
+
+        return result
 
     def generate_manifest(self) -> str:
         """Generate TOOLS.md manifest with all registered tools."""
