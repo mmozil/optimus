@@ -226,7 +226,7 @@ Existem DOIS sistemas de e-mail completamente separados:
                 "tool_calls": result.tool_calls_total,
             }})
 
-            return {
+            response_dict = {
                 "content": result.content,
                 "agent": self.name,
                 "model": result.model,
@@ -244,6 +244,9 @@ Existem DOIS sistemas de e-mail completamente separados:
                 "iterations": result.iterations,
                 "uncertainty": result.uncertainty,  # FASE 0 #2: forwarded to gateway
             }
+            if result.audio_base64:
+                response_dict["audio_base64"] = result.audio_base64
+            return response_dict
 
         except Exception as e:
             logger.exception(f"Agent '{self.name}' ReAct failed: {e}")

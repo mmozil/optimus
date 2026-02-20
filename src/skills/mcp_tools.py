@@ -808,6 +808,23 @@ class MCPToolRegistry:
             handler=self._tool_apple_contacts_list,
         ))
 
+        # --- Voice / TTS Tool ---
+        self.register(MCPTool(
+            name="speak",
+            description=(
+                "Convert text to audio and deliver it to the user as a voice message. "
+                "Use when the user asks for an audio response: 'me manda um áudio', "
+                "'responda em voz', 'fala isso pra mim', 'quero ouvir', etc. "
+                "Pass the full response text to be spoken."
+            ),
+            category="voice",
+            parameters={
+                "text": {"type": "string", "required": True, "description": "Text to convert to speech"},
+            },
+            handler=self._tool_speak,
+            agent_levels=["intern", "specialist", "lead"],
+        ))
+
         # --- Code Execution Tools ---
         self.register(MCPTool(
             name="code_execute",
@@ -1540,6 +1557,23 @@ class MCPToolRegistry:
     async def _tool_apple_contacts_list(self, limit: int = 20) -> str:
         from src.core.apple_service import apple_service
         return await apple_service.contacts_list(self._current_user_id(), limit=limit)
+
+    async def _tool_speak(self, text: str) -> dict:
+        """Convert text to audio via TTS and return audio_base64 for the frontend."""
+        import base64
+        try:
+            from src.engine.voice_interface import voice_interface
+            # Strip uncertainty markers before TTS (same as voice_command endpoint)
+            clean_text = text.split("\n---\n")[0].strip()
+            audio_bytes = await voice_interface.speak(clean_text)
+            audio_b64 = base64.b64encode(audio_bytes).decode()
+            return {
+                "success": True,
+                "_audio_base64": audio_b64,  # Picked up by react_loop to include in result
+                "message": f"🔊 Áudio gerado ({len(audio_bytes)} bytes).",
+            }
+        except Exception as e:
+            return {"success": False, "error": f"TTS falhou: {e}"}
 
     def _current_user_id(self) -> str:
         """Get current user_id from execution context (set by ReAct loop)."""

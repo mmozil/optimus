@@ -46,6 +46,7 @@ class ReActResult:
     max_iterations_reached: bool = False
     tool_calls_total: int = 0
     uncertainty: dict | None = None  # FASE 0 #2: Uncertainty quantification metadata
+    audio_base64: str | None = None  # speak() tool: base64-encoded audio for frontend
 
 
 # ============================================
@@ -121,6 +122,7 @@ async def react_loop(
     last_model = ""
     tool_calls_total = 0
     start_time = time.monotonic()
+    _audio_base64_result: str | None = None  # Captured from speak() tool
 
     # 3. ReAct loop
     from src.infra.tracing import trace_span, trace_event
@@ -230,6 +232,7 @@ async def react_loop(
                 iterations=iteration,
                 tool_calls_total=tool_calls_total,
                 uncertainty=uncertainty_dict,
+                audio_base64=_audio_base64_result,
             )
 
         # d. ACT: execute each tool call (with self-correction)
@@ -353,7 +356,14 @@ async def react_loop(
                 MCP_TOOL_LATENCY.labels(tool_name=tool_name).observe(step.duration_ms / 1000)
 
                 if tool_result.success:
-                    step.result = str(tool_result.output)
+                    # Extract _audio_base64 before sending result to LLM
+                    raw_output = tool_result.output
+                    if isinstance(raw_output, dict) and "_audio_base64" in raw_output:
+                        _audio_base64_result = raw_output["_audio_base64"]
+                        # Send only the human-readable message to the LLM
+                        step.result = raw_output.get("message", "🔊 Áudio gerado.")
+                    else:
+                        step.result = str(raw_output)
                     step.success = True
                 else:
                     step.success = False
@@ -410,6 +420,7 @@ async def react_loop(
         iterations=max_iterations,
         max_iterations_reached=True,
         tool_calls_total=tool_calls_total,
+        audio_base64=_audio_base64_result,
     )
 
 

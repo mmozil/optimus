@@ -1238,6 +1238,25 @@
                     addMessage('Erro: resposta vazia da API.', false);
                 }
 
+                // speak() tool: render audio player if agent generated audio
+                const chatAudio = data?.data?.audio_base64;
+                if (chatAudio) {
+                    const agentAudioUrl = 'data:audio/mp3;base64,' + chatAudio;
+                    if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
+                    currentAudio = new Audio(agentAudioUrl);
+                    currentAudio.onended = () => updateStopBtn(false);
+                    const playHint = document.createElement('div');
+                    playHint.style.cssText = 'font-size:12px;color:#888;margin-top:4px;cursor:pointer;';
+                    playHint.textContent = '🔊 Clique para ouvir a resposta em áudio';
+                    playHint.onclick = () => {
+                        currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
+                        updateStopBtn(true);
+                        playHint.remove();
+                    };
+                    const lastMsg = chatContainer.lastElementChild?.querySelector('.msg-content');
+                    if (lastMsg) lastMsg.appendChild(playHint);
+                }
+
                 // FASE 12: Update audit trail with new session_id
                 if (data?.data?.conversation_id) {
                     updateAuditSession(data.data.conversation_id);
