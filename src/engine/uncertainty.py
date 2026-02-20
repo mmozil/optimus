@@ -120,11 +120,11 @@ Confiança:"""
             match = re.search(r'(0\.\d+|1\.0|0|1)', result["content"])
             if match:
                 return float(match.group(1))
-            return 0.5  # Default if parsing fails
+            return 0.7  # Default if parsing fails — assume moderate-high confidence
 
         except Exception as e:
             logger.warning(f"Self-assessment failed: {e}")
-            return 0.5
+            return 0.7  # Assume confident on exception (avoids false positives)
 
     async def _find_similar_errors(self, query: str, db_session) -> list[dict]:
         """Find similar error patterns using PGvector similarity search."""
