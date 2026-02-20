@@ -1248,37 +1248,60 @@
                     addMessage('Erro: resposta vazia da API.', false);
                 }
 
-                // TTS: render audio player or auto-play depending on mode
+                // TTS: render inline audio controls in the message bubble
                 const chatAudio = data?.data?.audio_base64;
                 if (chatAudio) {
                     const agentAudioUrl = 'data:audio/mp3;base64,' + chatAudio;
                     if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
                     currentAudio = new Audio(agentAudioUrl);
-                    currentAudio.onended = () => updateStopBtn(false);
+
+                    // Build inline audio bar inside the last message bubble
+                    const lastMsgContent = chatContainer.lastElementChild?.querySelector('.msg-content');
+                    const audioBar = document.createElement('div');
+                    audioBar.className = 'audio-bar';
+                    audioBar.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.08);border-radius:8px;border:1px solid rgba(99,102,241,0.2);';
+
+                    const playBtn = document.createElement('button');
+                    playBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:0;color:var(--accent,#6366f1);';
+                    playBtn.textContent = '▶';
+                    playBtn.title = 'Ouvir resposta';
+
+                    const stopBtn = document.createElement('button');
+                    stopBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:0;color:#e74c3c;display:none;';
+                    stopBtn.textContent = '⏹';
+                    stopBtn.title = 'Parar áudio';
+
+                    const statusLabel = document.createElement('span');
+                    statusLabel.style.cssText = 'font-size:12px;color:#888;flex:1;';
+                    statusLabel.textContent = '🔊 Áudio disponível — clique ▶ para ouvir';
+
+                    const setPlaying = (playing) => {
+                        playBtn.style.display = playing ? 'none' : 'inline';
+                        stopBtn.style.display = playing ? 'inline' : 'none';
+                        statusLabel.textContent = playing ? '🔊 Reproduzindo...' : '🔊 Áudio disponível — clique ▶ para ouvir';
+                        updateStopBtn(playing);
+                    };
+
+                    playBtn.onclick = () => {
+                        currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
+                        setPlaying(true);
+                    };
+                    stopBtn.onclick = () => {
+                        currentAudio.pause();
+                        currentAudio.currentTime = 0;
+                        setPlaying(false);
+                    };
+                    currentAudio.onended = () => setPlaying(false);
+
+                    audioBar.appendChild(playBtn);
+                    audioBar.appendChild(stopBtn);
+                    audioBar.appendChild(statusLabel);
+                    if (lastMsgContent) lastMsgContent.appendChild(audioBar);
+
                     if (_ttsMode === 'always') {
-                        // Auto-play in always mode
-                        currentAudio.play().catch(() => {
-                            // Autoplay blocked — show click hint
-                            const playHint = document.createElement('div');
-                            playHint.style.cssText = 'font-size:12px;color:#888;margin-top:4px;cursor:pointer;';
-                            playHint.textContent = '🔊 Clique para ouvir';
-                            playHint.onclick = () => { currentAudio.play(); updateStopBtn(true); playHint.remove(); };
-                            const lastMsg = chatContainer.lastElementChild?.querySelector('.msg-content');
-                            if (lastMsg) lastMsg.appendChild(playHint);
-                        });
-                        updateStopBtn(true);
-                    } else {
-                        // on_request mode — show click hint
-                        const playHint = document.createElement('div');
-                        playHint.style.cssText = 'font-size:12px;color:#888;margin-top:4px;cursor:pointer;';
-                        playHint.textContent = '🔊 Clique para ouvir a resposta em áudio';
-                        playHint.onclick = () => {
-                            currentAudio.play().catch(e => console.warn('Autoplay blocked:', e));
-                            updateStopBtn(true);
-                            playHint.remove();
-                        };
-                        const lastMsg = chatContainer.lastElementChild?.querySelector('.msg-content');
-                        if (lastMsg) lastMsg.appendChild(playHint);
+                        currentAudio.play()
+                            .then(() => setPlaying(true))
+                            .catch(() => { /* autoplay blocked — user sees ▶ button */ });
                     }
                 }
 
