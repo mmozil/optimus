@@ -288,37 +288,144 @@
         }
 
         .msg-content {
-            line-height: 1.65;
+            line-height: 1.7;
             font-size: 0.93rem;
             padding-top: 0.2rem;
             word-break: break-word;
             min-width: 0;
         }
 
-        .msg-content p { margin-bottom: 0.6rem; }
+        /* Paragraphs */
+        .msg-content p { margin: 0 0 0.7rem; }
         .msg-content p:last-child { margin-bottom: 0; }
 
-        .msg-content pre {
-            background: #111;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 0.85rem 1rem;
-            overflow-x: auto;
-            font-size: 0.83rem;
-            margin: 0.5rem 0;
+        /* Headings */
+        .msg-content h1, .msg-content h2, .msg-content h3,
+        .msg-content h4, .msg-content h5, .msg-content h6 {
+            font-weight: 600;
+            line-height: 1.3;
+            margin: 1.2rem 0 0.5rem;
+            color: #f0f0f0;
+        }
+        .msg-content h1 { font-size: 1.35rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        .msg-content h2 { font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
+        .msg-content h3 { font-size: 1.05rem; color: var(--accent); }
+        .msg-content h4 { font-size: 0.98rem; color: #a78bfa; }
+        .msg-content h5, .msg-content h6 { font-size: 0.93rem; color: var(--text-muted); }
+
+        /* Lists */
+        .msg-content ul, .msg-content ol {
+            padding-left: 1.5rem;
+            margin: 0.4rem 0 0.7rem;
+        }
+        .msg-content li { margin-bottom: 0.3rem; }
+        .msg-content li > ul, .msg-content li > ol { margin: 0.2rem 0 0.2rem; }
+
+        /* Horizontal rule */
+        .msg-content hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 1rem 0;
         }
 
+        /* Blockquote */
+        .msg-content blockquote {
+            border-left: 3px solid var(--accent);
+            margin: 0.6rem 0;
+            padding: 0.4rem 0.8rem 0.4rem 1rem;
+            background: rgba(59,130,246,0.06);
+            border-radius: 0 6px 6px 0;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .msg-content blockquote p { margin: 0; }
+
+        /* Tables */
+        .msg-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.8rem 0;
+            font-size: 0.88rem;
+        }
+        .msg-content th {
+            background: var(--surface2);
+            color: #f0f0f0;
+            font-weight: 600;
+            text-align: left;
+            padding: 0.5rem 0.8rem;
+            border: 1px solid var(--border);
+        }
+        .msg-content td {
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .msg-content tr:nth-child(even) td { background: rgba(255,255,255,0.025); }
+        .msg-content tr:hover td { background: rgba(59,130,246,0.05); }
+
+        /* Inline code */
         .msg-content code {
             background: rgba(255,255,255,0.08);
-            padding: 0.15rem 0.35rem;
+            padding: 0.15rem 0.4rem;
             border-radius: 4px;
             font-size: 0.85em;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            color: #e879a0;
         }
 
-        .msg-content pre code {
-            background: none;
-            padding: 0;
+        /* Code blocks */
+        .msg-content pre {
+            position: relative;
+            margin: 0.8rem 0;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
         }
+        .msg-content pre .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.4rem 0.9rem;
+            background: #1e1e2e;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
+        }
+        .msg-content pre .code-lang {
+            color: #7c3aed;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .msg-content pre .code-copy {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.72rem;
+            padding: 0.15rem 0.55rem;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+        .msg-content pre .code-copy:hover { color: var(--text); border-color: var(--accent); }
+        .msg-content pre code {
+            display: block;
+            background: #0d1117;
+            padding: 0.9rem 1rem;
+            overflow-x: auto;
+            font-size: 0.83rem;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            line-height: 1.6;
+            color: #c9d1d9;
+        }
+
+        /* Strong / em */
+        .msg-content strong { color: #f5f5f5; font-weight: 600; }
+        .msg-content em { color: #a5b4fc; font-style: italic; }
+
+        /* Links */
+        .msg-content a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+        .msg-content a:hover { color: #93c5fd; }
 
         /* Typing dots */
         .typing-dots {
@@ -857,8 +964,48 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
     <script src="/static/js/auth.js?v=3"></script>
     <script>
+        // ── Markdown + Syntax Highlight Setup ───────────────────────
+        (function setupMarked() {
+            const renderer = new marked.Renderer();
+
+            // Code blocks: header with language label + copy button + syntax highlighting
+            renderer.code = function(code, language) {
+                const lang = (language || '').toLowerCase();
+                let highlighted = '';
+                if (typeof hljs !== 'undefined') {
+                    try {
+                        highlighted = lang && hljs.getLanguage(lang)
+                            ? hljs.highlight(code, { language: lang }).value
+                            : hljs.highlightAuto(code).value;
+                    } catch(_) {}
+                }
+                if (!highlighted) {
+                    highlighted = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                }
+                const langLabel = `<span class="code-lang">${lang || 'code'}</span>`;
+                const header = `<div class="code-header">${langLabel}<button class="code-copy" onclick="copyCode(this)" data-code="${encodeURIComponent(code)}">Copiar</button></div>`;
+                return `<pre>${header}<code class="hljs${lang ? ` language-${lang}` : ''}">${highlighted}</code></pre>`;
+            };
+
+            marked.setOptions({ renderer, breaks: true, gfm: true });
+        })();
+
+        function copyCode(btn) {
+            const code = decodeURIComponent(btn.dataset.code);
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = 'Copiado!';
+                btn.style.color = '#22c55e';
+                setTimeout(() => { btn.textContent = 'Copiar'; btn.style.color = ''; }, 1800);
+            }).catch(() => {
+                btn.textContent = 'Erro';
+                setTimeout(() => { btn.textContent = 'Copiar'; }, 1500);
+            });
+        }
+
         const API_URL = window.location.origin;
 
         // ── Auth guard ──────────────────────────────────────────────
