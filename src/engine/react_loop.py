@@ -198,31 +198,7 @@ async def react_loop(
                 result=result.get("content", ""),
             ))
 
-            # FASE 0 #2: Quantify uncertainty before returning
             final_content = result.get("content", "")
-            uncertainty_result = None
-            try:
-                uncertainty_result = await uncertainty_quantifier.quantify(
-                    query=user_message,
-                    response=final_content,
-                    agent_name=agent_name,
-                    db_session=None,  # TODO: pass db_session from context if available
-                )
-
-                # Add uncertainty metadata to result
-                uncertainty_dict = {
-                    "confidence": uncertainty_result.confidence,
-                    "calibrated_confidence": uncertainty_result.calibrated_confidence,
-                    "risk_level": uncertainty_result.risk_level,
-                    "recommendation": uncertainty_result.recommendation,
-                }
-
-                # Note: recommendation stays in uncertainty metadata only.
-                # Never prepend warnings to content — users shouldn't see internal confidence scores.
-
-            except Exception as e:
-                logger.warning(f"Uncertainty quantification failed: {e}")
-                uncertainty_dict = None
 
             return ReActResult(
                 content=final_content,
@@ -231,7 +207,7 @@ async def react_loop(
                 steps=steps,
                 iterations=iteration,
                 tool_calls_total=tool_calls_total,
-                uncertainty=uncertainty_dict,
+                uncertainty=None,
                 audio_base64=_audio_base64_result,
             )
 
