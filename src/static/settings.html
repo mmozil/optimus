@@ -217,6 +217,22 @@
       <button class="btn" onclick="saveProfile()">Salvar perfil</button>
     </div>
 
+    <!-- Change Password -->
+    <div class="section">
+      <div class="section-title">Alterar senha</div>
+
+      <label for="current-password">Senha atual</label>
+      <input type="password" id="current-password" placeholder="••••••••">
+
+      <label for="new-password" style="margin-top:12px;">Nova senha</label>
+      <input type="password" id="new-password" placeholder="Mínimo 8 caracteres">
+
+      <label for="confirm-password" style="margin-top:12px;">Confirmar nova senha</label>
+      <input type="password" id="confirm-password" placeholder="Repita a nova senha">
+
+      <button class="btn" onclick="changePassword()" style="margin-top:12px;">Alterar senha</button>
+    </div>
+
     <!-- Preferences -->
     <div class="section">
       <div class="section-title">Preferências</div>
@@ -450,6 +466,45 @@
       el.style.display = 'block';
     }
 
+    // Tiny MD5 for Gravatar (RFC 1321 — no external dependency)
+    function md5(str) {
+      function safeAdd(x,y){const lsw=(x&0xFFFF)+(y&0xFFFF),msw=(x>>16)+(y>>16)+(lsw>>16);return(msw<<16)|(lsw&0xFFFF);}
+      function bitRotateLeft(num,cnt){return(num<<cnt)|(num>>>(32-cnt));}
+      function md5cmn(q,a,b,x,s,t){return safeAdd(bitRotateLeft(safeAdd(safeAdd(a,q),safeAdd(x,t)),s),b);}
+      function md5ff(a,b,c,d,x,s,t){return md5cmn((b&c)|(~b&d),a,b,x,s,t);}
+      function md5gg(a,b,c,d,x,s,t){return md5cmn((b&d)|(c&~d),a,b,x,s,t);}
+      function md5hh(a,b,c,d,x,s,t){return md5cmn(b^c^d,a,b,x,s,t);}
+      function md5ii(a,b,c,d,x,s,t){return md5cmn(c^(b|(~d)),a,b,x,s,t);}
+      let b=[];for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);if(c<128)b.push(c);else if(c<2048)b.push(192|(c>>6),128|(c&63));else b.push(224|(c>>12),128|((c>>6)&63),128|(c&63));}
+      b.push(128);const l=b.length;const extra=56-l%64;for(let i=0;i<(extra<0?extra+64:extra);i++)b.push(0);const bits=8*(l-1);b.push(bits&0xFF,(bits>>8)&0xFF,(bits>>16)&0xFF,(bits>>24)&0xFF,0,0,0,0);
+      let w=[],a=1732584193,bv=-271733879,c=-1732584194,d=271733878;
+      for(let i=0;i<b.length;i+=64){for(let j=0;j<16;j++)w[j]=(b[i+j*4])|(b[i+j*4+1]<<8)|(b[i+j*4+2]<<16)|(b[i+j*4+3]<<24);
+      let ta=a,tb=bv,tc=c,td=d;
+      a=md5ff(a,bv,c,d,w[0],7,-680876936);d=md5ff(d,a,bv,c,w[1],12,-389564586);c=md5ff(c,d,a,bv,w[2],17,606105819);bv=md5ff(bv,c,d,a,w[3],22,-1044525330);a=md5ff(a,bv,c,d,w[4],7,-176418897);d=md5ff(d,a,bv,c,w[5],12,1200080426);c=md5ff(c,d,a,bv,w[6],17,-1473231341);bv=md5ff(bv,c,d,a,w[7],22,-45705983);a=md5ff(a,bv,c,d,w[8],7,1770035416);d=md5ff(d,a,bv,c,w[9],12,-1958414417);c=md5ff(c,d,a,bv,w[10],17,-42063);bv=md5ff(bv,c,d,a,w[11],22,-1990404162);a=md5ff(a,bv,c,d,w[12],7,1804603682);d=md5ff(d,a,bv,c,w[13],12,-40341101);c=md5ff(c,d,a,bv,w[14],17,-1502002290);bv=md5ff(bv,c,d,a,w[15],22,1236535329);
+      a=md5gg(a,bv,c,d,w[1],5,-165796510);d=md5gg(d,a,bv,c,w[6],9,-1069501632);c=md5gg(c,d,a,bv,w[11],14,643717713);bv=md5gg(bv,c,d,a,w[0],20,-373897302);a=md5gg(a,bv,c,d,w[5],5,-701558691);d=md5gg(d,a,bv,c,w[10],9,38016083);c=md5gg(c,d,a,bv,w[15],14,-660478335);bv=md5gg(bv,c,d,a,w[4],20,-405537848);a=md5gg(a,bv,c,d,w[9],5,568446438);d=md5gg(d,a,bv,c,w[14],9,-1019803690);c=md5gg(c,d,a,bv,w[3],14,-187363961);bv=md5gg(bv,c,d,a,w[8],20,1163531501);a=md5gg(a,bv,c,d,w[13],5,-1444681467);d=md5gg(d,a,bv,c,w[2],9,-51403784);c=md5gg(c,d,a,bv,w[7],14,1735328473);bv=md5gg(bv,c,d,a,w[12],20,-1926607734);
+      a=md5hh(a,bv,c,d,w[5],4,-378558);d=md5hh(d,a,bv,c,w[8],11,-2022574463);c=md5hh(c,d,a,bv,w[11],16,1839030562);bv=md5hh(bv,c,d,a,w[14],23,-35309556);a=md5hh(a,bv,c,d,w[1],4,-1530992060);d=md5hh(d,a,bv,c,w[4],11,1272893353);c=md5hh(c,d,a,bv,w[7],16,-155497632);bv=md5hh(bv,c,d,a,w[10],23,-1094730640);a=md5hh(a,bv,c,d,w[13],4,681279174);d=md5hh(d,a,bv,c,w[0],11,-358537222);c=md5hh(c,d,a,bv,w[3],16,-722521979);bv=md5hh(bv,c,d,a,w[6],23,76029189);a=md5hh(a,bv,c,d,w[9],4,-640364487);d=md5hh(d,a,bv,c,w[12],11,-421815835);c=md5hh(c,d,a,bv,w[15],16,530742520);bv=md5hh(bv,c,d,a,w[2],23,-995338651);
+      a=md5ii(a,bv,c,d,w[0],6,-198630844);d=md5ii(d,a,bv,c,w[7],10,1126891415);c=md5ii(c,d,a,bv,w[14],15,-1416354905);bv=md5ii(bv,c,d,a,w[5],21,-57434055);a=md5ii(a,bv,c,d,w[12],6,1700485571);d=md5ii(d,a,bv,c,w[3],10,-1894986606);c=md5ii(c,d,a,bv,w[10],15,-1051523);bv=md5ii(bv,c,d,a,w[1],21,-2054922799);a=md5ii(a,bv,c,d,w[8],6,1873313359);d=md5ii(d,a,bv,c,w[15],10,-30611744);c=md5ii(c,d,a,bv,w[6],15,-1560198380);bv=md5ii(bv,c,d,a,w[13],21,1309151649);a=md5ii(a,bv,c,d,w[4],6,-145523070);d=md5ii(d,a,bv,c,w[11],10,-1120210379);c=md5ii(c,d,a,bv,w[2],15,718787259);bv=md5ii(bv,c,d,a,w[9],21,-343485551);
+      a=safeAdd(a,ta);bv=safeAdd(bv,tb);c=safeAdd(c,tc);d=safeAdd(d,td);}
+      return[a,bv,c,d].map(n=>(n<0?n+4294967296:n).toString(16).padStart(8,'0').match(/../g).map(x=>x[1]+x[0]).join('')).join('');
+    }
+
+    function setAvatarGravatar(email, fallbackLetter) {
+      const hash = md5(email.trim().toLowerCase());
+      const url = `https://www.gravatar.com/avatar/${hash}?s=52&d=404`;
+      const avatarEl = document.getElementById('avatar-letter');
+      const img = new Image();
+      img.onload = () => {
+        avatarEl.textContent = '';
+        avatarEl.style.padding = '0';
+        const imgEl = document.createElement('img');
+        imgEl.src = url;
+        imgEl.style.cssText = 'width:52px;height:52px;border-radius:50%;object-fit:cover;';
+        avatarEl.appendChild(imgEl);
+      };
+      img.onerror = () => { avatarEl.textContent = fallbackLetter; };
+      img.src = url;
+    }
+
     async function loadProfile() {
       try {
         const resp = await fetch('/api/v1/user/profile', {
@@ -461,7 +516,8 @@
         document.getElementById('display_name').value = profileData.display_name || '';
         document.getElementById('profile-name').textContent = profileData.display_name || profileData.email;
         document.getElementById('profile-email').textContent = profileData.email;
-        document.getElementById('avatar-letter').textContent = (profileData.display_name || profileData.email || '?')[0].toUpperCase();
+        const fallback = (profileData.display_name || profileData.email || '?')[0].toUpperCase();
+        setAvatarGravatar(profileData.email, fallback);
       } catch (e) {
         showError('Erro ao carregar perfil: ' + e.message);
       }
@@ -512,6 +568,29 @@
         document.getElementById('profile-name').textContent = display_name || profileData.email;
         document.getElementById('avatar-letter').textContent = (display_name || profileData.email || '?')[0].toUpperCase();
         showSuccess('Perfil atualizado! Faça login novamente para refletir no token.');
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    async function changePassword() {
+      const current = document.getElementById('current-password').value;
+      const nw = document.getElementById('new-password').value;
+      const confirm = document.getElementById('confirm-password').value;
+      if (!current || !nw || !confirm) { showError('Preencha todos os campos.'); return; }
+      if (nw.length < 8) { showError('Nova senha deve ter pelo menos 8 caracteres.'); return; }
+      if (nw !== confirm) { showError('As senhas não coincidem.'); return; }
+      try {
+        const resp = await fetch('/api/v1/user/password', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ current_password: current, new_password: nw }),
+        });
+        if (!resp.ok) throw new Error((await resp.json()).detail || 'Erro ao alterar senha');
+        document.getElementById('current-password').value = '';
+        document.getElementById('new-password').value = '';
+        document.getElementById('confirm-password').value = '';
+        showSuccess('Senha alterada com sucesso!');
       } catch (e) {
         showError(e.message);
       }

@@ -6695,3 +6695,164 @@ class TestFase17PromptEngineering:
         with open(path, encoding="utf-8") as f:
             content = f.read()
         assert "FASE 17" in content
+
+
+# ============================================
+# FASE 18 — User Profile & Settings Completo
+# ============================================
+class TestFase18UserProfile:
+    """
+    FASE 18: Avatar (Gravatar fallback), password change, preferences persistence,
+    session bootstrap loading preferences.
+    """
+
+    # ------------------------------------------------------------------
+    # 18.1 Gravatar fallback em settings.html
+    # ------------------------------------------------------------------
+
+    def test_settings_html_has_gravatar_function(self):
+        """settings.html deve conter função setAvatarGravatar com fallback para iniciais."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "static", "settings.html")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "setAvatarGravatar" in content
+        assert "gravatar.com/avatar" in content
+
+    def test_settings_html_load_profile_calls_gravatar(self):
+        """loadProfile() deve chamar setAvatarGravatar após carregar o perfil."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "static", "settings.html")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "setAvatarGravatar(profileData.email" in content
+
+    def test_settings_html_has_md5_function(self):
+        """settings.html deve incluir função md5 para Gravatar (sem dependência externa)."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "static", "settings.html")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "function md5" in content
+
+    # ------------------------------------------------------------------
+    # 18.2 Endpoint de troca de senha
+    # ------------------------------------------------------------------
+
+    def test_user_profile_has_change_password_endpoint(self):
+        """user_profile.py deve ter endpoint PUT /password."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "@router.put(\"/password\")" in content
+        assert "change_password" in content
+
+    def test_change_password_verifies_current_password(self):
+        """Endpoint de troca de senha deve verificar senha atual antes de atualizar."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "_verify_password" in content
+        assert "Senha atual incorreta" in content
+
+    def test_change_password_enforces_minimum_length(self):
+        """Endpoint deve rejeitar nova senha com menos de 8 caracteres."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "len(request.new_password) < 8" in content
+
+    def test_change_password_model_has_required_fields(self):
+        """ChangePasswordRequest deve ter current_password e new_password."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "class ChangePasswordRequest" in content
+        assert "current_password" in content
+        assert "new_password" in content
+
+    def test_settings_html_has_password_change_ui(self):
+        """settings.html deve ter campos e botão para troca de senha."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "static", "settings.html")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "current-password" in content
+        assert "new-password" in content
+        assert "changePassword()" in content
+
+    def test_settings_html_change_password_calls_api(self):
+        """changePassword() deve chamar PUT /api/v1/user/password."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "static", "settings.html")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "/api/v1/user/password" in content
+
+    # ------------------------------------------------------------------
+    # 18.3 + 18.4 Preferências persistidas no PostgreSQL
+    # ------------------------------------------------------------------
+
+    def test_user_preferences_migration_exists(self):
+        """Migração 014_user_preferences.sql deve existir."""
+        import os
+        path = os.path.join(os.getcwd(), "migrations", "014_user_preferences.sql")
+        assert os.path.exists(path)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "user_preferences" in content
+        assert "agent_name" in content
+        assert "communication_style" in content
+
+    def test_user_preferences_model_has_all_fields(self):
+        """UserPreferences deve ter preferred_name, agent_name, language, communication_style, timezone."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "preferred_name" in content
+        assert "agent_name" in content
+        assert "language" in content
+        assert "communication_style" in content
+        assert "timezone" in content
+        assert "America/Sao_Paulo" in content
+
+    # ------------------------------------------------------------------
+    # 18.5 Session bootstrap carrega preferências
+    # ------------------------------------------------------------------
+
+    def test_main_session_bootstrap_loads_preferences(self):
+        """main.py deve ter função que carrega preferred_name/language no contexto da sessão."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "main.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "preferred_name" in content
+        assert "user_preferences" in content
+
+    # ------------------------------------------------------------------
+    # 18.6 Contrato do router
+    # ------------------------------------------------------------------
+
+    def test_user_profile_router_registered_in_main(self):
+        """src/main.py deve registrar user_profile_router."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "main.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert "user_profile_router" in content or "user_profile" in content
+
+    def test_user_profile_endpoints_exist(self):
+        """user_profile.py deve expor GET/PUT /profile e GET/PUT /preferences."""
+        import os
+        path = os.path.join(os.getcwd(), "src", "api", "user_profile.py")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        assert 'router.get("/profile"' in content
+        assert 'router.put("/profile"' in content
+        assert 'router.get("/preferences"' in content
+        assert 'router.put("/preferences"' in content

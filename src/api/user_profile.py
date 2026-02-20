@@ -47,6 +47,11 @@ class CompleteOnboardingRequest(BaseModel):
     communication_style: str = "casual"
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 # ============================================
 # Endpoints
 # ============================================
@@ -200,3 +205,46 @@ async def complete_onboarding(
 
     logger.info(f"User {user.id} completed onboarding as '{request.preferred_name}'")
     return {"success": True, "redirect": "/"}
+
+
+@router.put("/password")
+async def change_password(
+    request: ChangePasswordRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """
+    Change the authenticated user's password.
+
+    FASE 18 — 18.2: Verifies current password before allowing update.
+    Returns 400 if current password is wrong or new password is too short.
+    """
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Nova senha deve ter pelo menos 8 caracteres.")
+
+    from src.core.auth_service import auth_service
+    from src.infra.supabase_client import get_async_session
+
+    async with get_async_session() as session:
+        result = await session.execute(
+            text("SELECT hashed_password FROM users WHERE id = :id"),
+            {"id": user.id},
+        )
+        row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    if not auth_service._verify_password(request.current_password, row[0]):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta.")
+
+    new_hash = auth_service._hash_password(request.new_password)
+
+    async with get_async_session() as session:
+        await session.execute(
+            text("UPDATE users SET hashed_password = :hash, updated_at = now() WHERE id = :id"),
+            {"hash": new_hash, "id": user.id},
+        )
+        await session.commit()
+
+    logger.info(f"User {user.id} changed password")
+    return {"success": True}

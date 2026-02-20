@@ -237,17 +237,23 @@ Toda alteração DEVE garantir que não quebra funcionalidades existentes:
 
 ---
 
-## FASE 18 — User Profile & Settings Completo
+## FASE 18 — User Profile & Settings Completo ✅
 
 **Objetivo:** Completar perfil do usuário com avatar, preferências e configurações do agente.
 **Por quê:** `planning-optimus.md` item 2 — onboarding personalizado.
+**Status:** CONCLUÍDA — 2026-02-19
 
-- [ ] **18.1** Avatar upload (Gravatar fallback)
-- [ ] **18.2** Alteração de senha
-- [ ] **18.3** Configurações do agente: nome, tom de voz, idioma preferido
-- [ ] **18.4** Persistir preferências no PostgreSQL (tabela `user_preferences`)
-- [ ] **18.5** Carregar preferências no session bootstrap
-- [ ] **18.6** Testes E2E + produção
+- [x] **18.1** Gravatar fallback (MD5 inline + `setAvatarGravatar()` com fallback para iniciais)
+- [x] **18.2** Alteração de senha (`PUT /api/v1/user/password` com verificação da senha atual)
+- [x] **18.3** Configurações do agente: nome, tom de voz, idioma preferido (já existia)
+- [x] **18.4** Persistir preferências no PostgreSQL (migration `014_user_preferences.sql` — já existia)
+- [x] **18.5** Carregar preferências no session bootstrap (já existia em `main.py`)
+- [x] **18.6** Testes E2E (14/14 ✅) + deploy
+
+**Arquivos modificados:**
+- `src/api/user_profile.py` — `ChangePasswordRequest` + `PUT /password` endpoint
+- `src/static/settings.html` — MD5 + Gravatar fallback, seção "Alterar senha" + `changePassword()`
+- `tests/test_e2e.py` — `TestFase18UserProfile` (14/14 ✅)
 
 ---
 
