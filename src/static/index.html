@@ -265,33 +265,36 @@
         /* Messages */
         .message {
             display: flex;
-            gap: 0.9rem;
+            flex-direction: column;
             animation: fadeUp 0.25s ease;
         }
 
-        .avatar {
-            width: 30px;
-            height: 30px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            font-weight: 700;
-            flex-shrink: 0;
-            margin-top: 2px;
-            letter-spacing: 0.02em;
+        /* User message — bubble right-aligned */
+        .message.user-message {
+            align-items: flex-end;
         }
 
-        .ai-avatar {
-            background: var(--accent);
-            color: #fff;
-        }
-
-        .user-avatar {
+        .message.user-message .msg-content {
             background: var(--surface2);
-            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 16px 16px 4px 16px;
+            padding: 0.6rem 1rem;
+            max-width: 80%;
+            color: var(--text);
         }
+
+        /* AI message — full width, sem bolha */
+        .message.ai-message {
+            align-items: flex-start;
+        }
+
+        .message.ai-message .msg-content {
+            width: 100%;
+            padding: 0.1rem 0;
+        }
+
+        /* Ocultar avatares — não usados mais */
+        .avatar { display: none; }
 
         .msg-content {
             line-height: 1.7;
@@ -1156,11 +1159,8 @@
                 showWelcome(false);
             }
             const div = document.createElement('div');
-            div.className = 'message';
-            div.innerHTML = `
-                <div class="avatar ${isUser ? 'user-avatar' : 'ai-avatar'}">${isUser ? 'EU' : 'OP'}</div>
-                <div class="msg-content">${isUser ? `<p>${escapeHtml(text)}</p>` : marked.parse(text)}</div>
-            `;
+            div.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+            div.innerHTML = `<div class="msg-content">${isUser ? `<p>${escapeHtml(text)}</p>` : marked.parse(text)}</div>`;
             chatContainer.appendChild(div);
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
             return div;
@@ -1172,11 +1172,8 @@
 
         function addTyping() {
             const div = document.createElement('div');
-            div.className = 'message';
-            div.innerHTML = `
-                <div class="avatar ai-avatar">OP</div>
-                <div class="msg-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>
-            `;
+            div.className = 'message ai-message';
+            div.innerHTML = `<div class="msg-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
             chatContainer.appendChild(div);
             div.scrollIntoView({ behavior: 'smooth', block: 'end' });
             return div;
@@ -1706,15 +1703,12 @@
                 showWelcome(false);
             }
             const div = document.createElement('div');
-            div.className = 'message';
-            const avatarLabel = isUser ? 'EU' : 'OP';
-            const avatarClass = isUser ? 'user-avatar' : 'ai-avatar';
+            div.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
             const transcriptHtml = transcriptText
                 ? `<span class="audio-transcript-toggle" title="Ver transcrição">📝</span>
                    <p class="audio-transcript" style="display:none;">${escapeHtml(transcriptText)}</p>`
                 : '';
             div.innerHTML = `
-                <div class="avatar ${avatarClass}">${avatarLabel}</div>
                 <div class="msg-content">
                     <audio controls src="${audioUrl}"></audio>
                     ${transcriptHtml}
