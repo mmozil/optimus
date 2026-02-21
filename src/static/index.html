@@ -134,6 +134,10 @@
 
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-weight: 400;
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
             background: var(--bg);
             color: var(--text);
             height: 100dvh;
@@ -280,8 +284,15 @@
             border-radius: 16px 16px 4px 16px;
             padding: 0.6rem 1rem;
             max-width: 80%;
-            color: var(--text);
+            color: #d4d4d4;
+            font-weight: 400;
+            font-size: 0.93rem;
+            line-height: 1.65;
         }
+
+        /* Reset strong/em inside user bubble to plain weight */
+        .message.user-message .msg-content strong { color: #d4d4d4; font-weight: 400; }
+        .message.user-message .msg-content p { margin: 0; }
 
         /* AI message — full width, sem bolha */
         .message.ai-message {
@@ -662,6 +673,7 @@
             outline: none;
             color: var(--text);
             font-size: 0.93rem;
+            font-weight: 400;
             resize: none;
             max-height: 160px;
             padding: 0.45rem 0.25rem;
